@@ -41,7 +41,7 @@ func (h *Handler) Candles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if limit <= 0 {
-		limit = 1
+		limit = 500
 	}
 	outLimit := limit
 	if interval == time.Minute {

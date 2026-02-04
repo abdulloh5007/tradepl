@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"time"
 
+	"lv-tradepl/internal/types"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
-	"lv-tradepl/internal/types"
 )
 
 type Service struct {
@@ -61,10 +62,10 @@ func (s *Service) GetBalance(ctx context.Context, tx pgx.Tx, accountID string) (
 }
 
 type Balance struct {
-	AssetID string           `json:"asset_id"`
-	Symbol  string           `json:"symbol"`
+	AssetID string            `json:"asset_id"`
+	Symbol  string            `json:"symbol"`
 	Kind    types.AccountKind `json:"kind"`
-	Amount  decimal.Decimal  `json:"amount"`
+	Amount  decimal.Decimal   `json:"amount"`
 }
 
 func (s *Service) BalancesByUser(ctx context.Context, userID string) ([]Balance, error) {
@@ -104,6 +105,38 @@ func (s *Service) Transfer(ctx context.Context, tx pgx.Tx, fromAccountID, toAcco
 	return txID, nil
 }
 
+// DebitAccount removes funds from an account (burn - no counterparty)
+func (s *Service) DebitAccount(ctx context.Context, tx pgx.Tx, accountID string, amount decimal.Decimal, entryType types.LedgerEntryType, ref string) (string, error) {
+	if amount.LessThanOrEqual(decimal.Zero) {
+		return "", errors.New("amount must be positive")
+	}
+	var txID string
+	err := tx.QueryRow(ctx, "insert into ledger_txs (ref, created_at) values ($1, $2) returning id", ref, time.Now().UTC()).Scan(&txID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.appendEntry(ctx, tx, txID, accountID, amount.Neg(), entryType); err != nil {
+		return "", err
+	}
+	return txID, nil
+}
+
+// CreditAccount adds funds to an account (mint - no counterparty)
+func (s *Service) CreditAccount(ctx context.Context, tx pgx.Tx, accountID string, amount decimal.Decimal, entryType types.LedgerEntryType, ref string) (string, error) {
+	if amount.LessThanOrEqual(decimal.Zero) {
+		return "", errors.New("amount must be positive")
+	}
+	var txID string
+	err := tx.QueryRow(ctx, "insert into ledger_txs (ref, created_at) values ($1, $2) returning id", ref, time.Now().UTC()).Scan(&txID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.appendEntry(ctx, tx, txID, accountID, amount, entryType); err != nil {
+		return "", err
+	}
+	return txID, nil
+}
+
 func (s *Service) appendEntry(ctx context.Context, tx pgx.Tx, txID, accountID string, amount decimal.Decimal, entryType types.LedgerEntryType) (string, error) {
 	_, err := tx.Exec(ctx, "select pg_advisory_xact_lock(1)")
 	if err != nil {
@@ -135,6 +168,40 @@ func computeHash(entryID, txID, accountID string, amount decimal.Decimal, entryT
 	}
 	sum := sha256.Sum256([]byte(buf))
 	return hex.EncodeToString(sum[:])
+}
+
+func (s *Service) GetNetDeposits(ctx context.Context, userID string) (decimal.Decimal, error) {
+	// Simple calculation: Total sum of Deposits and Withdrawals for the user
+	// We'll trust the ledger integrity
+	// Actually, we need to filter by base currency (USD)?
+	// Or just return total value? Assuming USD for now as primary P/L currency.
+	var deposits decimal.Decimal
+	// This query assumes only USD deposits matter for P/L base currency calculation
+	// or assumes user only deposits 1 type.
+	// We'll join everything and sum it up where entry_type matches.
+	// Note: Amounts in ledger entries are positive for deposits? No, transfer logic
+	// Transfer(System -> User, amount, Deposit) -> User gets +amount.
+	// Transfer(User -> System, amount, Withdraw) -> User gets -amount (if from logic).
+	// Let's check logic:
+	// Deposit: System -> User (User +)
+	// Withdraw: User -> System (User -)
+
+	// Query: sum(amount) where account_id in (user accounts) and entry_type in ('deposit', 'withdraw', 'faucet')?
+	// Actually, ledger entries track amount change.
+	// So just verifying:
+	// Deposit: System account (-), User account (+)
+	// Withdrawal: User account (-), System account (+)
+	// So summing (amount) where entry_type in ('deposit', 'withdraw') for user account = Net Flow.
+
+	err := s.pool.QueryRow(ctx, `
+		select coalesce(sum(le.amount), 0)
+		from ledger_entries le
+		join accounts a on a.id = le.account_id
+		where a.owner_type = 'user' and a.owner_user_id = $1
+		and le.entry_type in ('deposit', 'withdraw', 'faucet')
+	`, userID).Scan(&deposits)
+
+	return deposits, err
 }
 
 func nullable(v *string) string {

@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/shopspring/decimal"
 	"lv-tradepl/internal/httputil"
 	"lv-tradepl/internal/types"
+
+	"github.com/shopspring/decimal"
 )
 
 type Handler struct {
@@ -86,4 +87,34 @@ func (h *Handler) Place(w http.ResponseWriter, r *http.Request, userID string) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusCreated, map[string]string{"order_id": res.OrderID, "status": string(res.Status)})
+}
+
+func (h *Handler) Metrics(w http.ResponseWriter, r *http.Request, userID string) {
+	metrics, err := h.svc.GetAccountMetrics(r.Context(), userID)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, metrics)
+}
+
+func (h *Handler) OpenOrders(w http.ResponseWriter, r *http.Request, userID string) {
+	// For simplicity, we just list orders with status 'new' or 'partially_filled'
+	// But wait, the Service doesn't have a ListOrders method exposed yet?
+	// Let's add it quickly or check service.
+	// We need to implement ListOpenOrders in Service first.
+	orders, err := h.svc.ListOpenOrders(r.Context(), userID)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, orders)
+}
+
+func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request, userID string, orderID string) {
+	if err := h.svc.CancelOrder(r.Context(), userID, orderID); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
 }

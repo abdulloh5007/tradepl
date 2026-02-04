@@ -42,3 +42,11 @@ run: db migrate seed api
 dev:
 	@test -x "$(AIR_BIN)" || (echo "air not found. Install: go install github.com/air-verse/air@latest"; exit 1)
 	"$(AIR_BIN)"
+
+build-ui:
+	cd ui && npm install && npm run build
+
+build-api:
+	go build -o bin/server ./cmd/api
+
+build: build-ui build-api

@@ -1,105 +1,109 @@
-import { motion } from "framer-motion"
-import { ChartLine, Terminal } from "lucide-react"
-import { PanelMotion } from "../types/ui"
+import type { Quote, Lang } from "../types"
+import { t } from "../utils/i18n"
 
-type Props = {
-  t: (key: string) => string
-  panelMotion: PanelMotion
-  marketPair: string
-  marketPairs: string[]
-  marketPrice: number
-  marketPriceLabel: string
-  timeframe: string
-  timeframes: string[]
-  onTimeframeChange: (value: string) => void
-  bid?: string
-  ask?: string
-  spread?: string
+interface MarketPanelProps {
+  quote: Quote | null
   quickQty: string
-  onMarketPairChange: (value: string) => void
-  onQuickQtyChange: (value: string) => void
+  setQuickQty: (v: string) => void
   onBuy: () => void
   onSell: () => void
-  chartEl: React.RefObject<HTMLDivElement>
+  lang: Lang
 }
 
-export default function MarketPanel({
-  t,
-  panelMotion,
-  marketPair,
-  marketPairs,
-  marketPrice,
-  marketPriceLabel,
-  timeframe,
-  timeframes,
-  onTimeframeChange,
-  bid,
-  ask,
-  spread,
-  quickQty,
-  onMarketPairChange,
-  onQuickQtyChange,
-  onBuy,
-  onSell,
-  chartEl
-}: Props) {
+export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSell, lang }: MarketPanelProps) {
   return (
-    <motion.section className="panel" {...panelMotion}>
-      <div className="panel-head">
-        <div className="panel-title">
-          <ChartLine size={16} />
-          {t("market")}
-        </div>
-        <div className="row">
-          <div className="segmented">
-            {timeframes.map(item => (
-              <button key={item} className={item === timeframe ? "active" : ""} onClick={() => onTimeframeChange(item)}>
-                {item}
-              </button>
-            ))}
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 16,
+      padding: 16,
+      background: "var(--card-bg)",
+      borderRadius: 8
+    }}>
+      {/* Market Stats */}
+      <div style={{
+        gridColumn: "1 / -1",
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: 8,
+        marginBottom: 8
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("last", lang)}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+            {quote?.bid || "—"}
           </div>
-          <span className="tag">{t("pair")}</span>
-          <select className="select-compact" value={marketPair} onChange={e => onMarketPairChange(e.target.value)}>
-            {marketPairs.map(pair => (
-              <option key={pair} value={pair}>
-                {pair}
-              </option>
-            ))}
-          </select>
-          <span className="tag">
-            {t("lastPrice")}: {marketPriceLabel}
-          </span>
-          {bid && ask ? (
-            <span className="tag">
-              {t("bid")}: {bid} / {t("ask")}: {ask}
-            </span>
-          ) : null}
-          {spread ? <span className="tag">{t("spread")}: {spread}</span> : null}
         </div>
-      </div>
-      <div className="grid two">
-        <div className="card chart-card">
-          <div ref={chartEl} className="chart" />
-        </div>
-        <div className="card">
-          <div className="card-title">
-            <Terminal size={16} />
-            {t("quickTrade")}
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("bid", lang)}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "#16a34a", fontVariantNumeric: "tabular-nums" }}>
+            {quote?.bid || "—"}
           </div>
-          <label className="field">
-            <span>{t("amount")}</span>
-            <input value={quickQty} onChange={e => onQuickQtyChange(e.target.value)} placeholder={t("qtyPh")} />
-          </label>
-          <div className="row">
-            <button className="primary buy" onClick={onBuy}>
-              {t("buy")}
-            </button>
-            <button className="primary sell" onClick={onSell}>
-              {t("sell")}
-            </button>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("ask", lang)}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "#ef4444", fontVariantNumeric: "tabular-nums" }}>
+            {quote?.ask || "—"}
+          </div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("spread", lang)}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+            {quote?.spread || "—"}
           </div>
         </div>
       </div>
-    </motion.section>
+
+      {/* Quantity Input */}
+      <div style={{ gridColumn: "1 / -1", marginBottom: 8 }}>
+        <input
+          type="number"
+          value={quickQty}
+          onChange={e => setQuickQty(e.target.value)}
+          placeholder={t("qty", lang)}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 6,
+            background: "var(--input-bg)",
+            color: "var(--text-base)",
+            fontSize: 14
+          }}
+        />
+      </div>
+
+      {/* Buy/Sell Buttons */}
+      <button
+        onClick={onSell}
+        style={{
+          padding: "14px 0",
+          background: "linear-gradient(180deg, #ef4444 0%, #dc2626 100%)",
+          color: "white",
+          border: "none",
+          borderRadius: 8,
+          fontWeight: 600,
+          fontSize: 15,
+          cursor: "pointer"
+        }}
+      >
+        {t("sell", lang)}
+      </button>
+      <button
+        onClick={onBuy}
+        style={{
+          padding: "14px 0",
+          background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)",
+          color: "white",
+          border: "none",
+          borderRadius: 8,
+          fontWeight: 600,
+          fontSize: 15,
+          cursor: "pointer"
+        }}
+      >
+        {t("buy", lang)}
+      </button>
+    </div>
   )
 }

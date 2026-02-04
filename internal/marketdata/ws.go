@@ -53,8 +53,70 @@ func (h *MarketWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ticker.C:
-			bid, ask, spread := liveQuote(pair)
-			msg := Quote{Type: "quote", Pair: pair, Bid: bid, Ask: ask, Spread: spread, Timestamp: time.Now().UTC().Unix()}
+			// 1. Try to get price from shared cache (synced with Chart)
+			var refPrice float64
+			var found bool
+
+			baseKey := pair + "|1m"
+			candlesByTF.mu.Lock()
+			base := candlesByTF.items[baseKey]
+			if len(base) > 0 {
+				last := base[len(base)-1]
+				// Use Close as current price
+				// Parse float
+				if v, err := strconv.ParseFloat(last.Close, 64); err == nil {
+					refPrice = v
+					found = true
+				}
+			}
+			candlesByTF.mu.Unlock()
+
+			var bidVal, askVal float64
+			var err error
+
+			if found {
+				// Use cached price
+				p, ok := pairProfiles[pair]
+				spread := 0.0
+				if ok {
+					spread = p.Spread
+				}
+				// Bid = Price
+				bidVal = refPrice
+				askVal = refPrice + spread
+			} else {
+				// Fallback to independent generation (might drift)
+				bidVal, askVal, err = GetCurrentQuote(pair)
+				if err != nil {
+					continue
+				}
+			}
+
+			spreadVal := askVal - bidVal
+
+			// Format
+			profile, ok := pairProfiles[pair]
+			prec := 5 // Default high precision
+			if ok {
+				prec = profile.Prec
+			} else {
+				// Heuristic for unknown pairs
+				if askVal < 1.0 {
+					prec = 8
+				}
+			}
+
+			// Log for debugging (temporary)
+			// fmt.Printf("Quote: %s Bid=%f Ask=%f Prec=%d\n", pair, bidVal, askVal, prec)
+
+			msg := Quote{
+				Type:      "quote",
+				Pair:      pair,
+				Bid:       formatPrice(bidVal, prec),
+				Ask:       formatPrice(askVal, prec),
+				Spread:    formatPrice(spreadVal, prec),
+				Timestamp: time.Now().UTC().Unix(),
+			}
 			if err := conn.WriteJSON(msg); err != nil {
 				return
 			}
@@ -142,7 +204,7 @@ func (h *CandleWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if interval == 0 {
 		return
 	}
-	limit := 1
+	limit := 500
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			limit = n
@@ -155,15 +217,38 @@ func (h *CandleWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	snapshot = candlesByTF.items[key]
 	candlesByTF.mu.Unlock()
 	if len(snapshot) == 0 {
+		now := time.Now().UTC()
+		bucket := now.Unix()
+		bucket = bucket - (bucket % 60)
 		if interval == time.Minute {
+			if h.store != nil && h.store.IsEmpty() {
+				seed, err := Candles(CandleParams{Pair: pair, Interval: time.Minute, Limit: 600, Now: now})
+				if err != nil {
+					return
+				}
+				stored := seed
+				if len(seed) > 0 && seed[len(seed)-1].Time == bucket {
+					stored = seed[:len(seed)-1]
+				}
+				_ = h.store.SeedIfEmpty(baseKey, stored)
+				candlesByTF.mu.Lock()
+				candlesByTF.items[baseKey] = seed
+				candlesByTF.mu.Unlock()
+			}
+			hasStored := false
 			if h.store != nil {
 				if loaded, err := h.store.LoadRecent(key, limit, profile.Prec); err == nil && len(loaded) > 0 {
 					snapshot = loaded
+					hasStored = true
 				}
 			}
 			if len(snapshot) == 0 {
 				var err error
-				snapshot, err = Candles(CandleParams{Pair: pair, Interval: interval, Limit: 1, Now: time.Now().UTC()})
+				seedLimit := 1
+				if hasStored {
+					seedLimit = limit
+				}
+				snapshot, err = Candles(CandleParams{Pair: pair, Interval: interval, Limit: seedLimit, Now: time.Now().UTC()})
 				if err != nil {
 					return
 				}
@@ -176,14 +261,35 @@ func (h *CandleWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			candlesByTF.mu.Lock()
 			base = candlesByTF.items[baseKey]
 			candlesByTF.mu.Unlock()
+			if len(base) == 0 && h.store != nil && h.store.IsEmpty() {
+				seed, err := Candles(CandleParams{Pair: pair, Interval: time.Minute, Limit: 600, Now: now})
+				if err != nil {
+					return
+				}
+				stored := seed
+				if len(seed) > 0 && seed[len(seed)-1].Time == bucket {
+					stored = seed[:len(seed)-1]
+				}
+				_ = h.store.SeedIfEmpty(baseKey, stored)
+				base = seed
+				candlesByTF.mu.Lock()
+				candlesByTF.items[baseKey] = seed
+				candlesByTF.mu.Unlock()
+			}
+			hasStored := false
 			if len(base) == 0 && h.store != nil {
-				if loaded, err := h.store.LoadRecent(baseKey, 1, profile.Prec); err == nil && len(loaded) > 0 {
+				if loaded, err := h.store.LoadRecent(baseKey, limit, profile.Prec); err == nil && len(loaded) > 0 {
 					base = loaded
+					hasStored = true
 				}
 			}
 			if len(base) == 0 {
 				var err error
-				base, err = Candles(CandleParams{Pair: pair, Interval: time.Minute, Limit: 1, Now: time.Now().UTC()})
+				seedLimit := 1
+				if hasStored {
+					seedLimit = limit
+				}
+				base, err = Candles(CandleParams{Pair: pair, Interval: time.Minute, Limit: seedLimit, Now: time.Now().UTC()})
 				if err != nil {
 					return
 				}

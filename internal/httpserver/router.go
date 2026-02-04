@@ -5,12 +5,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-chi/chi/v5"
 	"lv-tradepl/internal/auth"
 	"lv-tradepl/internal/httputil"
 	"lv-tradepl/internal/ledger"
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/orders"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type RouterDeps struct {
@@ -61,6 +62,30 @@ func NewRouter(d RouterDeps) http.Handler {
 					return
 				}
 				d.OrderHandler.Place(w, r, userID)
+			})
+			r.Get("/orders", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.OrderHandler.OpenOrders(w, r, userID)
+			})
+			r.Delete("/orders/{id}", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.OrderHandler.Cancel(w, r, userID, chi.URLParam(r, "id"))
+			})
+			r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.OrderHandler.Metrics(w, r, userID)
 			})
 			r.Post("/faucet", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
