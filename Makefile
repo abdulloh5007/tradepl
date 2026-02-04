@@ -1,0 +1,44 @@
+DB_DSN ?= postgres://postgres:postgres@localhost:5432/lvtrade?sslmode=disable
+HTTP_ADDR ?= :8080
+JWT_ISSUER ?= lv-tradepl
+JWT_SECRET ?= change_me_now
+JWT_TTL ?= 24h
+INTERNAL_API_TOKEN ?= internal_dev_token
+WS_ORIGIN ?= http://localhost:5173
+UI_DIST ?=
+
+.PHONY: db api migrate seed run ui env run-env dev
+
+AIR_BIN := $(shell command -v air 2>/dev/null)
+ifeq ($(AIR_BIN),)
+GOBIN := $(shell go env GOBIN)
+GOPATH := $(shell go env GOPATH)
+AIR_BIN := $(if $(GOBIN),$(GOBIN)/air,$(GOPATH)/bin/air)
+endif
+
+db:
+	docker compose up -d db
+
+migrate:
+	psql "$(DB_DSN)" -f db/migrations/001_init.sql
+
+seed:
+	DB_DSN="$(DB_DSN)" ./scripts/seed.sh
+
+api:
+	HTTP_ADDR="$(HTTP_ADDR)" DB_DSN="$(DB_DSN)" JWT_ISSUER="$(JWT_ISSUER)" JWT_SECRET="$(JWT_SECRET)" JWT_TTL="$(JWT_TTL)" INTERNAL_API_TOKEN="$(INTERNAL_API_TOKEN)" WS_ORIGIN="$(WS_ORIGIN)" UI_DIST="$(UI_DIST)" go run ./cmd/api
+
+env:
+	@set -a; . ./.env; set +a
+
+run-env:
+	@set -a; . ./.env; set +a; go run ./cmd/api
+
+ui:
+	cd ui && npm install && npm run dev
+
+run: db migrate seed api
+
+dev:
+	@test -x "$(AIR_BIN)" || (echo "air not found. Install: go install github.com/air-verse/air@latest"; exit 1)
+	"$(AIR_BIN)"

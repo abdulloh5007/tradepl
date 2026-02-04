@@ -1,0 +1,12 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/lv-tradepl ./cmd/api"
+entrypoint = "./scripts/dev-run.sh"
+include_ext = ["go"]
+exclude_dir = ["ui", "tmp", "node_modules", "dist"]
+delay = 200
+
+[log]
+time = true
