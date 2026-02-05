@@ -10,20 +10,27 @@ import (
 // and publishes them to the bus for all connected WebSocket clients
 func StartPublisher(bus *Bus, pair string, dir string) {
 	store := NewCandleStore(dir)
+	key := pair + "|1m"
 
 	// Load or generate initial candles
-	candles := store.ReadAll(pair, "1m")
-	if len(candles) == 0 {
+	profile, ok := pairProfiles[pair]
+	prec := 8
+	if ok {
+		prec = profile.Prec
+	}
+
+	candles, err := store.LoadRecent(key, 500, prec)
+	if err != nil || len(candles) == 0 {
 		log.Printf("[Publisher] Generating 500 historical candles for %s", pair)
 		candles = GenerateInitialCandles(pair, 500)
-		for _, c := range candles {
-			store.Append(pair, "1m", c)
+		if err := store.SeedIfEmpty(key, candles); err != nil {
+			log.Printf("[Publisher] Error seeding candles: %v", err)
 		}
 	}
 
 	// Initialize cache
 	candlesByTF.mu.Lock()
-	candlesByTF.items[pair+"|1m"] = candles
+	candlesByTF.items[key] = candles
 	candlesByTF.mu.Unlock()
 
 	log.Printf("[Publisher] Starting with %d candles for %s", len(candles), pair)
@@ -40,19 +47,13 @@ func StartPublisher(bus *Bus, pair string, dir string) {
 			}
 			spread := ask - bid
 
-			profile, ok := pairProfiles[pair]
-			prec := 8
-			if ok {
-				prec = profile.Precision
-			}
-
 			// Publish quote
 			quoteEvt := Quote{
 				Type:      "quote",
 				Pair:      pair,
-				Bid:       formatFloat(bid, prec),
-				Ask:       formatFloat(ask, prec),
-				Spread:    formatFloat(spread, prec),
+				Bid:       formatFloatPrec(bid, prec),
+				Ask:       formatFloatPrec(ask, prec),
+				Spread:    formatFloatPrec(spread, prec),
 				Timestamp: time.Now().UnixMilli(),
 			}
 			bus.Publish(Event{Type: "quote", Data: quoteEvt})
@@ -62,11 +63,10 @@ func StartPublisher(bus *Bus, pair string, dir string) {
 			candleTime := (now / 60) * 60 // Round to minute
 
 			candlesByTF.mu.Lock()
-			key := pair + "|1m"
 			existing := candlesByTF.items[key]
 
 			closePrice := (bid + ask) / 2
-			closeStr := formatFloat(closePrice, prec)
+			closeStr := formatFloatPrec(closePrice, prec)
 
 			if len(existing) > 0 {
 				last := &existing[len(existing)-1]
@@ -94,7 +94,7 @@ func StartPublisher(bus *Bus, pair string, dir string) {
 						Close: closeStr,
 					}
 					candlesByTF.items[key] = append(existing, newCandle)
-					store.Append(pair, "1m", newCandle)
+					go store.Append(key, newCandle)
 
 					// Publish new candle
 					bus.Publish(Event{Type: "candle", Data: newCandle})
@@ -109,7 +109,7 @@ func StartPublisher(bus *Bus, pair string, dir string) {
 					Close: closeStr,
 				}
 				candlesByTF.items[key] = []Candle{newCandle}
-				store.Append(pair, "1m", newCandle)
+				go store.Append(key, newCandle)
 				bus.Publish(Event{Type: "candle", Data: newCandle})
 			}
 			candlesByTF.mu.Unlock()
@@ -117,6 +117,6 @@ func StartPublisher(bus *Bus, pair string, dir string) {
 	}()
 }
 
-func formatFloat(v float64, prec int) string {
+func formatFloatPrec(v float64, prec int) string {
 	return strconv.FormatFloat(v, 'f', prec, 64)
 }

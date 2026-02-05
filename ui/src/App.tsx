@@ -99,11 +99,16 @@ export default function App() {
 
     ws.onmessage = (e) => {
       try {
-        const data = JSON.parse(e.data)
-        if (data.type === "quote") {
+        const msg = JSON.parse(e.data)
+        // Backend sends: {type: "quote", data: {...}} or {type: "candle", data: {...}}
+        const eventType = msg.type
+        const data = msg.data || msg
+
+        if (eventType === "quote" || data.type === "quote") {
+          const quoteData = data.type === "quote" ? data : msg
           const cfg = marketConfig[marketPair]
-          let b = parseFloat(data.bid)
-          let a = parseFloat(data.ask)
+          let b = parseFloat(quoteData.bid)
+          let a = parseFloat(quoteData.ask)
 
           if (cfg?.invertForApi) {
             const rawBid = b
@@ -113,13 +118,14 @@ export default function App() {
           }
 
           setQuote({
-            bid: isNaN(b) ? String(data.bid) : b.toFixed(cfg?.displayDecimals || 2),
-            ask: isNaN(a) ? String(data.ask) : a.toFixed(cfg?.displayDecimals || 2),
+            bid: isNaN(b) ? String(quoteData.bid) : b.toFixed(cfg?.displayDecimals || 2),
+            ask: isNaN(a) ? String(quoteData.ask) : a.toFixed(cfg?.displayDecimals || 2),
             spread: (a - b).toFixed(2),
-            ts: Number(data.ts)
+            ts: Number(quoteData.ts || Date.now())
           })
-        } else if (data.type === "candle") {
-          const displayCandle = toDisplayCandle(marketPair, data, marketConfig)
+        } else if (eventType === "candle" || data.type === "candle") {
+          const candleData = data.type === "candle" ? data : (data.time ? data : msg)
+          const displayCandle = toDisplayCandle(marketPair, candleData, marketConfig)
           setCandles(prev => {
             if (prev.length === 0) return [displayCandle]
             const last = prev[prev.length - 1]

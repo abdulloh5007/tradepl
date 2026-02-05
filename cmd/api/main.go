@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shopspring/decimal"
 	"lv-tradepl/internal/auth"
 	"lv-tradepl/internal/config"
 	"lv-tradepl/internal/db"
@@ -18,6 +17,8 @@ import (
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/matching"
 	"lv-tradepl/internal/orders"
+
+	"github.com/shopspring/decimal"
 )
 
 func main() {
@@ -66,6 +67,10 @@ func main() {
 		UIDist:        cfg.UIDist,
 	})
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: router}
+
+	// Start quote/candle publisher
+	marketdata.StartPublisher(bus, "UZS-USD", cfg.MarketDataDir)
+
 	log.Printf("server listening on %s", cfg.HTTPAddr)
 	log.Printf("health endpoint: http://localhost%s/health", cfg.HTTPAddr)
 	if cfg.UIDist != "" {

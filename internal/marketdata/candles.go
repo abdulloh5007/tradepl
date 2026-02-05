@@ -272,3 +272,63 @@ func hashString(s string) int64 {
 func formatPrice(v float64, prec int) string {
 	return strconv.FormatFloat(v, 'f', prec, 64)
 }
+
+// GenerateInitialCandles creates historical candles for a pair
+func GenerateInitialCandles(pair string, count int) []Candle {
+	now := time.Now().Unix()
+	// Each candle is 1 minute (60 seconds)
+	startTime := (now/60)*60 - int64(count-1)*60
+
+	profile, ok := pairProfiles[pair]
+	if !ok {
+		profile = pairProfile{Base: 0.00008, Vol: 0.0005, Prec: 8}
+	}
+
+	candles := make([]Candle, count)
+	price := profile.Base
+
+	for i := 0; i < count; i++ {
+		t := startTime + int64(i)*60
+		seed := hashString(pair) + t
+
+		// Random walk
+		change := randNorm(seed) * profile.Vol * 0.3
+		price = price * (1 + change)
+		if price <= 0 {
+			price = profile.Base
+		}
+
+		// Generate OHLC with some intra-candle movement
+		open := price
+		volatility := profile.Vol * 0.2
+		high := price * (1 + math.Abs(randNorm(seed+1))*volatility)
+		low := price * (1 - math.Abs(randNorm(seed+2))*volatility)
+		closeChange := randNorm(seed+3) * volatility * 0.5
+		closePrice := price * (1 + closeChange)
+
+		if low > open {
+			low = open * 0.998
+		}
+		if high < open {
+			high = open * 1.002
+		}
+		if closePrice < low {
+			closePrice = low
+		}
+		if closePrice > high {
+			closePrice = high
+		}
+
+		candles[i] = Candle{
+			Time:  t,
+			Open:  formatPrice(open, profile.Prec),
+			High:  formatPrice(high, profile.Prec),
+			Low:   formatPrice(low, profile.Prec),
+			Close: formatPrice(closePrice, profile.Prec),
+		}
+
+		price = closePrice
+	}
+
+	return candles
+}
