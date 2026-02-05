@@ -146,7 +146,14 @@ func allowOrigin(r *http.Request, origin string) bool {
 	if origin == "*" {
 		return true
 	}
-	return strings.EqualFold(r.Header.Get("Origin"), origin)
+	reqOrigin := r.Header.Get("Origin")
+	// Allow both localhost and 127.0.0.1 variants for development
+	if strings.Contains(origin, "localhost") || strings.Contains(origin, "127.0.0.1") {
+		if strings.Contains(reqOrigin, "localhost") || strings.Contains(reqOrigin, "127.0.0.1") {
+			return true
+		}
+	}
+	return strings.EqualFold(reqOrigin, origin)
 }
 
 func priceToFloat(v string) float64 {

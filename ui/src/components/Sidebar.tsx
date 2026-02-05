@@ -10,6 +10,8 @@ interface SidebarProps {
 export default function Sidebar({ view, setView, lang }: SidebarProps) {
     const tabs: { key: View; label: string }[] = [
         { key: "chart", label: t("chart", lang) },
+        { key: "positions", label: t("positions", lang) },
+        { key: "balance", label: t("balance", lang) },
         { key: "api", label: t("api", lang) },
         { key: "faucet", label: t("faucet", lang) }
     ]

@@ -60,4 +60,4 @@ export interface Balance {
 
 export type Theme = "dark" | "light"
 export type Lang = "en" | "uz" | "ru"
-export type View = "chart" | "api" | "faucet"
+export type View = "chart" | "positions" | "balance" | "api" | "faucet"

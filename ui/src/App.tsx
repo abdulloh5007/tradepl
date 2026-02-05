@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { toast, Toaster } from "sonner"
 
 // Types
@@ -13,7 +13,10 @@ import { t } from "./utils/i18n"
 import { createApiClient, createWsUrl } from "./api"
 
 // Components
-import { TradingChart, MarketPanel, PositionsTable, AccountMetrics, Header, Sidebar } from "./components"
+import { Header, Sidebar } from "./components"
+
+// Pages
+import { TradingPage, PositionsPage, BalancePage, ApiPage, FaucetPage } from "./pages"
 
 // Config
 const marketPairs = ["UZS-USD"]
@@ -25,7 +28,7 @@ const candleLimit = 500
 
 function resolveView(): View {
   const hash = typeof window !== "undefined" ? window.location.hash.replace("#", "") : ""
-  if (hash === "api" || hash === "faucet") return hash
+  if (hash === "positions" || hash === "balance" || hash === "api" || hash === "faucet") return hash
   return "chart"
 }
 
@@ -61,8 +64,9 @@ export default function App() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login")
   const [authLoading, setAuthLoading] = useState(false)
 
-  // Derived
-  const api = createApiClient({ baseUrl: normalizeBaseUrl(baseUrl), token })
+  // Memoized API client (prevents recreation on every render = fixes lag)
+  const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
+  const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token }), [normalizedBaseUrl, token])
   const marketPrice = quote?.bid ? parseFloat(quote.bid) : marketConfig[marketPair].displayBase
 
   // Persist preferences
@@ -82,12 +86,14 @@ export default function App() {
 
   // WebSocket
   useEffect(() => {
-    const wsUrl = createWsUrl(normalizeBaseUrl(baseUrl))
+    const wsUrl = createWsUrl(normalizedBaseUrl)
     if (!wsUrl) return
 
+    console.log("[WS] Connecting to:", wsUrl)
     const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
+      console.log("[WS] Connected, subscribing to:", marketPair)
       ws.send(JSON.stringify({ type: "subscribe", pairs: [marketPair] }))
     }
 
@@ -128,8 +134,11 @@ export default function App() {
       } catch { /* ignore */ }
     }
 
+    ws.onerror = (err) => console.error("[WS] Error:", err)
+    ws.onclose = () => console.log("[WS] Closed")
+
     return () => ws.close()
-  }, [baseUrl, marketPair])
+  }, [normalizedBaseUrl, marketPair])
 
   // Fetch candles
   const fetchCandles = useCallback(async (tf?: string) => {
@@ -340,106 +349,49 @@ export default function App() {
 
         <main style={{ flex: 1, overflow: "auto", padding: 16 }}>
           {view === "chart" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, height: "100%" }}>
-              {/* Left: Chart + Positions */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Timeframe Selector */}
-                <div style={{ display: "flex", gap: 8 }}>
-                  {timeframes.map(tf => (
-                    <button
-                      key={tf}
-                      onClick={() => { setTimeframe(tf); fetchCandles(tf) }}
-                      style={{
-                        padding: "6px 12px",
-                        border: timeframe === tf ? "1px solid var(--accent-border)" : "1px solid var(--border-subtle)",
-                        borderRadius: 4,
-                        background: timeframe === tf ? "var(--accent-bg)" : "transparent",
-                        color: timeframe === tf ? "var(--accent-text)" : "var(--text-base)",
-                        fontSize: 12,
-                        cursor: "pointer"
-                      }}
-                    >
-                      {tf}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Chart */}
-                <div style={{ flex: 1, minHeight: 400 }}>
-                  <TradingChart
-                    candles={candles as any}
-                    quote={quote}
-                    openOrders={openOrders}
-                    marketPair={marketPair}
-                    marketConfig={marketConfig}
-                    theme={theme}
-                  />
-                </div>
-
-                {/* Positions */}
-                <PositionsTable
-                  orders={openOrders}
-                  quote={quote}
-                  marketPair={marketPair}
-                  marketConfig={marketConfig}
-                  marketPrice={marketPrice}
-                  onClose={handleClosePosition}
-                  lang={lang}
-                />
-              </div>
-
-              {/* Right: Market Panel + Metrics */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <MarketPanel
-                  quote={quote}
-                  quickQty={quickQty}
-                  setQuickQty={setQuickQty}
-                  onBuy={() => handleQuickOrder("buy")}
-                  onSell={() => handleQuickOrder("sell")}
-                  lang={lang}
-                />
-                <AccountMetrics metrics={metrics} lang={lang} />
-              </div>
-            </div>
+            <TradingPage
+              candles={candles}
+              quote={quote}
+              openOrders={openOrders}
+              marketPair={marketPair}
+              marketConfig={marketConfig}
+              theme={theme}
+              timeframes={timeframes}
+              timeframe={timeframe}
+              setTimeframe={setTimeframe}
+              fetchCandles={fetchCandles}
+              quickQty={quickQty}
+              setQuickQty={setQuickQty}
+              onBuy={() => handleQuickOrder("buy")}
+              onSell={() => handleQuickOrder("sell")}
+              lang={lang}
+            />
           )}
 
-          {view === "api" && (
-            <div style={{ padding: 24, background: "var(--card-bg)", borderRadius: 8 }}>
-              <h2 style={{ marginBottom: 16 }}>API Documentation</h2>
-              <p style={{ color: "var(--text-muted)" }}>
-                API documentation coming soon. Use the Chart view to trade.
-              </p>
-            </div>
+          {view === "positions" && (
+            <PositionsPage
+              orders={openOrders}
+              quote={quote}
+              marketPair={marketPair}
+              marketConfig={marketConfig}
+              marketPrice={marketPrice}
+              onClose={handleClosePosition}
+              lang={lang}
+            />
           )}
+
+          {view === "balance" && (
+            <BalancePage metrics={metrics} lang={lang} />
+          )}
+
+          {view === "api" && <ApiPage />}
+
           {view === "faucet" && (
-            <div style={{ padding: 24, background: "var(--card-bg)", borderRadius: 8 }}>
-              <h2 style={{ marginBottom: 16 }}>Faucet</h2>
-              <p style={{ color: "var(--text-muted)", marginBottom: 16 }}>
-                Get test funds to start trading.
-              </p>
-              <button
-                onClick={async () => {
-                  try {
-                    await api.faucet({ asset: "USD", amount: "10000", reference: "dev" })
-                    toast.success("Received 10,000 USD!")
-                    api.metrics().then(m => setMetrics(m))
-                  } catch (err: any) {
-                    toast.error(err?.message || "Error")
-                  }
-                }}
-                style={{
-                  padding: "12px 24px",
-                  background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontWeight: 600,
-                  cursor: "pointer"
-                }}
-              >
-                Get 10,000 USD
-              </button>
-            </div>
+            <FaucetPage
+              api={api}
+              onMetricsUpdate={setMetrics}
+              lang={lang}
+            />
           )}
         </main>
       </div>
