@@ -47,7 +47,9 @@ const parseBody = (text: string) => {
 
 export const createApiClient = (state: ClientState) => {
   const request = async <T>(path: string, method: string, body?: Json, auth?: boolean): Promise<T> => {
-    const url = `${state.baseUrl}${path}`
+    // Add cache buster to all requests to prevent browser from serving stale data
+    const sep = path.includes("?") ? "&" : "?"
+    const url = `${state.baseUrl}${path}${sep}_=${Date.now()}`
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
     const res = await fetch(url, {

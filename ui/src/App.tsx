@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { toast, Toaster } from "sonner"
 
 // Types
@@ -21,7 +21,7 @@ import { TradingPage, PositionsPage, BalancePage, ApiPage, FaucetPage } from "./
 // Config
 const marketPairs = ["UZS-USD"]
 const marketConfig: Record<string, MarketConfig> = {
-  "UZS-USD": { displayBase: 12300, displayDecimals: 2, apiDecimals: 8, invertForApi: true, spread: 5.0 }
+  "UZS-USD": { displayBase: 12850, displayDecimals: 2, apiDecimals: 8, invertForApi: true, spread: 5.0 }
 }
 const timeframes = ["1m", "5m", "10m", "15m", "30m", "1h"]
 const candleLimit = 500
@@ -84,6 +84,11 @@ export default function App() {
     window.location.hash = view
   }, [view])
 
+  // Throttled candle updates to prevent excessive re-renders
+  const candlesRef = useRef<Array<{ time: number; open: number; high: number; low: number; close: number }>>([])
+  const pendingCandleRef = useRef<{ time: number; open: number; high: number; low: number; close: number } | null>(null)
+  const lastUpdateRef = useRef(0)
+
   // WebSocket
   useEffect(() => {
     const wsUrl = createWsUrl(normalizedBaseUrl)
@@ -91,6 +96,39 @@ export default function App() {
 
     console.log("[WS] Connecting to:", wsUrl)
     const ws = new WebSocket(wsUrl)
+
+    // Throttled state update function
+    const flushCandleUpdate = () => {
+      if (pendingCandleRef.current && candlesRef.current.length > 0) {
+        const pending = pendingCandleRef.current
+        const candles = candlesRef.current
+        const last = candles[candles.length - 1]
+
+        if (last.time === pending.time) {
+          // Update last candle in place
+          candles[candles.length - 1] = pending
+        } else if (pending.time > last.time) {
+          // Append new candle
+          candles.push(pending)
+          // Keep only last 600 candles to prevent memory growth
+          if (candles.length > 600) {
+            candles.shift()
+          }
+        }
+
+        // Trigger state update with shallow copy (only once per throttle period)
+        setCandles([...candles])
+        pendingCandleRef.current = null
+        lastUpdateRef.current = Date.now()
+      }
+    }
+
+    // Throttle interval: update UI frequently for smooth animation
+    const throttleInterval = setInterval(() => {
+      if (pendingCandleRef.current && Date.now() - lastUpdateRef.current > 100) {
+        flushCandleUpdate()
+      }
+    }, 150)
 
     ws.onopen = () => {
       console.log("[WS] Connected, subscribing to:", marketPair)
@@ -100,7 +138,6 @@ export default function App() {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
-        // Backend sends: {type: "quote", data: {...}} or {type: "candle", data: {...}}
         const eventType = msg.type
         const data = msg.data || msg
 
@@ -126,16 +163,16 @@ export default function App() {
         } else if (eventType === "candle" || data.type === "candle") {
           const candleData = data.type === "candle" ? data : (data.time ? data : msg)
           const displayCandle = toDisplayCandle(marketPair, candleData, marketConfig)
-          setCandles(prev => {
-            if (prev.length === 0) return [displayCandle]
-            const last = prev[prev.length - 1]
-            if (last.time === displayCandle.time) {
-              return [...prev.slice(0, -1), displayCandle]
-            } else if (displayCandle.time > last.time) {
-              return [...prev, displayCandle]
-            }
-            return prev
-          })
+
+          // Store pending candle (will be flushed by throttle)
+          pendingCandleRef.current = displayCandle
+
+          // If no candles yet, update immediately
+          if (candlesRef.current.length === 0) {
+            candlesRef.current = [displayCandle]
+            setCandles([displayCandle])
+            lastUpdateRef.current = Date.now()
+          }
         }
       } catch { /* ignore */ }
     }
@@ -143,7 +180,10 @@ export default function App() {
     ws.onerror = (err) => console.error("[WS] Error:", err)
     ws.onclose = () => console.log("[WS] Closed")
 
-    return () => ws.close()
+    return () => {
+      clearInterval(throttleInterval)
+      ws.close()
+    }
   }, [normalizedBaseUrl, marketPair])
 
   // Fetch candles
@@ -152,6 +192,7 @@ export default function App() {
     try {
       const raw = await api.candles(marketPair, tfToUse, candleLimit, true)
       const display = raw.map(c => toDisplayCandle(marketPair, c, marketConfig))
+      candlesRef.current = display // Sync ref for WebSocket updates
       setCandles(display)
     } catch { /* ignore */ }
   }, [api, marketPair, timeframe])

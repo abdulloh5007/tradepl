@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useCallback } from "react"
 import { createChart, ColorType, ISeriesApi, IPriceLine } from "lightweight-charts"
 import type { Candle, Quote, Order, MarketConfig } from "../types"
 
@@ -17,6 +17,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
     const askLineRef = useRef<IPriceLine | null>(null)
     const orderLinesRef = useRef<IPriceLine[]>([])
+    const lastCandleCountRef = useRef(0)
+    const resizeObserverRef = useRef<ResizeObserver | null>(null)
 
     // Initialize chart
     useEffect(() => {
@@ -32,6 +34,9 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             grid: {
                 vertLines: { color: theme === "dark" ? "#1f2937" : "#e5e7eb" },
                 horzLines: { color: theme === "dark" ? "#1f2937" : "#e5e7eb" }
+            },
+            crosshair: {
+                mode: 0, // Normal mode (no magnet)
             },
             timeScale: { timeVisible: true, secondsVisible: false },
             rightPriceScale: { borderColor: theme === "dark" ? "#374151" : "#d1d5db" },
@@ -50,47 +55,58 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
 
         chartRef.current = chart
         seriesRef.current = series
+        lastCandleCountRef.current = 0
 
-        const handleResize = () => {
-            if (containerRef.current && chartRef.current) {
-                chartRef.current.applyOptions({
-                    width: containerRef.current.clientWidth,
-                    height: containerRef.current.clientHeight
-                })
+        // Use ResizeObserver for better responsive handling
+        resizeObserverRef.current = new ResizeObserver((entries) => {
+            if (chartRef.current && entries[0]) {
+                const { width, height } = entries[0].contentRect
+                chartRef.current.applyOptions({ width, height })
             }
-        }
-
-        window.addEventListener("resize", handleResize)
+        })
+        resizeObserverRef.current.observe(containerRef.current)
 
         return () => {
-            window.removeEventListener("resize", handleResize)
+            resizeObserverRef.current?.disconnect()
             chart.remove()
         }
     }, [theme])
 
-    // Update candles
+    // Update candles - optimized to use update() for last candle
     useEffect(() => {
-        if (seriesRef.current && candles.length > 0) {
-            seriesRef.current.setData(candles)
-            chartRef.current?.timeScale().fitContent()
+        const series = seriesRef.current
+        if (!series || candles.length === 0) return
+
+        // If this is initial load or candle count changed significantly, use setData
+        if (lastCandleCountRef.current === 0 || Math.abs(candles.length - lastCandleCountRef.current) > 1) {
+            series.setData(candles)
+            if (lastCandleCountRef.current === 0) {
+                chartRef.current?.timeScale().fitContent()
+            }
+            lastCandleCountRef.current = candles.length
+        } else {
+            // For single candle updates, use update() which is much faster
+            const lastCandle = candles[candles.length - 1]
+            series.update(lastCandle)
+            lastCandleCountRef.current = candles.length
         }
     }, [candles])
 
-    // Update price lines
-    useEffect(() => {
+    // Update price lines - throttled
+    const updatePriceLines = useCallback(() => {
         const series = seriesRef.current
         if (!series) return
 
         // Remove old ask line
         if (askLineRef.current) {
-            series.removePriceLine(askLineRef.current)
+            try { series.removePriceLine(askLineRef.current) } catch { /* ignore */ }
             askLineRef.current = null
         }
 
         // Add ask line
         if (quote && quote.ask) {
             const askPrice = parseFloat(quote.ask)
-            if (!isNaN(askPrice)) {
+            if (!isNaN(askPrice) && askPrice > 0) {
                 askLineRef.current = series.createPriceLine({
                     price: askPrice,
                     color: "#ef4444",
@@ -101,6 +117,16 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
                 })
             }
         }
+    }, [quote])
+
+    useEffect(() => {
+        updatePriceLines()
+    }, [updatePriceLines])
+
+    // Update order lines separately (less frequent)
+    useEffect(() => {
+        const series = seriesRef.current
+        if (!series) return
 
         // Remove old order lines
         orderLinesRef.current.forEach(line => {
@@ -116,7 +142,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             if (cfg?.invertForApi && price > 0) {
                 price = 1 / price
             }
-            if (isNaN(price)) return
+            if (isNaN(price) || price <= 0) return
 
             const line = series.createPriceLine({
                 price,
@@ -128,9 +154,18 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             })
             orderLinesRef.current.push(line)
         })
-    }, [quote, openOrders, marketPair, marketConfig])
+    }, [openOrders, marketPair, marketConfig])
 
     return (
-        <div ref={containerRef} style={{ width: "100%", height: "100%", minHeight: 400 }} />
+        <div
+            ref={containerRef}
+            className="trading-chart-container"
+            style={{
+                width: "100%",
+                height: "100%",
+                minHeight: "300px",
+                maxHeight: "calc(100vh - 200px)"
+            }}
+        />
     )
 }

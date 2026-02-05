@@ -101,4 +101,77 @@ html[data-theme="dark"] .panel.hero{background:linear-gradient(135deg,rgba(78,14
 .tooltip{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:10px;font-size:12px}
 .tv-lightweight-charts .tv-lightweight-charts__copyright{display:none!important}
 .tv-lightweight-charts a[href*="tradingview"]{display:none!important}
+
+/* Chart responsive container */
+.trading-chart-container {
+    width: 100%;
+    height: 400px;
+    min-height: 300px;
+}
+
+/* Large screens (lg: 1024px+) */
+@media (min-width: 1024px) {
+    .trading-chart-container {
+        height: 450px;
+    }
+    .chart {
+        height: 400px;
+    }
+}
+
+/* Medium screens (md: 768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+    .trading-chart-container {
+        height: 350px;
+    }
+    .chart {
+        height: 300px;
+    }
+    .app {
+        padding: 20px 16px 60px;
+    }
+}
+
+/* Small screens (sm: up to 767px) */
+@media (max-width: 767px) {
+    .trading-chart-container {
+        height: 280px;
+        min-height: 250px;
+    }
+    .chart {
+        height: 240px;
+    }
+    .app {
+        padding: 16px 12px 60px;
+    }
+    .panel {
+        padding: 14px;
+        border-radius: 14px;
+    }
+    .grid.two, .grid.three {
+        grid-template-columns: 1fr;
+    }
+    .metrics {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Extra small screens (xs: up to 480px) */
+@media (max-width: 480px) {
+    .trading-chart-container {
+        height: 220px;
+        min-height: 200px;
+    }
+    .title {
+        font-size: 20px;
+    }
+    .logo {
+        width: 42px;
+        height: 42px;
+    }
+    .metrics {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width:720px){.top{flex-direction:column;align-items:flex-start}.controls{width:100%;justify-content:space-between}}

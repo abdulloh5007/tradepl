@@ -72,7 +72,7 @@ func Load() (Config, error) {
 	}
 	max := os.Getenv("FAUCET_MAX")
 	if max == "" {
-		max = "10000"
+		max = "100000"
 	}
 	c.FaucetMax = max
 	if len(missing) > 0 {

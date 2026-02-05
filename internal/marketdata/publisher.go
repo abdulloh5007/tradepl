@@ -33,19 +33,40 @@ func StartPublisher(bus *Bus, pair string, dir string) {
 	candlesByTF.items[key] = candles
 	candlesByTF.mu.Unlock()
 
-	log.Printf("[Publisher] Starting with %d candles for %s", len(candles), pair)
+	// Get last price from candles for continuity
+	var lastPrice float64
+	if len(candles) > 0 {
+		lastPrice, _ = strconv.ParseFloat(candles[len(candles)-1].Close, 64)
+	}
+	if lastPrice == 0 {
+		lastPrice = profile.Base
+	}
+
+	log.Printf("[Publisher] Starting with %d candles for %s, last price: %v", len(candles), pair, lastPrice)
 
 	go func() {
-		ticker := time.NewTicker(250 * time.Millisecond)
+		ticker := time.NewTicker(250 * time.Millisecond) // 4 updates per second for smooth animation
 		defer ticker.Stop()
 
+		currentPrice := lastPrice
+
 		for range ticker.C {
-			// Get current quote
-			bid, ask, err := GetCurrentQuote(pair)
-			if err != nil {
-				continue
+			// Small random walk from current price
+			change := (randNorm(time.Now().UnixNano()) * profile.Vol * 0.05)
+			currentPrice = currentPrice * (1 + change)
+
+			// Keep price bounded
+			if currentPrice <= 0 {
+				currentPrice = profile.Base
 			}
-			spread := ask - bid
+
+			// Calculate bid/ask from current price
+			spread := profile.Spread
+			if spread == 0 {
+				spread = currentPrice * 0.0001
+			}
+			bid := currentPrice
+			ask := currentPrice + spread
 
 			// Publish quote
 			quoteEvt := Quote{
@@ -65,8 +86,7 @@ func StartPublisher(bus *Bus, pair string, dir string) {
 			candlesByTF.mu.Lock()
 			existing := candlesByTF.items[key]
 
-			closePrice := (bid + ask) / 2
-			closeStr := formatFloatPrec(closePrice, prec)
+			closeStr := formatFloatPrec(currentPrice, prec)
 
 			if len(existing) > 0 {
 				last := &existing[len(existing)-1]
@@ -75,22 +95,33 @@ func StartPublisher(bus *Bus, pair string, dir string) {
 					last.Close = closeStr
 					high, _ := strconv.ParseFloat(last.High, 64)
 					low, _ := strconv.ParseFloat(last.Low, 64)
-					if closePrice > high {
+					if currentPrice > high {
 						last.High = closeStr
 					}
-					if closePrice < low {
+					if currentPrice < low {
 						last.Low = closeStr
 					}
 
 					// Publish candle update
 					bus.Publish(Event{Type: "candle", Data: *last})
 				} else if candleTime > last.Time {
-					// Create new candle
+					// Create new candle - use PREVIOUS CLOSE as open for continuity
+					prevClose := last.Close
+					openPrice, _ := strconv.ParseFloat(prevClose, 64)
+					highVal := currentPrice
+					lowVal := currentPrice
+					if openPrice > currentPrice {
+						highVal = openPrice
+						lowVal = currentPrice
+					} else {
+						highVal = currentPrice
+						lowVal = openPrice
+					}
 					newCandle := Candle{
 						Time:  candleTime,
-						Open:  closeStr,
-						High:  closeStr,
-						Low:   closeStr,
+						Open:  prevClose, // Open at previous close for continuity
+						High:  formatFloatPrec(highVal, prec),
+						Low:   formatFloatPrec(lowVal, prec),
 						Close: closeStr,
 					}
 					candlesByTF.items[key] = append(existing, newCandle)

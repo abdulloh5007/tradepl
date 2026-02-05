@@ -31,7 +31,7 @@ type pairProfile struct {
 }
 
 var pairProfiles = map[string]pairProfile{
-	"UZS-USD": {Base: 1.0 / 12350.0, Vol: 0.0005, Prec: 11, Spread: 0.000000007},
+	"UZS-USD": {Base: 1.0 / 12850.0, Vol: 0.0005, Prec: 11, Spread: 0.000000007},
 	"XAUUSD":  {Base: 2710.0, Vol: 0.008, Prec: 2, Spread: 0.35},    // 35 cents spread
 	"BTCUSD":  {Base: 68500.0, Vol: 0.015, Prec: 2, Spread: 25.0},   // $25 spread
 	"EURUSD":  {Base: 1.0850, Vol: 0.004, Prec: 5, Spread: 0.00015}, // 1.5 pips
@@ -274,6 +274,7 @@ func formatPrice(v float64, prec int) string {
 }
 
 // GenerateInitialCandles creates historical candles for a pair
+// Produces realistic OHLC data with proper continuity (Open = Previous Close)
 func GenerateInitialCandles(pair string, count int) []Candle {
 	now := time.Now().Unix()
 	// Each candle is 1 minute (60 seconds)
@@ -285,38 +286,54 @@ func GenerateInitialCandles(pair string, count int) []Candle {
 	}
 
 	candles := make([]Candle, count)
-	price := profile.Base
+	// Start price and track Close for next candle's Open
+	currentPrice := profile.Base
+	prevClose := currentPrice
 
 	for i := 0; i < count; i++ {
 		t := startTime + int64(i)*60
-		seed := hashString(pair) + t
+		// Deterministic seed per candle index for consistency
+		seed := hashString(pair) + int64(i*7919)
 
-		// Random walk
-		change := randNorm(seed) * profile.Vol * 0.3
-		price = price * (1 + change)
-		if price <= 0 {
-			price = profile.Base
+		// Open = Previous candle's Close (ensures continuity)
+		open := prevClose
+
+		// Simulate intra-candle price movement (4 ticks within the minute)
+		high := open
+		low := open
+		current := open
+
+		for tick := 0; tick < 4; tick++ {
+			tickSeed := seed + int64(tick*1337)
+			// Random walk per tick
+			change := randNorm(tickSeed) * profile.Vol * 0.15
+			current = current * (1 + change)
+			if current <= 0 {
+				current = open
+			}
+			if current > high {
+				high = current
+			}
+			if current < low {
+				low = current
+			}
 		}
 
-		// Generate OHLC with some intra-candle movement
-		open := price
-		volatility := profile.Vol * 0.2
-		high := price * (1 + math.Abs(randNorm(seed+1))*volatility)
-		low := price * (1 - math.Abs(randNorm(seed+2))*volatility)
-		closeChange := randNorm(seed+3) * volatility * 0.5
-		closePrice := price * (1 + closeChange)
+		// Close is the final price after intra-candle simulation
+		closePrice := current
 
-		if low > open {
-			low = open * 0.998
-		}
+		// Ensure OHLC validity
 		if high < open {
-			high = open * 1.002
+			high = open
 		}
-		if closePrice < low {
-			closePrice = low
+		if high < closePrice {
+			high = closePrice
 		}
-		if closePrice > high {
-			closePrice = high
+		if low > open {
+			low = open
+		}
+		if low > closePrice {
+			low = closePrice
 		}
 
 		candles[i] = Candle{
@@ -327,7 +344,9 @@ func GenerateInitialCandles(pair string, count int) []Candle {
 			Close: formatPrice(closePrice, profile.Prec),
 		}
 
-		price = closePrice
+		// Set prevClose for next iteration's Open
+		prevClose = closePrice
+		currentPrice = closePrice
 	}
 
 	return candles

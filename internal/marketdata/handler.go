@@ -45,6 +45,22 @@ func (h *Handler) Candles(w http.ResponseWriter, r *http.Request) {
 	}
 	outLimit := limit
 	if interval == time.Minute {
+		// Read from shared cache (same source as WebSocket) for consistency
+		key := pair + "|1m"
+		candlesByTF.mu.Lock()
+		cached := candlesByTF.items[key]
+		candlesByTF.mu.Unlock()
+
+		if len(cached) > 0 {
+			// Return from cache (consistent with WebSocket)
+			result := cached
+			if len(result) > limit {
+				result = result[len(result)-limit:]
+			}
+			httputil.WriteJSON(w, http.StatusOK, result)
+			return
+		}
+		// Fallback to generation if cache is empty (shouldn't happen if Publisher is running)
 		candles, err := Candles(CandleParams{Pair: pair, Interval: interval, Limit: limit, Now: time.Now().UTC()})
 		if err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
