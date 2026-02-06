@@ -14,9 +14,10 @@ import { createApiClient, createWsUrl } from "./api"
 
 // Components
 import { Header, Sidebar } from "./components"
+import ConnectionBanner from "./components/ConnectionBanner"
 
 // Pages
-import { TradingPage, PositionsPage, BalancePage, ApiPage, FaucetPage } from "./pages"
+import { TradingPage, PositionsPage, BalancePage, ApiPage, FaucetPage, AdminPage } from "./pages"
 
 // Config
 const marketPairs = ["UZS-USD"]
@@ -146,17 +147,21 @@ export default function App() {
           const cfg = marketConfig[marketPair]
           let b = parseFloat(quoteData.bid)
           let a = parseFloat(quoteData.ask)
+          let l = parseFloat(quoteData.last) // New field
 
           if (cfg?.invertForApi) {
             const rawBid = b
             const rawAsk = a
+            const rawLast = l
             b = rawAsk > 0 ? 1 / rawAsk : 0
             a = rawBid > 0 ? 1 / rawBid : 0
+            l = rawLast > 0 ? 1 / rawLast : 0
           }
 
           setQuote({
             bid: isNaN(b) ? String(quoteData.bid) : b.toFixed(cfg?.displayDecimals || 2),
             ask: isNaN(a) ? String(quoteData.ask) : a.toFixed(cfg?.displayDecimals || 2),
+            last: isNaN(l) ? (isNaN(b) ? "—" : b.toFixed(cfg?.displayDecimals || 2)) : l.toFixed(cfg?.displayDecimals || 2),
             spread: (a - b).toFixed(2),
             ts: Number(quoteData.ts || Date.now())
           })
@@ -378,8 +383,11 @@ export default function App() {
     )
   }
 
+
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)" }}>
+      <ConnectionBanner />
       <Toaster position="top-right" />
 
       <Header
@@ -438,6 +446,14 @@ export default function App() {
               api={api}
               onMetricsUpdate={setMetrics}
               lang={lang}
+            />
+          )}
+
+          {view === "admin" && (
+            <AdminPage
+              baseUrl={normalizedBaseUrl}
+              theme={theme}
+              onThemeToggle={() => setTheme(t => t === "dark" ? "light" : "dark")}
             />
           )}
         </main>

@@ -16,6 +16,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
     const askLineRef = useRef<IPriceLine | null>(null)
+    const bidLineRef = useRef<IPriceLine | null>(null)
     const orderLinesRef = useRef<IPriceLine[]>([])
     const lastCandleCountRef = useRef(0)
     const resizeObserverRef = useRef<ResizeObserver | null>(null)
@@ -97,10 +98,14 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
         const series = seriesRef.current
         if (!series) return
 
-        // Remove old ask line
+        // Remove old ask/bid lines
         if (askLineRef.current) {
             try { series.removePriceLine(askLineRef.current) } catch { /* ignore */ }
             askLineRef.current = null
+        }
+        if (bidLineRef.current) {
+            try { series.removePriceLine(bidLineRef.current) } catch { /* ignore */ }
+            bidLineRef.current = null
         }
 
         // Add ask line
@@ -117,6 +122,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
                 })
             }
         }
+
+
     }, [quote])
 
     useEffect(() => {

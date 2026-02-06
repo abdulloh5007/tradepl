@@ -20,7 +20,7 @@ export default function Header({ theme, setTheme, lang, setLang, token, onLogout
             justifyContent: "space-between",
             padding: "12px 24px",
             borderBottom: "1px solid var(--border-subtle)",
-            background: "var(--card-bg)"
+            background: "var(--panel)"
         }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>LV Trade</h1>
@@ -47,31 +47,36 @@ export default function Header({ theme, setTheme, lang, setLang, token, onLogout
 
                 {/* Theme Toggle */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <Sun size={14} />
+                    <Sun size={14} style={{ color: theme === "light" ? "var(--accent)" : "var(--text-muted)", transition: "color 0.2s" }} />
                     <Switch.Root
                         checked={theme === "dark"}
                         onCheckedChange={c => setTheme(c ? "dark" : "light")}
                         style={{
-                            width: 36,
-                            height: 20,
-                            background: theme === "dark" ? "#16a34a" : "#d1d5db",
-                            borderRadius: 10,
+                            width: 42,
+                            height: 24,
+                            background: theme === "dark" ? "#22c55e" : "#cbd5e1",
+                            borderRadius: 9999,
                             border: "none",
                             cursor: "pointer",
-                            position: "relative"
+                            position: "relative",
+                            padding: 2,
+                            transition: "background-color 0.2s ease-in-out",
+                            WebkitTapHighlightColor: "transparent"
                         }}
                     >
                         <Switch.Thumb style={{
                             display: "block",
-                            width: 16,
-                            height: 16,
+                            width: 20,
+                            height: 20,
                             background: "white",
                             borderRadius: "50%",
-                            transition: "transform 100ms",
-                            transform: theme === "dark" ? "translateX(18px)" : "translateX(2px)"
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                            transition: "transform 0.2s cubic-bezier(0.4, 0.0, 0.2, 1)",
+                            transform: theme === "dark" ? "translateX(18px)" : "translateX(0)",
+                            willChange: "transform"
                         }} />
                     </Switch.Root>
-                    <Moon size={14} />
+                    <Moon size={14} style={{ color: theme === "dark" ? "var(--accent)" : "var(--text-muted)", transition: "color 0.2s" }} />
                 </div>
 
                 {/* Logout */}

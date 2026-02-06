@@ -3,6 +3,7 @@ import type { UTCTimestamp } from "lightweight-charts"
 export interface Quote {
     bid: string
     ask: string
+    last: string
     spread: string
     ts: number
 }
@@ -60,4 +61,4 @@ export interface Balance {
 
 export type Theme = "dark" | "light"
 export type Lang = "en" | "uz" | "ru"
-export type View = "chart" | "positions" | "balance" | "api" | "faucet"
+export type View = "chart" | "positions" | "balance" | "api" | "faucet" | "admin"

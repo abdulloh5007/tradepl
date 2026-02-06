@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"lv-tradepl/internal/admin"
 	"lv-tradepl/internal/auth"
 	"lv-tradepl/internal/config"
 	"lv-tradepl/internal/db"
@@ -17,6 +18,7 @@ import (
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/matching"
 	"lv-tradepl/internal/orders"
+	"lv-tradepl/internal/sessions"
 
 	"github.com/shopspring/decimal"
 )
@@ -55,21 +57,27 @@ func main() {
 	store := marketdata.NewCandleStore(cfg.MarketDataDir)
 	candleWS := marketdata.NewCandleWS(cfg.WebSocketOrigin, store)
 	marketHandler := marketdata.NewHandler(marketWS, candleWS)
+	sessionsStore := sessions.NewStore(pool)
+	sessionsHandler := sessions.NewHandler(sessionsStore)
+	adminHandler := admin.NewHandler(pool, cfg.JWTSecret)
 	wsHandler := httpserver.NewWSHandler(bus, cfg.WebSocketOrigin)
 	router := httpserver.NewRouter(httpserver.RouterDeps{
-		AuthHandler:   authHandler,
-		LedgerHandler: ledgerHandler,
-		OrderHandler:  orderHandler,
-		MarketHandler: marketHandler,
-		AuthService:   authSvc,
-		InternalToken: cfg.InternalToken,
-		WSHandler:     wsHandler,
-		UIDist:        cfg.UIDist,
+		AuthHandler:     authHandler,
+		LedgerHandler:   ledgerHandler,
+		OrderHandler:    orderHandler,
+		MarketHandler:   marketHandler,
+		SessionsHandler: sessionsHandler,
+		AdminHandler:    adminHandler,
+		AuthService:     authSvc,
+		InternalToken:   cfg.InternalToken,
+		JWTSecret:       cfg.JWTSecret,
+		WSHandler:       wsHandler,
+		UIDist:          cfg.UIDist,
 	})
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: router}
 
-	// Start quote/candle publisher
-	marketdata.StartPublisher(bus, "UZS-USD", cfg.MarketDataDir)
+	// Start quote/candle publisher with session support
+	marketdata.StartPublisherWithDB(bus, "UZS-USD", cfg.MarketDataDir, pool)
 
 	log.Printf("server listening on %s", cfg.HTTPAddr)
 	log.Printf("health endpoint: http://localhost%s/health", cfg.HTTPAddr)

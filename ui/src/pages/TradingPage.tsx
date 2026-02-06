@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import TradingChart from "../components/TradingChart"
 import MarketPanel from "../components/MarketPanel"
 import type { Quote, Lang, MarketConfig, Order } from "../types"
@@ -76,7 +77,7 @@ export default function TradingPage({
             </div>
 
             {/* Right: Market Panel */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, overflow: "auto" }}>
                 <MarketPanel
                     quote={quote}
                     quickQty={quickQty}

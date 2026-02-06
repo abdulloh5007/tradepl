@@ -5,24 +5,29 @@ import (
 	"os"
 	"path/filepath"
 
+	"lv-tradepl/internal/admin"
 	"lv-tradepl/internal/auth"
 	"lv-tradepl/internal/httputil"
 	"lv-tradepl/internal/ledger"
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/orders"
+	"lv-tradepl/internal/sessions"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type RouterDeps struct {
-	AuthHandler   *auth.Handler
-	LedgerHandler *ledger.Handler
-	OrderHandler  *orders.Handler
-	MarketHandler *marketdata.Handler
-	AuthService   *auth.Service
-	InternalToken string
-	WSHandler     http.Handler
-	UIDist        string
+	AuthHandler     *auth.Handler
+	LedgerHandler   *ledger.Handler
+	OrderHandler    *orders.Handler
+	MarketHandler   *marketdata.Handler
+	SessionsHandler *sessions.Handler
+	AdminHandler    *admin.Handler
+	AuthService     *auth.Service
+	InternalToken   string
+	JWTSecret       string
+	WSHandler       http.Handler
+	UIDist          string
 }
 
 func NewRouter(d RouterDeps) http.Handler {
@@ -120,6 +125,31 @@ func NewRouter(d RouterDeps) http.Handler {
 			r.Use(InternalAuth(d.InternalToken))
 			r.Post("/internal/deposits", d.LedgerHandler.Deposit)
 			r.Post("/internal/withdrawals", d.LedgerHandler.Withdraw)
+		})
+		// Admin routes
+		r.Route("/admin", func(r chi.Router) {
+			// Public login endpoint
+			r.Post("/login", d.AdminHandler.Login)
+
+			// Protected routes
+			r.Group(func(r chi.Router) {
+				r.Use(admin.AdminAuthMiddleware(d.JWTSecret))
+				r.Get("/me", d.AdminHandler.Me)
+				// Sessions
+				r.Get("/sessions", d.SessionsHandler.GetSessions)
+				r.Get("/sessions/active", d.SessionsHandler.GetActiveSession)
+				r.Post("/sessions/switch", d.SessionsHandler.SwitchSession)
+				// Mode (auto/manual)
+				r.Get("/sessions/mode", d.SessionsHandler.GetMode)
+				r.Post("/sessions/mode", d.SessionsHandler.SetMode)
+				// Trend
+				r.Get("/trend", d.SessionsHandler.GetTrend)
+				r.Post("/trend", d.SessionsHandler.SetTrend)
+				// Price events
+				r.Get("/events", d.SessionsHandler.GetEvents)
+				r.Post("/events", d.SessionsHandler.CreateEvent)
+				r.Delete("/events/{id}", d.SessionsHandler.CancelEvent)
+			})
 		})
 	})
 	if d.UIDist != "" {

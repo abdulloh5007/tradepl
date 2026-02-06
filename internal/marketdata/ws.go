@@ -15,6 +15,7 @@ type Quote struct {
 	Pair      string `json:"pair"`
 	Bid       string `json:"bid"`
 	Ask       string `json:"ask"`
+	Last      string `json:"last"`
 	Spread    string `json:"spread"`
 	Timestamp int64  `json:"ts"`
 }

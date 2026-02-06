@@ -1,3 +1,4 @@
+import { BarChart2, List, Wallet, Key, Droplet, Settings } from "lucide-react"
 import type { View, Lang } from "../types"
 import { t } from "../utils/i18n"
 
@@ -8,12 +9,13 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ view, setView, lang }: SidebarProps) {
-    const tabs: { key: View; label: string }[] = [
-        { key: "chart", label: t("chart", lang) },
-        { key: "positions", label: t("positions", lang) },
-        { key: "balance", label: t("balance", lang) },
-        { key: "api", label: t("api", lang) },
-        { key: "faucet", label: t("faucet", lang) }
+    const tabs = [
+        { key: "chart" as const, label: t("chart", lang), icon: BarChart2 },
+        { key: "positions" as const, label: t("positions", lang), icon: List },
+        { key: "balance" as const, label: t("balance", lang), icon: Wallet },
+        { key: "api" as const, label: t("api", lang), icon: Key },
+        { key: "faucet" as const, label: t("faucet", lang), icon: Droplet },
+        { key: "admin" as const, label: "Admin", icon: Settings }
     ]
 
     return (
@@ -31,6 +33,7 @@ export default function Sidebar({ view, setView, lang }: SidebarProps) {
                 <button
                     key={tab.key}
                     onClick={() => setView(tab.key)}
+                    title={tab.label}
                     style={{
                         width: 48,
                         height: 48,
@@ -41,13 +44,11 @@ export default function Sidebar({ view, setView, lang }: SidebarProps) {
                         borderRadius: 8,
                         background: view === tab.key ? "var(--accent-bg)" : "transparent",
                         color: view === tab.key ? "var(--accent-text)" : "var(--text-muted)",
-                        fontSize: 10,
-                        fontWeight: 500,
                         cursor: "pointer",
                         transition: "all 0.15s"
                     }}
                 >
-                    {tab.label}
+                    <tab.icon size={20} strokeWidth={2} />
                 </button>
             ))}
         </aside>

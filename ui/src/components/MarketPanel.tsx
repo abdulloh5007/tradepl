@@ -29,9 +29,9 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
         marginBottom: 8
       }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("last", lang)}</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("price", lang)}</div>
           <div style={{ fontSize: 16, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-            {quote?.bid || "—"}
+            {quote?.last || "—"}
           </div>
         </div>
         <div style={{ textAlign: "center" }}>
