@@ -101,31 +101,43 @@ func (h *Handler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get rights if it's an admin token
-	var rights map[string]bool
+	// Get rights as array
+	var rightsArr []string
 	if accessToken.TokenType == "admin" {
 		admin, err := h.tokenStore.GetPanelAdminByTelegramID(r.Context(), accessToken.TelegramID)
 		if err != nil {
 			httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "admin not found"})
 			return
 		}
-		rights = admin.Rights
+		for k, v := range admin.Rights {
+			if v {
+				rightsArr = append(rightsArr, k)
+			}
+		}
 	} else {
 		// Owner has all rights
-		rights = map[string]bool{
-			"sessions":   true,
-			"trend":      true,
-			"events":     true,
-			"volatility": true,
-		}
+		rightsArr = []string{"sessions", "trend", "events", "volatility"}
+	}
+
+	// Generate admin JWT token for API requests
+	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  accessToken.TelegramID,
+		"role": accessToken.TokenType,
+		"exp":  accessToken.ExpiresAt.Unix(),
+	})
+	adminToken, err := jwtToken.SignedString(h.jwtSecret)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "token generation failed"})
+		return
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"valid":       true,
-		"token_type":  accessToken.TokenType,
+		"role":        accessToken.TokenType,
 		"telegram_id": accessToken.TelegramID,
 		"expires_at":  accessToken.ExpiresAt,
-		"rights":      rights,
+		"rights":      rightsArr,
+		"admin_token": adminToken,
 	})
 }
 
