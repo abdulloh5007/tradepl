@@ -42,6 +42,7 @@ run: db migrate seed api
 
 dev:
 	@test -x "$(AIR_BIN)" || (echo "air not found. Install: go install github.com/air-verse/air@latest"; exit 1)
+	@fuser -k 8080/tcp || true
 	"$(AIR_BIN)"
 
 build-ui:

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import {
     LogIn, LogOut, Activity, TrendingUp, TrendingDown, Minus, Shuffle,
     Zap, Timer, Gauge, Target, Plus, X, Calendar, Clock,
-    Sun, Moon, Settings, CheckCircle, AlertCircle, Wifi, WifiOff
+    Sun, Moon, Settings, CheckCircle, AlertCircle
 } from "lucide-react"
 import Skeleton from "../components/Skeleton"
 
@@ -13,6 +13,16 @@ type SessionConfig = {
     volatility: number
     spread: number
     trend_bias: string
+    is_active: boolean
+}
+
+type VolatilityConfig = {
+    id: string
+    name: string
+    value: number
+    spread: number
+    schedule_start: string
+    schedule_end: string
     is_active: boolean
 }
 
@@ -40,22 +50,33 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
     const [loading, setLoading] = useState(false)
     const [initialLoad, setInitialLoad] = useState(true)
 
-    // Connection state
-    const [isOffline, setIsOffline] = useState(false)
-    const [showOnlineToast, setShowOnlineToast] = useState(false)
-
     // Admin data
     const [sessions, setSessions] = useState<SessionConfig[]>([])
     const [activeSession, setActiveSession] = useState<string>("")
     const [currentTrend, setCurrentTrend] = useState<string>("random")
     const [mode, setMode] = useState<string>("manual")
     const [events, setEvents] = useState<PriceEvent[]>([])
+
+    // Volatility data
+    const [volConfigs, setVolConfigs] = useState<VolatilityConfig[]>([])
+    const [activeVol, setActiveVol] = useState<string>("")
+    const [volMode, setVolMode] = useState<string>("auto")
+
     const [error, setError] = useState<string | null>(null)
 
-    // New event form
-    const [newTargetPrice, setNewTargetPrice] = useState("")
+    // New event form (target_price removed - not needed)
     const [newDirection, setNewDirection] = useState<"up" | "down">("up")
-    const [newDuration, setNewDuration] = useState("300")
+    const [newDuration, setNewDuration] = useState("60")
+
+    // Active event state (from API or WebSocket)
+    const [activeEventState, setActiveEventState] = useState<{
+        active: boolean
+        trend: string
+        endTime: number
+        countdown: number
+        manualTrend: string // Trend to restore after event ends
+    } | null>(null)
+    const [eventLoading, setEventLoading] = useState(true)
 
     // Check for stored token on mount
     useEffect(() => {
@@ -66,6 +87,78 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
         }
     }, [])
 
+    // Fetch active event state on load
+    useEffect(() => {
+        const fetchActiveEvent = async () => {
+            try {
+                const res = await fetch(`${baseUrl}/v1/admin/events/active`, { headers })
+                if (res.ok) {
+                    const data = await res.json()
+                    if (data.active) {
+                        setActiveEventState({
+                            active: true,
+                            trend: data.trend,
+                            endTime: data.end_time,
+                            countdown: Math.max(0, Math.floor((data.end_time - Date.now()) / 1000)),
+                            manualTrend: data.manual_trend || currentTrend
+                        })
+                    } else {
+                        setActiveEventState(null)
+                    }
+                }
+            } catch { }
+            setEventLoading(false)
+        }
+        if (token) fetchActiveEvent()
+        else setEventLoading(false)
+    }, [token, baseUrl, currentTrend])
+
+    // WebSocket for event_state updates
+    useEffect(() => {
+        // Use backend port and events/ws endpoint (no auth required)
+        const wsUrl = "ws://localhost:8080/v1/events/ws"
+        const ws = new WebSocket(wsUrl)
+
+        ws.onmessage = (e) => {
+            try {
+                const msg = JSON.parse(e.data)
+                if (msg.type === "event_state") {
+                    const data = msg.data || msg
+                    if (data.active) {
+                        setActiveEventState({
+                            active: true,
+                            trend: data.trend,
+                            endTime: data.end_time,
+                            countdown: Math.max(0, Math.floor((data.end_time - Date.now()) / 1000)),
+                            manualTrend: data.manual_trend || currentTrend
+                        })
+                    } else {
+                        setActiveEventState(null)
+                        // Refresh data to get updated trend
+                        fetchData()
+                    }
+                }
+            } catch { }
+        }
+
+        return () => ws.close()
+    }, [currentTrend])
+
+    // Countdown timer
+    useEffect(() => {
+        if (!activeEventState?.active) return
+
+        const timer = setInterval(() => {
+            const remaining = Math.max(0, Math.floor((activeEventState.endTime - Date.now()) / 1000))
+            setActiveEventState(prev => prev ? { ...prev, countdown: remaining } : null)
+            if (remaining <= 0) {
+                setActiveEventState(null)
+            }
+        }, 1000)
+
+        return () => clearInterval(timer)
+    }, [activeEventState?.endTime])
+
     const headers = {
         "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json"
@@ -75,11 +168,12 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
         if (!token) return
         try {
             // Parallel fetches for efficiency and unified error handling
-            const [sessRes, trendRes, modeRes, eventsRes] = await Promise.all([
+            const [sessRes, trendRes, modeRes, eventsRes, volRes] = await Promise.all([
                 fetch(`${baseUrl}/v1/admin/sessions`, { headers }),
                 fetch(`${baseUrl}/v1/admin/trend`, { headers }),
                 fetch(`${baseUrl}/v1/admin/sessions/mode`, { headers }),
-                fetch(`${baseUrl}/v1/admin/events`, { headers })
+                fetch(`${baseUrl}/v1/admin/events`, { headers }),
+                fetch(`${baseUrl}/v1/admin/volatility`, { headers })
             ])
 
             if (!sessRes.ok || !trendRes.ok || !modeRes.ok || !eventsRes.ok) {
@@ -100,25 +194,23 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
             const eventsData = await eventsRes.json()
             setEvents(eventsData || [])
 
-            // Connection restored
-            if (isOffline) {
-                setIsOffline(false)
-                setShowOnlineToast(true)
-                setTimeout(() => setShowOnlineToast(false), 3000)
+            // Volatility
+            if (volRes.ok) {
+                const volData = await volRes.json()
+                setVolConfigs(volData.settings || [])
+                setVolMode(volData.mode || "auto")
+                const activeV = (volData.settings || []).find((v: VolatilityConfig) => v.is_active)
+                if (activeV) setActiveVol(activeV.id)
             }
+
             if (error === "Network Error") setError(null)
 
         } catch (e) {
-            // Handle offline state
-            if (!isOffline) {
-                setIsOffline(true)
-                // Only log if not already offline to avoid spam
-                console.warn("[Admin] Connection lost:", e)
-            }
+            console.error("[Admin] Fetch error:", e)
         } finally {
             setInitialLoad(false)
         }
-    }, [baseUrl, token, isOffline])
+    }, [baseUrl, token])
 
     useEffect(() => {
         if (isLoggedIn && token) {
@@ -229,20 +321,49 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
         setLoading(false)
     }
 
+    const switchVolatility = async (volId: string) => {
+        setLoading(true)
+        try {
+            await fetch(`${baseUrl}/v1/admin/volatility/activate`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ id: volId })
+            })
+            setActiveVol(volId)
+            fetchData()
+        } catch (e) {
+            setError(String(e))
+        }
+        setLoading(false)
+    }
+
+    const toggleVolMode = async () => {
+        const newMode = volMode === "auto" ? "manual" : "auto"
+        setLoading(true)
+        try {
+            await fetch(`${baseUrl}/v1/admin/volatility/mode`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ mode: newMode })
+            })
+            setVolMode(newMode)
+        } catch (e) {
+            setError(String(e))
+        }
+        setLoading(false)
+    }
+
     const createEvent = async () => {
-        if (!newTargetPrice) return
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/events`, {
                 method: "POST",
                 headers,
                 body: JSON.stringify({
-                    target_price: parseFloat(newTargetPrice),
                     direction: newDirection,
                     duration_seconds: parseInt(newDuration)
                 })
             })
-            setNewTargetPrice("")
             fetchData()
         } catch (e) {
             setError(String(e))
@@ -339,53 +460,6 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
     // Admin Dashboard
     return (
         <div className="admin-dashboard">
-            {/* Connection Status Banners */}
-            {isOffline && (
-                <div style={{
-                    position: "fixed",
-                    top: 24,
-                    right: 24,
-                    zIndex: 200,
-                    background: "#ef4444",
-                    color: "white",
-                    padding: "12px 20px",
-                    borderRadius: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    boxShadow: "0 8px 20px rgba(239, 68, 68, 0.3)",
-                    fontWeight: 600,
-                    fontSize: 14,
-                    border: "1px solid rgba(255,255,255,0.2)"
-                }}>
-                    <WifiOff size={20} />
-                    <span>Offline mode. Trying to reconnect...</span>
-                </div>
-            )}
-            {showOnlineToast && (
-                <div style={{
-                    position: "fixed",
-                    top: 24,
-                    right: 24,
-                    zIndex: 200,
-                    background: "#16a34a",
-                    color: "white",
-                    padding: "12px 20px",
-                    borderRadius: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    boxShadow: "0 8px 20px rgba(22, 163, 74, 0.3)",
-                    fontWeight: 600,
-                    fontSize: 14,
-                    border: "1px solid rgba(255,255,255,0.2)"
-                }}>
-                    <Wifi size={20} />
-                    <span>Back Online</span>
-                    <CheckCircle size={16} fill="white" color="#16a34a" />
-                </div>
-            )}
-
             {/* Header */}
             <header className="admin-header">
                 <div className="admin-header-left">
@@ -475,14 +549,81 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
                     </div>
                 </div>
 
+                {/* Volatility Card */}
+                <div className="admin-card">
+                    <div className="admin-card-header">
+                        <Activity size={20} />
+                        <h2>Market Volatility</h2>
+                        <div className="mode-toggle">
+                            {initialLoad ? (
+                                <Skeleton width={120} height={24} radius={12} />
+                            ) : (
+                                <>
+                                    <span className={volMode === "manual" ? "active" : ""}>Manual</span>
+                                    <button
+                                        className={`toggle-switch ${volMode === "auto" ? "checked" : ""}`}
+                                        onClick={toggleVolMode}
+                                        disabled={loading}
+                                    >
+                                        <span className="toggle-thumb" />
+                                    </button>
+                                    <span className={volMode === "auto" ? "active" : ""}>Auto</span>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    <div className="sessions-grid">
+                        {initialLoad ? (
+                            Array(3).fill(0).map((_, i) => (
+                                <div key={i} className="session-card" style={{ pointerEvents: "none", opacity: 0.7 }}>
+                                    <Skeleton width={24} height={24} radius="50%" />
+                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                                        <Skeleton width="60%" height={16} />
+                                        <Skeleton width="40%" height={12} />
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            volConfigs.map(v => {
+                                let Icon = Activity
+                                if (v.id === "low") Icon = Moon
+                                if (v.id === "medium") Icon = Sun
+                                if (v.id === "high") Icon = Zap
+
+                                const isActive = activeVol === v.id
+                                return (
+                                    <button
+                                        key={v.id}
+                                        className={`session-card ${isActive ? "active" : ""} ${volMode === "auto" ? "auto-disabled" : ""}`}
+                                        onClick={() => switchVolatility(v.id)}
+                                        disabled={loading || volMode === "auto"}
+                                        style={{ opacity: volMode === "auto" && !isActive ? 0.6 : 1 }}
+                                    >
+                                        <Icon size={24} />
+                                        <span className="session-name">{v.name}</span>
+                                        {volMode === "auto" ? (
+                                            <span className="session-rate" style={{ fontSize: 11 }}>
+                                                {v.schedule_start} - {v.schedule_end}
+                                            </span>
+                                        ) : (
+                                            <span className="session-rate">Spread: {v.spread.toExponential(0)}</span>
+                                        )}
+                                        {isActive && <CheckCircle size={16} className="session-check" />}
+                                    </button>
+                                )
+                            })
+                        )}
+                    </div>
+                </div>
+
                 {/* Trend Card */}
                 <div className="admin-card">
                     <div className="admin-card-header">
                         <TrendingUp size={20} />
                         <h2>Market Trend</h2>
                     </div>
-                    <div className="trend-grid">
-                        {initialLoad ? (
+                    <div className={`trend-grid ${activeEventState?.active ? "event-running" : ""}`}>
+                        {(initialLoad || eventLoading) ? (
                             Array(4).fill(0).map((_, i) => (
                                 <div key={i} className="trend-btn" style={{ pointerEvents: "none", border: "1px solid var(--border-subtle)" }}>
                                     <Skeleton width={22} height={22} radius="50%" />
@@ -491,17 +632,30 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
                             ))
                         ) : (
                             trendConfig.map(t => {
-                                const isActive = currentTrend === t.id
+                                const isEventRunning = activeEventState?.active
+                                // During event: show manualTrend as "active" (visual only)
+                                // and eventTrend as "event-active" with timer
+                                const isManualActive = isEventRunning
+                                    ? activeEventState.manualTrend === t.id
+                                    : currentTrend === t.id
+                                const isEventTrend = isEventRunning && activeEventState.trend === t.id
                                 return (
                                     <button
                                         key={t.id}
-                                        className={`trend-btn ${isActive ? "active" : ""}`}
+                                        className={`trend-btn ${isManualActive ? "active" : ""} ${isEventTrend ? "event-active" : ""} ${isEventRunning ? "event-disabled" : ""}`}
                                         onClick={() => setTrend(t.id)}
-                                        disabled={loading}
-                                        style={{ "--trend-color": t.color } as React.CSSProperties}
+                                        disabled={loading || isEventRunning}
+                                        style={{
+                                            "--trend-color": t.color
+                                        } as React.CSSProperties}
                                     >
                                         <t.icon size={22} />
                                         <span>{t.label}</span>
+                                        {isEventTrend && activeEventState && (
+                                            <span className="event-timer">
+                                                {activeEventState.countdown}s
+                                            </span>
+                                        )}
                                     </button>
                                 )
                             })
@@ -520,28 +674,19 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
                     <div className="event-form">
                         <div className="event-form-row">
                             <div className="event-field">
-                                <label>Target Price</label>
-                                <input
-                                    type="number"
-                                    value={newTargetPrice}
-                                    onChange={e => setNewTargetPrice(e.target.value)}
-                                    placeholder="12900"
-                                />
-                            </div>
-                            <div className="event-field">
                                 <label>Direction</label>
                                 <div className="direction-btns">
                                     <button
                                         className={newDirection === "up" ? "active up" : ""}
                                         onClick={() => setNewDirection("up")}
                                     >
-                                        <TrendingUp size={16} /> Up
+                                        <TrendingUp size={16} /> Bullish
                                     </button>
                                     <button
                                         className={newDirection === "down" ? "active down" : ""}
                                         onClick={() => setNewDirection("down")}
                                     >
-                                        <TrendingDown size={16} /> Down
+                                        <TrendingDown size={16} /> Bearish
                                     </button>
                                 </div>
                             </div>
@@ -552,7 +697,8 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
                                         type="number"
                                         value={newDuration}
                                         onChange={e => setNewDuration(e.target.value)}
-                                        placeholder="300"
+                                        placeholder="60"
+                                        min="5"
                                     />
                                     <span>sec</span>
                                 </div>
@@ -560,10 +706,10 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
                             <button
                                 className="add-event-btn"
                                 onClick={createEvent}
-                                disabled={loading || !newTargetPrice}
+                                disabled={loading}
                             >
                                 <Plus size={18} />
-                                <span>Add Event</span>
+                                <span>Start Event</span>
                             </button>
                         </div>
                     </div>
@@ -584,20 +730,19 @@ export default function AdminPage({ baseUrl, theme, onThemeToggle }: AdminPagePr
                         ) : events.length === 0 ? (
                             <div className="no-events">
                                 <Calendar size={24} />
-                                <span>No scheduled events</span>
+                                <span>No events yet</span>
                             </div>
                         ) : (
                             events.map(evt => (
                                 <div key={evt.id} className={`event-item ${evt.status}`}>
                                     <div className="event-info">
-                                        <span className="event-price">{evt.target_price.toFixed(2)}</span>
                                         <span className={`event-direction ${evt.direction}`}>
                                             {evt.direction === "up" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                            {evt.direction}
+                                            {evt.direction === "up" ? "Bullish" : "Bearish"}
                                         </span>
                                         <span className="event-duration">
                                             <Clock size={14} />
-                                            {Math.floor(evt.duration_seconds / 60)}m {evt.duration_seconds % 60}s
+                                            {evt.duration_seconds}s
                                         </span>
                                         <span className={`event-status ${evt.status}`}>{evt.status}</span>
                                     </div>

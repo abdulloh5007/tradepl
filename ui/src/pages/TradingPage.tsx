@@ -47,15 +47,23 @@ export default function TradingPage({
                     {timeframes.map(tf => (
                         <button
                             key={tf}
-                            onClick={() => { setTimeframe(tf); fetchCandles(tf) }}
+                            onClick={() => {
+                                if (timeframe !== tf) {
+                                    setTimeframe(tf)
+                                    fetchCandles(tf)
+                                }
+                            }}
+                            disabled={timeframe === tf}
                             style={{
                                 padding: "6px 12px",
-                                border: timeframe === tf ? "1px solid var(--accent-border)" : "1px solid var(--border-subtle)",
+                                border: timeframe === tf ? "1px solid #3b82f6" : "1px solid rgba(128,128,128,0.3)",
                                 borderRadius: 4,
-                                background: timeframe === tf ? "var(--accent-bg)" : "transparent",
-                                color: timeframe === tf ? "var(--accent-text)" : "var(--text-base)",
-                                fontSize: 12,
-                                cursor: "pointer"
+                                background: timeframe === tf ? "rgba(59, 130, 246, 0.1)" : "transparent",
+                                color: timeframe === tf ? "#3b82f6" : "var(--text-base)",
+                                fontSize: 13,
+                                fontWeight: timeframe === tf ? 600 : 400,
+                                cursor: timeframe === tf ? "default" : "pointer",
+                                transition: "all 0.2s"
                             }}
                         >
                             {tf}
@@ -72,6 +80,7 @@ export default function TradingPage({
                         marketPair={marketPair}
                         marketConfig={marketConfig}
                         theme={theme}
+                        timeframe={timeframe}
                     />
                 </div>
             </div>

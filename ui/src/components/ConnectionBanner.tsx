@@ -4,18 +4,28 @@ import { Wifi, WifiOff } from "lucide-react"
 export default function ConnectionBanner() {
     const [isOffline, setIsOffline] = useState(!navigator.onLine)
     const [justReconnected, setJustReconnected] = useState(false)
+    const [isFading, setIsFading] = useState(false)
 
     useEffect(() => {
         const handleOffline = () => {
             setIsOffline(true)
             setJustReconnected(false)
+            setIsFading(false)
         }
 
         const handleOnline = () => {
             setIsOffline(false)
             setJustReconnected(true)
-            // Hide "Connected" message after 3 seconds
-            setTimeout(() => setJustReconnected(false), 3000)
+            setIsFading(false)
+
+            // Start fading out after 2.5s
+            setTimeout(() => setIsFading(true), 2500)
+
+            // Hide completely after 3s
+            setTimeout(() => {
+                setJustReconnected(false)
+                setIsFading(false)
+            }, 3000)
         }
 
         window.addEventListener("offline", handleOffline)
@@ -46,9 +56,12 @@ export default function ConnectionBanner() {
             gap: "8px",
             fontWeight: 500,
             fontSize: "14px",
-            transition: "all 0.3s ease-in-out",
+            transition: "all 0.5s ease-in-out",
+            opacity: isFading ? 0 : 1,
+            height: isFading ? 0 : "auto", // Optional: also animate height to avoid jump
+            overflow: "hidden",
             position: "relative",
-            zIndex: 9999, // Ensure it's above everything including header
+            zIndex: 9999,
             width: "100%",
             boxShadow: "0 2px 10px rgba(0,0,0,0.1)"
         }}>

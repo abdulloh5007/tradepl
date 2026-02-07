@@ -21,6 +21,7 @@ type CandleParams struct {
 	Limit     int
 	Now       time.Time
 	PrevClose *float64
+	EndPrice  *float64
 }
 
 type pairProfile struct {
@@ -31,7 +32,7 @@ type pairProfile struct {
 }
 
 var pairProfiles = map[string]pairProfile{
-	"UZS-USD": {Base: 1.0 / 12850.0, Vol: 0.0005, Prec: 11, Spread: 0.000000007},
+	"UZS-USD": {Base: 1.0 / 12850.0, Vol: 0.0005, Prec: 11, Spread: 0.0000000023},
 	"XAUUSD":  {Base: 2710.0, Vol: 0.008, Prec: 2, Spread: 0.35},    // 35 cents spread
 	"BTCUSD":  {Base: 68500.0, Vol: 0.015, Prec: 2, Spread: 25.0},   // $25 spread
 	"EURUSD":  {Base: 1.0850, Vol: 0.004, Prec: 5, Spread: 0.00015}, // 1.5 pips
@@ -94,32 +95,74 @@ func Candles(p CandleParams) ([]Candle, error) {
 	endTick = endTick - (endTick % stepSec)
 	startTick := endTick - int64(limit-1)*stepSec
 
-	candles := make([]Candle, 0, limit)
+	candles := make([]Candle, limit)
 
-	// History Generation
-	// Use macro trend + local random walk
+	// If EndPrice is provided, generate BACKWARDS from it to ensure continuity
+	if p.EndPrice != nil {
+		currentPrice := *p.EndPrice
+		seed := hashString(p.Pair)
+
+		for i := limit - 1; i >= 0; i-- {
+			t := startTick + int64(i)*stepSec
+			candleSeed := seed + t
+
+			// Calculate Open from Close using inverse drift
+			// We assume simple volatility model: Close = Open * exp(change)
+			// So Open = Close * exp(-change)
+			// dailyChange := randNorm(candleSeed) * profile.Vol
+			// If using multi-step simulation in forward, we approximate it here for speed/symmetry
+			// Or we can simulate steps inverse? Let's use single step for macro alignment
+
+			// Replicate the forward volatility scaling
+			// Forward: change := randNorm * (vol * 0.1) * steps?
+			// The forward loop used 4 steps of (vol * 0.1).
+			// Variance sum = 4 * (0.1^2) = 0.04. StdDev scale = 0.2
+			// Let's just use a single aggregated step for the reversal to keep it stable
+			change := randNorm(candleSeed+100) * (profile.Vol * 0.2) // Aggregate change
+
+			open := currentPrice * math.Exp(-change)
+
+			// Generate High/Low relative to Open/Close
+			high := math.Max(open, currentPrice)
+			low := math.Min(open, currentPrice)
+
+			// Add some wick noise
+			wick := randNorm(candleSeed+200) * (profile.Vol * 0.05)
+			if wick > 0 {
+				high *= (1 + wick)
+			} else {
+				low *= (1 + wick)
+			}
+
+			candles[i] = Candle{
+				Time:  t,
+				Open:  formatPrice(open, profile.Prec),
+				High:  formatPrice(high, profile.Prec),
+				Low:   formatPrice(low, profile.Prec),
+				Close: formatPrice(currentPrice, profile.Prec),
+			}
+			currentPrice = open
+		}
+		return candles, nil
+	}
+
+	// Forward Generation (Fallback or explicit start)
 	seed := hashString(p.Pair)
-
-	// Determine start price from macro trend
 	currentPrice := getPriceAtTime(seed, startTick, profile)
 
-	for t := startTick; t <= endTick; t += stepSec {
+	for i := 0; i < limit; i++ {
+		t := startTick + int64(i)*stepSec
 		open := currentPrice
 		high := open
 		low := open
 		closePx := open
 
-		// Simulate simulation steps inside the candle for High/Low wicks
 		steps := 4
 		candleSeed := seed + t
 
 		for i := 1; i <= steps; i++ {
-			// Volatility scaling: approximate sigma for duration stepSec/steps
-			// Vol is roughly "daily log return stddev" or similar
-			// Here we just use a tuned factor
 			change := randNorm(candleSeed+int64(i)*13) * (profile.Vol * 0.1)
 			closePx = closePx * math.Exp(change)
-
 			if closePx > high {
 				high = closePx
 			}
@@ -128,14 +171,13 @@ func Candles(p CandleParams) ([]Candle, error) {
 			}
 		}
 
-		candles = append(candles, Candle{
+		candles[i] = Candle{
 			Time:  t,
 			Open:  formatPrice(open, profile.Prec),
 			High:  formatPrice(high, profile.Prec),
 			Low:   formatPrice(low, profile.Prec),
 			Close: formatPrice(closePx, profile.Prec),
-		})
-
+		}
 		currentPrice = closePx
 	}
 

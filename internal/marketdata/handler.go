@@ -43,47 +43,28 @@ func (h *Handler) Candles(w http.ResponseWriter, r *http.Request) {
 	if limit <= 0 {
 		limit = 500
 	}
-	outLimit := limit
-	if interval == time.Minute {
-		// Read from shared cache (same source as WebSocket) for consistency
-		key := pair + "|1m"
-		candlesByTF.mu.Lock()
-		cached := candlesByTF.items[key]
-		candlesByTF.mu.Unlock()
 
-		if len(cached) > 0 {
-			// Return from cache (consistent with WebSocket)
-			result := cached
-			if len(result) > limit {
-				result = result[len(result)-limit:]
-			}
-			httputil.WriteJSON(w, http.StatusOK, result)
-			return
+	// ЕДИНСТВЕННЫЙ ИСТОЧНИК - 1м кэш. Без генерации новой истории!
+	key := pair + "|1m"
+	candlesByTF.mu.Lock()
+	cached := candlesByTF.items[key]
+	candlesByTF.mu.Unlock()
+
+	// Для 1м - отдаем как есть
+	if interval == time.Minute {
+		result := cached
+		if len(result) > limit {
+			result = result[len(result)-limit:]
 		}
-		// Fallback to generation if cache is empty (shouldn't happen if Publisher is running)
-		candles, err := Candles(CandleParams{Pair: pair, Interval: interval, Limit: limit, Now: time.Now().UTC()})
-		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
-			return
-		}
-		httputil.WriteJSON(w, http.StatusOK, candles)
+		httputil.WriteJSON(w, http.StatusOK, result)
 		return
 	}
-	factor := int(interval / time.Minute)
-	baseLimit := outLimit * factor
-	if baseLimit < outLimit {
-		baseLimit = outLimit
+
+	// Для других таймфреймов - агрегируем из 1м (никакой генерации!)
+	agg := aggregateCandles(cached, interval, profile.Prec)
+	if len(agg) > limit {
+		agg = agg[len(agg)-limit:]
 	}
-	if baseLimit > 5000 {
-		baseLimit = 5000
-	}
-	base, err := Candles(CandleParams{Pair: pair, Interval: time.Minute, Limit: baseLimit, Now: time.Now().UTC()})
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
-		return
-	}
-	agg := aggregateCandles(base, interval, profile.Prec)
-	agg = trimCandles(agg, outLimit)
 	httputil.WriteJSON(w, http.StatusOK, agg)
 }
 

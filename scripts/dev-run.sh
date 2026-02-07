@@ -2,4 +2,7 @@
 set -a
 . ./.env
 set +a
-./tmp/lv-tradepl
+# Kill any existing process on port 8080
+fuser -k 8080/tcp 2>/dev/null || true
+sleep 0.5
+exec ./tmp/lv-tradepl

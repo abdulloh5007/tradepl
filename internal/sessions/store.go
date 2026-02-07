@@ -144,6 +144,28 @@ func (s *Store) GetPendingEvents(ctx context.Context) ([]PriceEvent, error) {
 	return events, nil
 }
 
+// GetAllEvents returns all price events (for history)
+func (s *Store) GetAllEvents(ctx context.Context) ([]PriceEvent, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, created_at
+		FROM price_events ORDER BY created_at DESC LIMIT 50
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []PriceEvent
+	for rows.Next() {
+		var pe PriceEvent
+		if err := rows.Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.StartedAt, &pe.CompletedAt, &pe.Status, &pe.CreatedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, pe)
+	}
+	return events, nil
+}
+
 // CreateEvent creates a new price event
 func (s *Store) CreateEvent(ctx context.Context, pair string, targetPrice float64, direction string, durationSecs int, scheduledAt time.Time) (*PriceEvent, error) {
 	var pe PriceEvent

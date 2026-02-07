@@ -19,6 +19,7 @@ import (
 	"lv-tradepl/internal/matching"
 	"lv-tradepl/internal/orders"
 	"lv-tradepl/internal/sessions"
+	"lv-tradepl/internal/volatility"
 
 	"github.com/shopspring/decimal"
 )
@@ -59,22 +60,32 @@ func main() {
 	marketHandler := marketdata.NewHandler(marketWS, candleWS)
 	sessionsStore := sessions.NewStore(pool)
 	sessionsHandler := sessions.NewHandler(sessionsStore)
+	volStore := volatility.NewStore(pool)
+	volHandler := volatility.NewHandler(volStore)
 	adminHandler := admin.NewHandler(pool, cfg.JWTSecret)
-	wsHandler := httpserver.NewWSHandler(bus, cfg.WebSocketOrigin)
+	wsHandler := httpserver.NewWSHandler(bus, authSvc, cfg.WebSocketOrigin)
+	eventsWSHandler := httpserver.NewEventsWSHandler(bus, cfg.WebSocketOrigin)
 	router := httpserver.NewRouter(httpserver.RouterDeps{
-		AuthHandler:     authHandler,
-		LedgerHandler:   ledgerHandler,
-		OrderHandler:    orderHandler,
-		MarketHandler:   marketHandler,
-		SessionsHandler: sessionsHandler,
-		AdminHandler:    adminHandler,
-		AuthService:     authSvc,
-		InternalToken:   cfg.InternalToken,
-		JWTSecret:       cfg.JWTSecret,
-		WSHandler:       wsHandler,
-		UIDist:          cfg.UIDist,
+		AuthHandler:       authHandler,
+		LedgerHandler:     ledgerHandler,
+		OrderHandler:      orderHandler,
+		MarketHandler:     marketHandler,
+		SessionsHandler:   sessionsHandler,
+		VolatilityHandler: volHandler,
+		AdminHandler:      adminHandler,
+		AuthService:       authSvc,
+		InternalToken:     cfg.InternalToken,
+		JWTSecret:         cfg.JWTSecret,
+		WSHandler:         wsHandler,
+		EventsWSHandler:   eventsWSHandler,
+		UIDist:            cfg.UIDist,
 	})
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: router}
+
+	// Set event state callback for API access
+	sessions.SetEventStateCallback(func() interface{} {
+		return marketdata.GetCurrentEventState()
+	})
 
 	// Start quote/candle publisher with session support
 	marketdata.StartPublisherWithDB(bus, "UZS-USD", cfg.MarketDataDir, pool)

@@ -138,9 +138,9 @@ func (h *Handler) SetTrend(w http.ResponseWriter, r *http.Request) {
 
 // --- Price Event Endpoints ---
 
-// GetEvents returns pending and active price events
+// GetEvents returns all price events (history)
 func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
-	events, err := h.store.GetPendingEvents(r.Context())
+	events, err := h.store.GetAllEvents(r.Context())
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
@@ -149,6 +149,27 @@ func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		events = []PriceEvent{}
 	}
 	httputil.WriteJSON(w, http.StatusOK, events)
+}
+
+// GetActiveEvent returns the current active event state
+func (h *Handler) GetActiveEvent(w http.ResponseWriter, r *http.Request) {
+	// Import marketdata package to get current event state
+	// This is done via a callback set during initialization
+	if getEventStateFn != nil {
+		state := getEventStateFn()
+		httputil.WriteJSON(w, http.StatusOK, state)
+		return
+	}
+	// No active event
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"active": false})
+}
+
+// Callback for getting event state from marketdata package
+var getEventStateFn func() interface{}
+
+// SetEventStateCallback sets the callback function to get current event state
+func SetEventStateCallback(fn func() interface{}) {
+	getEventStateFn = fn
 }
 
 // CreateEvent creates a new scheduled price event
@@ -165,10 +186,7 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.TargetPrice <= 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "target_price must be positive"})
-		return
-	}
+	// target_price is now optional (not used for triggering)
 	if req.Direction != "up" && req.Direction != "down" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "direction must be 'up' or 'down'"})
 		return

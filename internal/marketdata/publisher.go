@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"lv-tradepl/internal/sessions"
+	"lv-tradepl/internal/volatility"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,6 +18,24 @@ type PublisherConfig struct {
 	Volatility   float64
 	Spread       float64
 	TrendBias    string // bullish, bearish, sideways, random
+}
+
+// EventState represents the current active event state
+type EventState struct {
+	Active      bool   `json:"active"`
+	Trend       string `json:"trend"`
+	EndTime     int64  `json:"end_time"`
+	EventID     int    `json:"event_id"`
+	Direction   string `json:"direction"`
+	Duration    int    `json:"duration"`
+	ManualTrend string `json:"manual_trend"` // The trend to restore after event ends
+}
+
+var currentEventState = &EventState{Active: false}
+
+// GetCurrentEventState returns the current event state for API access
+func GetCurrentEventState() EventState {
+	return *currentEventState
 }
 
 // StartPublisher starts a background goroutine that generates quotes and candles
@@ -40,7 +59,7 @@ func StartPublisherWithDB(bus *Bus, pair string, dir string, pool *pgxpool.Pool)
 	candles, err := store.LoadRecent(key, 500, prec)
 	if err != nil || len(candles) == 0 {
 		log.Printf("[Publisher] Generating 500 historical candles for %s", pair)
-		candles = GenerateInitialCandles(pair, 500)
+		candles = GenerateInitialCandles(pair, 5000)
 		if err := store.SeedIfEmpty(key, candles); err != nil {
 			log.Printf("[Publisher] Error seeding candles: %v", err)
 		}
@@ -71,26 +90,45 @@ func StartPublisherWithDB(bus *Bus, pair string, dir string, pool *pgxpool.Pool)
 	}
 
 	// Load session config from DB if available
+	var volStore *volatility.Store
 	if pool != nil {
 		sessStore := sessions.NewStore(pool)
+		volStore = volatility.NewStore(pool)
 		ctx := context.Background()
 		if session, err := sessStore.GetActiveSession(ctx); err == nil {
 			config.UpdateRateMs = session.UpdateRateMs
-			config.Volatility = session.Volatility
-			config.Spread = session.Spread
+			// Volatility/Spread now handled by volStore, but we start with session default if needed
+			// or wait for first poll.
+			// config.Volatility = session.Volatility // DEPRECATED
+			// config.Spread = session.Spread         // DEPRECATED
 			config.TrendBias = session.TrendBias
-			log.Printf("[Publisher] Loaded session '%s': rate=%dms, vol=%.4f, spread=%.2f, trend=%s",
-				session.Name, config.UpdateRateMs, config.Volatility, config.Spread, config.TrendBias)
+			log.Printf("[Publisher] Loaded session '%s': rate=%dms, trend=%s",
+				session.Name, config.UpdateRateMs, config.TrendBias)
 		}
 		if trend, err := sessStore.GetSetting(ctx, sessions.SettingCurrentTrend); err == nil && trend != "" {
 			config.TrendBias = trend
 		}
+
+		// Load initial Volatility Config
+		if volConfig, err := volStore.GetActiveConfig(ctx); err == nil {
+			// Apply multipliers: low*3, medium*2, high*1
+			multiplier := 1.0
+			switch volConfig.ID {
+			case "low":
+				multiplier = 3.0
+			case "medium":
+				multiplier = 2.0
+			}
+			config.Volatility = volConfig.Volatility * multiplier
+			config.Spread = volConfig.Spread
+			log.Printf("[Publisher] Loaded volatility config: id=%s, vol=%.5f (x%.1f), spread=%.8f", volConfig.ID, config.Volatility, multiplier, config.Spread)
+		}
 	}
 
-	go runPublisher(bus, pair, dir, prec, lastPrice, profile, config, pool)
+	go runPublisher(bus, pair, dir, prec, lastPrice, profile, config, pool, volStore)
 }
 
-func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64, profile pairProfile, config *PublisherConfig, pool *pgxpool.Pool) {
+func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64, profile pairProfile, config *PublisherConfig, pool *pgxpool.Pool, volStore *volatility.Store) {
 	store := NewCandleStore(dir)
 	key := pair + "|1m"
 
@@ -101,7 +139,8 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 
 	// Active price event tracking
 	var activeEvent *sessions.PriceEvent
-	var eventPricePerTick float64
+	var eventEndTime time.Time
+	var previousTrend string // To restore after event
 
 	// Channels for config updates
 	sessionCh := sessions.SessionChangeChannel()
@@ -111,31 +150,41 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 	eventTicker := time.NewTicker(5 * time.Second)
 	defer eventTicker.Stop()
 
+	// Volatility refresh ticker (every 1 second)
+	volTicker := time.NewTicker(1 * time.Second)
+	defer volTicker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
 			// Apply trend bias to price change
-			change := calculatePriceChange(config.TrendBias, config.Volatility)
+			// Pass UpdateRateMs to scale the step size
+			change := calculatePriceChange(config.TrendBias, config.Volatility, config.UpdateRateMs)
 
-			// If there's an active price event, move towards target
+			// If there's an active price event, check if it should end
 			if activeEvent != nil {
-				if eventPricePerTick != 0 {
-					currentPrice += eventPricePerTick
-					// Check if event is complete
-					if activeEvent.Direction == "up" && currentPrice >= activeEvent.TargetPrice {
-						currentPrice = activeEvent.TargetPrice
-						completeEvent(pool, activeEvent)
-						activeEvent = nil
-					} else if activeEvent.Direction == "down" && currentPrice <= activeEvent.TargetPrice {
-						currentPrice = activeEvent.TargetPrice
-						completeEvent(pool, activeEvent)
-						activeEvent = nil
-					}
+				if time.Now().After(eventEndTime) {
+					// Event completed - restore previous trend
+					log.Printf("[Publisher] Event completed, restoring trend to '%s'", previousTrend)
+					config.TrendBias = previousTrend
+					completeEvent(pool, activeEvent)
+
+					// Clear global event state
+					currentEventState = &EventState{Active: false, ManualTrend: previousTrend}
+
+					// Broadcast event ended
+					bus.Publish(Event{Type: "event_state", Data: map[string]interface{}{
+						"active":       false,
+						"trend":        previousTrend,
+						"manual_trend": previousTrend,
+					}})
+
+					activeEvent = nil
 				}
-			} else {
-				// Normal price movement
-				currentPrice = currentPrice * (1 + change)
 			}
+
+			// Normal price change (with current trend bias - may be event-modified)
+			currentPrice = currentPrice * (1 + change)
 
 			// Keep price bounded
 			if currentPrice <= 0 {
@@ -175,8 +224,9 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 				if session, err := sessStore.GetActiveSession(ctx); err == nil {
 					log.Printf("[Publisher] Switching to session '%s'", session.Name)
 					config.UpdateRateMs = session.UpdateRateMs
-					config.Volatility = session.Volatility
-					config.Spread = session.Spread
+					// Volatility/Spread controlled by separate service
+					// config.Volatility = session.Volatility
+					// config.Spread = session.Spread
 					config.TrendBias = session.TrendBias
 
 					// Reset ticker with new rate
@@ -190,27 +240,86 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 			log.Printf("[Publisher] Trend changed to: %s", trend)
 			config.TrendBias = trend
 
+		case <-volTicker.C:
+			if volStore != nil {
+				// Refresh Volatility/Spread
+				if volConfig, err := volStore.GetActiveConfig(context.Background()); err == nil {
+					// Check if changed (compare raw values, not multiplied)
+					multiplier := 1.0
+					switch volConfig.ID {
+					case "low":
+						multiplier = 3.0
+					case "medium":
+						multiplier = 2.0
+					}
+					newVol := volConfig.Volatility * multiplier
+					if config.Volatility != newVol || config.Spread != volConfig.Spread {
+						log.Printf("[Publisher] Volatility Update: id=%s, vol=%.5f (x%.1f), spread=%.8f", volConfig.ID, newVol, multiplier, volConfig.Spread)
+						config.Volatility = newVol
+						config.Spread = volConfig.Spread
+					}
+
+					// "Auto Mode" check:
+					mode, _ := volStore.GetMode(context.Background())
+					if mode == "auto" {
+						checkAutoVolatility(volStore)
+					}
+				}
+			}
+
 		case <-eventTicker.C:
-			// Check for pending events that should start
+			// Check for pending events - start immediately (no price target)
 			if pool != nil && activeEvent == nil {
 				sessStore := sessions.NewStore(pool)
 				ctx := context.Background()
 				events, err := sessStore.GetPendingEvents(ctx)
 				if err == nil && len(events) > 0 {
 					for _, evt := range events {
-						if evt.Status == "pending" && time.Now().After(evt.ScheduledAt) {
-							// Start this event
-							log.Printf("[Publisher] Starting price event: target=%.2f, direction=%s, duration=%ds",
-								evt.TargetPrice, evt.Direction, evt.DurationSeconds)
-							sessStore.MarkEventActive(ctx, evt.ID)
-							activeEvent = &evt
-
-							// Calculate price change per tick
-							ticksNeeded := float64(evt.DurationSeconds*1000) / float64(config.UpdateRateMs)
-							priceDiff := evt.TargetPrice - currentPrice
-							eventPricePerTick = priceDiff / ticksNeeded
-							break
+						if evt.Status != "pending" {
+							continue
 						}
+
+						// Start this event IMMEDIATELY
+						log.Printf("[Publisher] Starting price event: direction=%s, duration=%ds",
+							evt.Direction, evt.DurationSeconds)
+						sessStore.MarkEventActive(ctx, evt.ID)
+						activeEvent = &evt
+
+						// Save current trend and set event end time
+						previousTrend = config.TrendBias
+						eventEndTime = time.Now().Add(time.Duration(evt.DurationSeconds) * time.Second)
+
+						// Apply trend based on direction
+						if evt.Direction == "up" {
+							config.TrendBias = "bullish"
+						} else {
+							config.TrendBias = "bearish"
+						}
+
+						// Set global event state for API access
+						currentEventState = &EventState{
+							Active:      true,
+							Trend:       config.TrendBias,
+							EndTime:     eventEndTime.UnixMilli(),
+							EventID:     evt.ID,
+							Direction:   evt.Direction,
+							Duration:    evt.DurationSeconds,
+							ManualTrend: previousTrend,
+						}
+
+						// Broadcast event state via WebSocket
+						bus.Publish(Event{Type: "event_state", Data: map[string]interface{}{
+							"active":       true,
+							"trend":        config.TrendBias,
+							"end_time":     eventEndTime.UnixMilli(),
+							"event_id":     evt.ID,
+							"direction":    evt.Direction,
+							"duration":     evt.DurationSeconds,
+							"manual_trend": previousTrend,
+						}})
+
+						log.Printf("[Publisher] Event applied trend '%s' for %ds (ends at %s)", config.TrendBias, evt.DurationSeconds, eventEndTime.Format("15:04:05"))
+						break
 					}
 				}
 			}
@@ -219,31 +328,66 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 }
 
 // calculatePriceChange returns a price change based on trend bias
-func calculatePriceChange(trend string, volatility float64) float64 {
-	baseChange := randNorm(time.Now().UnixNano()) * volatility * 0.2
+// intervalMs is used to scale the volatility per step (Linear Scaling)
+// This ensures that 5 steps of 200ms = 1 step of 1000ms in total distance.
+func calculatePriceChange(trend string, volatility float64, intervalMs int) float64 {
+	// Scale factor based on reference 1000ms
+	scale := float64(intervalMs) / 1000.0
+
+	// Random component - always present for natural fluctuations (wicks/shadows)
+	randomChange := randNorm(time.Now().UnixNano()) * volatility * 0.2 * scale
+
+	// Drift component - adds a small consistent bias in trend direction
+	// This creates overall trend direction while allowing natural counter-moves
+	driftBias := volatility * 0.08 * scale // Small consistent drift
 
 	switch trend {
 	case "bullish":
-		// Bias towards negative changes (backend price down -> inverted screen price up)
-		if baseChange > 0 {
-			baseChange *= 0.3 // Reduce positive moves
-		} else {
-			baseChange *= 1.5 // Amplify negative moves
-		}
+		// Add negative drift (backend price down -> inverted screen price up)
+		// Random component stays intact for natural wicks
+		return randomChange - driftBias
 	case "bearish":
-		// Bias towards positive changes (backend price up -> inverted screen price down)
-		if baseChange < 0 {
-			baseChange *= 0.3 // Reduce negative moves
-		} else {
-			baseChange *= 1.5 // Amplify positive moves
-		}
+		// Add positive drift (backend price up -> inverted screen price down)
+		return randomChange + driftBias
 	case "sideways":
-		// Smaller movements
-		baseChange *= 0.3
-		// "random" - no modification
+		// Smaller overall movements but still natural
+		return randomChange * 0.5
+	default: // "random"
+		return randomChange
+	}
+}
+
+// Helper to check schedule and update DB if needed
+func checkAutoVolatility(store *volatility.Store) {
+	// Schedule logic:
+	// 09:00 - 13:00 -> High
+	// 13:00 - 19:00 -> Medium
+	// 19:00 - 09:00 -> Low
+
+	now := time.Now()
+	hour := now.Hour()
+
+	var targetID string
+	if hour >= 9 && hour < 13 {
+		targetID = "high"
+	} else if hour >= 13 && hour < 19 {
+		targetID = "medium"
+	} else {
+		targetID = "low"
 	}
 
-	return baseChange
+	// Optimization: GetSettings, check active one.
+	settings, err := store.GetSettings(context.Background())
+	if err == nil {
+		for _, s := range settings {
+			if s.IsActive && s.ID == targetID {
+				return // Already active
+			}
+		}
+		// Need switch
+		log.Printf("[Publisher] Auto-Switching Volatility to %s", targetID)
+		store.SetActive(context.Background(), targetID)
+	}
 }
 
 // updateCandle handles candle creation/update logic
@@ -272,6 +416,10 @@ func updateCandle(bus *Bus, store *CandleStore, key string, currentPrice float64
 			}
 			bus.Publish(Event{Type: "candle", Data: *last})
 		} else if candleTime > last.Time {
+			// Save the COMPLETED candle to disk
+			completedCandle := *last
+			go store.Append(key, completedCandle)
+
 			// Create new candle
 			prevClose := last.Close
 			openPrice, _ := strconv.ParseFloat(prevClose, 64)
@@ -292,7 +440,7 @@ func updateCandle(bus *Bus, store *CandleStore, key string, currentPrice float64
 				Close: closeStr,
 			}
 			candlesByTF.items[key] = append(existing, newCandle)
-			go store.Append(key, newCandle)
+			// Do NOT save new candle yet (wait for close)
 			bus.Publish(Event{Type: "candle", Data: newCandle})
 		}
 	} else {
@@ -305,7 +453,7 @@ func updateCandle(bus *Bus, store *CandleStore, key string, currentPrice float64
 			Close: closeStr,
 		}
 		candlesByTF.items[key] = []Candle{newCandle}
-		go store.Append(key, newCandle)
+		// Do NOT save first candle yet
 		bus.Publish(Event{Type: "candle", Data: newCandle})
 	}
 }

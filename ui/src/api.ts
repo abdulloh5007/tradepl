@@ -45,7 +45,7 @@ const parseBody = (text: string) => {
   }
 }
 
-export const createApiClient = (state: ClientState) => {
+export const createApiClient = (state: ClientState, onUnauthorized?: () => void) => {
   const request = async <T>(path: string, method: string, body?: Json, auth?: boolean): Promise<T> => {
     // Add cache buster to all requests to prevent browser from serving stale data
     const sep = path.includes("?") ? "&" : "?"
@@ -60,6 +60,9 @@ export const createApiClient = (state: ClientState) => {
     const text = await res.text()
     const data = parseBody(text)
     if (!res.ok) {
+      if (res.status === 401 && onUnauthorized) {
+        onUnauthorized()
+      }
       const msg = data && typeof data === "object" && "error" in data ? String((data as { error: string }).error) : String(res.status)
       throw new Error(msg)
     }
@@ -82,9 +85,9 @@ export const createApiClient = (state: ClientState) => {
   }
 }
 
-export const createWsUrl = (baseUrl: string) => {
+export const createWsUrl = (baseUrl: string, token?: string) => {
   const origin = typeof window !== "undefined" ? window.location.origin : ""
   const base = baseUrl || origin
   if (!base) return ""
-  return base.replace(/^http/, "ws") + "/v1/ws"
+  return base.replace(/^http/, "ws") + "/v1/ws" + (token ? `?token=${token}` : "")
 }

@@ -64,7 +64,7 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
           style={{
             width: "100%",
             padding: "10px 12px",
-            border: "1px solid var(--border-subtle)",
+            border: "1px solid #4b5563",
             borderRadius: 6,
             background: "var(--input-bg)",
             color: "var(--text-base)",

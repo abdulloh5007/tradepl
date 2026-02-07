@@ -12,22 +12,25 @@ import (
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/orders"
 	"lv-tradepl/internal/sessions"
+	"lv-tradepl/internal/volatility"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type RouterDeps struct {
-	AuthHandler     *auth.Handler
-	LedgerHandler   *ledger.Handler
-	OrderHandler    *orders.Handler
-	MarketHandler   *marketdata.Handler
-	SessionsHandler *sessions.Handler
-	AdminHandler    *admin.Handler
-	AuthService     *auth.Service
-	InternalToken   string
-	JWTSecret       string
-	WSHandler       http.Handler
-	UIDist          string
+	AuthHandler       *auth.Handler
+	LedgerHandler     *ledger.Handler
+	OrderHandler      *orders.Handler
+	MarketHandler     *marketdata.Handler
+	SessionsHandler   *sessions.Handler
+	VolatilityHandler *volatility.Handler
+	AdminHandler      *admin.Handler
+	AuthService       *auth.Service
+	InternalToken     string
+	JWTSecret         string
+	WSHandler         http.Handler
+	EventsWSHandler   http.Handler
+	UIDist            string
 }
 
 func NewRouter(d RouterDeps) http.Handler {
@@ -52,6 +55,10 @@ func NewRouter(d RouterDeps) http.Handler {
 		})
 	})
 
+	// Security Middleware
+	r.Use(SecurityHeaders)
+	r.Use(RateLimitMiddleware)
+
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	r.Route("/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
@@ -59,6 +66,7 @@ func NewRouter(d RouterDeps) http.Handler {
 			r.Post("/login", d.AuthHandler.Login)
 		})
 		r.Get("/ws", d.WSHandler.ServeHTTP)
+		r.Get("/events/ws", d.EventsWSHandler.ServeHTTP) // Unauthenticated WebSocket for event_state
 		r.Get("/market/candles", d.MarketHandler.Candles)
 		r.Get("/market/ws", d.MarketHandler.WS.ServeHTTP)
 		r.Get("/market/candles/ws", d.MarketHandler.CandleWS.ServeHTTP)
@@ -147,8 +155,13 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.Post("/trend", d.SessionsHandler.SetTrend)
 				// Price events
 				r.Get("/events", d.SessionsHandler.GetEvents)
+				r.Get("/events/active", d.SessionsHandler.GetActiveEvent)
 				r.Post("/events", d.SessionsHandler.CreateEvent)
 				r.Delete("/events/{id}", d.SessionsHandler.CancelEvent)
+				// Volatility
+				r.Get("/volatility", d.VolatilityHandler.GetSettings)
+				r.Post("/volatility/activate", d.VolatilityHandler.SetActive)
+				r.Post("/volatility/mode", d.VolatilityHandler.SetMode)
 			})
 		})
 	})

@@ -65,9 +65,14 @@ export default function App() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login")
   const [authLoading, setAuthLoading] = useState(false)
 
+  const logout = useCallback(() => {
+    setToken("")
+    setCookie("lv_token", "")
+  }, [])
+
   // Memoized API client (prevents recreation on every render = fixes lag)
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
-  const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token }), [normalizedBaseUrl, token])
+  const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token }, logout), [normalizedBaseUrl, token, logout])
   const marketPrice = quote?.bid ? parseFloat(quote.bid) : marketConfig[marketPair].displayBase
 
   // Persist preferences
@@ -90,12 +95,18 @@ export default function App() {
   const pendingCandleRef = useRef<{ time: number; open: number; high: number; low: number; close: number } | null>(null)
   const lastUpdateRef = useRef(0)
 
+  // Track timeframe in ref to avoid WS reconnection on change
+  const timeframeRef = useRef(timeframe)
+  useEffect(() => {
+    timeframeRef.current = timeframe
+  }, [timeframe])
+
   // WebSocket
   useEffect(() => {
-    const wsUrl = createWsUrl(normalizedBaseUrl)
+    const wsUrl = createWsUrl(normalizedBaseUrl, token)
     if (!wsUrl) return
 
-    console.log("[WS] Connecting to:", wsUrl)
+    // console.log("[WS] Connecting to:", wsUrl.split("?")[0]) // Log only base URL for security
     const ws = new WebSocket(wsUrl)
 
     // Throttled state update function
@@ -104,20 +115,50 @@ export default function App() {
         const pending = pendingCandleRef.current
         const candles = candlesRef.current
         const last = candles[candles.length - 1]
+        const currentTf = timeframeRef.current
 
-        if (last.time === pending.time) {
-          // Update last candle in place
-          candles[candles.length - 1] = pending
-        } else if (pending.time > last.time) {
-          // Append new candle
-          candles.push(pending)
-          // Keep only last 600 candles to prevent memory growth
+        // Parse timeframe to seconds
+        let tfSeconds = 60
+        if (currentTf === "5m") tfSeconds = 300
+        else if (currentTf === "15m") tfSeconds = 900
+        else if (currentTf === "30m") tfSeconds = 1800
+        else if (currentTf === "1h") tfSeconds = 3600
+
+        // Align pending candle time to current timeframe bucket
+        // pending.time is unix seconds (from backend)
+        const pendingTime = pending.time
+        const bucketTime = pendingTime - (pendingTime % tfSeconds)
+
+        if (last.time === bucketTime) {
+          // Update last candle in place (Accessing High/Low properly)
+          const newHigh = Math.max(last.high, pending.high)
+          const newLow = Math.min(last.low, pending.low)
+
+          candles[candles.length - 1] = {
+            ...last,
+            high: newHigh,
+            low: newLow,
+            close: pending.close // Close is always latest price
+          }
+        } else if (bucketTime > last.time) {
+          // New candle for this timeframe
+          // Initialize with current 1m data
+          candles.push({
+            time: bucketTime,
+            open: pending.open,
+            high: pending.high,
+            low: pending.low,
+            close: pending.close
+          })
+
+          // Keep only last 600 candles
           if (candles.length > 600) {
             candles.shift()
           }
         }
+        // If bucketTime < last.time, it's old data, ignore it
 
-        // Trigger state update with shallow copy (only once per throttle period)
+        // Trigger state update
         setCandles([...candles])
         pendingCandleRef.current = null
         lastUpdateRef.current = Date.now()
@@ -226,11 +267,7 @@ export default function App() {
     }
   }, [api, token])
 
-  // Handlers
-  const logout = () => {
-    setToken("")
-    setCookie("lv_token", "")
-  }
+
 
   const handleQuickOrder = async (side: "buy" | "sell") => {
     if (!quickQty || Number(quickQty) <= 0) {
@@ -294,25 +331,7 @@ export default function App() {
           <h2 style={{ marginBottom: 24, textAlign: "center" }}>LV Trade</h2>
 
           {/* Base URL */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>API Base URL</label>
-            <input
-              type="text"
-              value={baseUrl}
-              onChange={e => setBaseUrl(e.target.value)}
-              onBlur={() => setCookie("lv_baseurl", normalizeBaseUrl(baseUrl))}
-              placeholder="http://localhost:8080"
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid var(--border-subtle)",
-                borderRadius: 6,
-                background: "var(--input-bg)",
-                color: "var(--text-base)",
-                fontSize: 14
-              }}
-            />
-          </div>
+
 
           <form onSubmit={handleAuth}>
             <div style={{ marginBottom: 16 }}>

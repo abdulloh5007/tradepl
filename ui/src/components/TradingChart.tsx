@@ -9,9 +9,10 @@ interface TradingChartProps {
     marketPair: string
     marketConfig: Record<string, MarketConfig>
     theme: "dark" | "light"
+    timeframe: string
 }
 
-export default function TradingChart({ candles, quote, openOrders, marketPair, marketConfig, theme }: TradingChartProps) {
+export default function TradingChart({ candles, quote, openOrders, marketPair, marketConfig, theme, timeframe }: TradingChartProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
@@ -20,6 +21,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const orderLinesRef = useRef<IPriceLine[]>([])
     const lastCandleCountRef = useRef(0)
     const resizeObserverRef = useRef<ResizeObserver | null>(null)
+    // Track timeframe to detect changes
+    const lastTimeframeRef = useRef(timeframe)
 
     // Initialize chart
     useEffect(() => {
@@ -54,9 +57,16 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             wickUpColor: "#16a34a"
         })
 
+        // Initialize data immediately to avoid race condition
+        if (candles.length > 0) {
+            series.setData(candles)
+            chart.timeScale().fitContent()
+            lastCandleCountRef.current = candles.length
+        }
+
         chartRef.current = chart
         seriesRef.current = series
-        lastCandleCountRef.current = 0
+        lastCandleCountRef.current = candles.length // Sync ref
 
         // Use ResizeObserver for better responsive handling
         resizeObserverRef.current = new ResizeObserver((entries) => {
@@ -78,20 +88,29 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
         const series = seriesRef.current
         if (!series || candles.length === 0) return
 
-        // If this is initial load or candle count changed significantly, use setData
-        if (lastCandleCountRef.current === 0 || Math.abs(candles.length - lastCandleCountRef.current) > 1) {
+        const timeframeChanged = lastTimeframeRef.current !== timeframe
+
+        // If timeframe changed OR initial load OR distinct length change, force full update
+        if (timeframeChanged || lastCandleCountRef.current === 0 || Math.abs(candles.length - lastCandleCountRef.current) > 1) {
             series.setData(candles)
-            if (lastCandleCountRef.current === 0) {
+            if (lastCandleCountRef.current === 0 || timeframeChanged) {
                 chartRef.current?.timeScale().fitContent()
             }
             lastCandleCountRef.current = candles.length
+            lastTimeframeRef.current = timeframe
         } else {
             // For single candle updates, use update() which is much faster
             const lastCandle = candles[candles.length - 1]
-            series.update(lastCandle)
+            try {
+                series.update(lastCandle)
+            } catch (e) {
+                // If update fails (e.g. timestamp mismatch), fallback to setData
+                console.warn("[Chart] Update failed, falling back to setData", e)
+                series.setData(candles)
+            }
             lastCandleCountRef.current = candles.length
         }
-    }, [candles])
+    }, [candles, timeframe])
 
     // Update price lines - throttled
     const updatePriceLines = useCallback(() => {
