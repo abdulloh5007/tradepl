@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import App from "./App"
@@ -6,19 +7,27 @@ import { NotFoundPage } from "./pages/NotFoundPage"
 import { storedTheme } from "./utils/cookies"
 import "./styles.css"
 
-const root = document.getElementById("root")
-if (root) {
+function RootApp() {
+  const [theme, setTheme] = useState<"dark" | "light">(storedTheme)
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8080"
-  const theme = storedTheme()
 
-  createRoot(root).render(
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme)
+    localStorage.setItem("theme", theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme(t => t === "dark" ? "light" : "dark")
+  }
+
+  return (
     <BrowserRouter>
       <Routes>
         <Route path="/manage-panel" element={
           <ManagePanel
             baseUrl={baseUrl}
             theme={theme}
-            onThemeToggle={() => { }}
+            onThemeToggle={toggleTheme}
           />
         } />
         <Route path="/" element={<App />} />
@@ -28,3 +37,7 @@ if (root) {
   )
 }
 
+const root = document.getElementById("root")
+if (root) {
+  createRoot(root).render(<RootApp />)
+}

@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useSearchParams, useNavigate } from "react-router-dom"
 import {
     LogOut, Activity, TrendingUp, TrendingDown, Minus, Shuffle,
     Zap, Timer, Gauge, Target, Plus, X, Calendar, Clock,
-    Sun, Moon, Settings, CheckCircle, AlertCircle, User, Trash2, Shield
+    Sun, Moon, Settings, CheckCircle, AlertCircle, User, Trash2, Shield,
+    Filter, ChevronLeft, ChevronRight, Loader2
 } from "lucide-react"
 import Skeleton from "../components/Skeleton"
 
@@ -34,6 +35,7 @@ type PriceEvent = {
     duration_seconds: number
     scheduled_at: string
     status: string
+    created_at: string
 }
 
 type PanelAdmin = {
@@ -44,10 +46,39 @@ type PanelAdmin = {
     created_at: string
 }
 
+type FilterType = "1d" | "3d" | "1w" | "1m" | "custom"
+
 interface ManagePanelProps {
     baseUrl: string
     theme: "dark" | "light"
     onThemeToggle: () => void
+}
+
+// Helper to get date range for filter type
+const getDateRange = (type: FilterType, customFrom?: Date, customTo?: Date) => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+
+    switch (type) {
+        case "1d":
+            return { from: today, to: now }
+        case "3d":
+            return { from: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000), to: now }
+        case "1w":
+            return { from: new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000), to: now }
+        case "1m":
+            return { from: new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000), to: now }
+        case "custom":
+            return { from: customFrom || today, to: customTo || now }
+    }
+}
+
+const filterLabels: Record<FilterType, string> = {
+    "1d": "1 день",
+    "3d": "3 дня",
+    "1w": "1 неделя",
+    "1m": "1 месяц",
+    "custom": "Выбрать"
 }
 
 export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePanelProps) {
@@ -67,7 +98,6 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [activeSession, setActiveSession] = useState<string>("")
     const [currentTrend, setCurrentTrend] = useState<string>("random")
     const [mode, setMode] = useState<string>("manual")
-    const [events, setEvents] = useState<PriceEvent[]>([])
     const [loading, setLoading] = useState(false)
     const [initialLoad, setInitialLoad] = useState(true)
 
@@ -77,6 +107,20 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [volMode, setVolMode] = useState<string>("auto")
 
     const [error, setError] = useState<string | null>(null)
+
+    // Events state with pagination
+    const [events, setEvents] = useState<PriceEvent[]>([])
+    const [eventsOffset, setEventsOffset] = useState(0)
+    const [eventsTotal, setEventsTotal] = useState(0)
+    const [eventsLoading, setEventsLoading] = useState(false)
+    const EVENTS_LIMIT = 20
+    const hasMoreEvents = events.length < eventsTotal
+
+    // Events filter state
+    const [filterType, setFilterType] = useState<FilterType>("1d")
+    const [customDateFrom, setCustomDateFrom] = useState<Date | null>(null)
+    const [customDateTo, setCustomDateTo] = useState<Date | null>(null)
+    const [showFilterModal, setShowFilterModal] = useState(false)
 
     // New event form
     const [newDirection, setNewDirection] = useState<"up" | "down">("up")
@@ -98,8 +142,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [newAdminName, setNewAdminName] = useState("")
     const [newAdminRights, setNewAdminRights] = useState<string[]>([])
 
-    // Available rights
     const allRights = ["sessions", "volatility", "trend", "events"]
+
+    // Check if mobile
+    const isMobile = useMemo(() => {
+        if (typeof window === "undefined") return false
+        return window.innerWidth <= 768
+    }, [])
 
     // Validate token on mount
     useEffect(() => {
@@ -136,17 +185,94 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         validateToken()
     }, [urlToken, baseUrl, navigate])
 
-    const headers = {
+    const headers = useMemo(() => ({
         "Authorization": `Bearer ${adminToken}`,
         "Content-Type": "application/json"
-    }
+    }), [adminToken])
 
-    // Check if user can access a feature
     const canAccess = (right: string) => {
         return userRole === "owner" || (Array.isArray(userRights) && userRights.includes(right))
     }
 
-    // Fetch active event state on load
+    // Fetch events with pagination
+    const fetchEvents = useCallback(async (reset = false) => {
+        if (!adminToken) return
+        setEventsLoading(true)
+
+        const dateRange = getDateRange(filterType, customDateFrom || undefined, customDateTo || undefined)
+        const offset = reset ? 0 : eventsOffset
+
+        try {
+            const params = new URLSearchParams({
+                limit: String(EVENTS_LIMIT),
+                offset: String(offset),
+                date_from: dateRange.from.toISOString(),
+                date_to: dateRange.to.toISOString()
+            })
+
+            const res = await fetch(`${baseUrl}/v1/admin/events?${params}`, { headers })
+            if (res.ok) {
+                const data = await res.json()
+                if (reset) {
+                    setEvents(data.events || [])
+                    setEventsOffset(EVENTS_LIMIT)
+                } else {
+                    setEvents(prev => [...prev, ...(data.events || [])])
+                    setEventsOffset(prev => prev + EVENTS_LIMIT)
+                }
+                setEventsTotal(data.total || 0)
+            }
+        } catch (e) {
+            console.error("[ManagePanel] Fetch events error:", e)
+        }
+        setEventsLoading(false)
+    }, [adminToken, baseUrl, headers, filterType, customDateFrom, customDateTo, eventsOffset])
+
+    // Fetch other data
+    const fetchData = useCallback(async () => {
+        if (!adminToken) return
+        try {
+            const [sessRes, trendRes, modeRes, volRes] = await Promise.all([
+                fetch(`${baseUrl}/v1/admin/sessions`, { headers }),
+                fetch(`${baseUrl}/v1/admin/trend`, { headers }),
+                fetch(`${baseUrl}/v1/admin/sessions/mode`, { headers }),
+                fetch(`${baseUrl}/v1/admin/volatility`, { headers })
+            ])
+
+            if (sessRes.ok) {
+                const sessData = await sessRes.json()
+                setSessions(sessData || [])
+                const active = (sessData || []).find((s: SessionConfig) => s.is_active)
+                if (active) setActiveSession(active.id)
+            }
+
+            if (trendRes.ok) {
+                const trendData = await trendRes.json()
+                setCurrentTrend(trendData.trend || "random")
+            }
+
+            if (modeRes.ok) {
+                const modeData = await modeRes.json()
+                setMode(modeData.mode || "manual")
+            }
+
+            if (volRes.ok) {
+                const volData = await volRes.json()
+                setVolConfigs(volData.settings || [])
+                setVolMode(volData.mode || "auto")
+                const activeV = (volData.settings || []).find((v: VolatilityConfig) => v.is_active)
+                if (activeV) setActiveVol(activeV.id)
+            }
+
+            if (error === "Network Error") setError(null)
+        } catch (e) {
+            console.error("[ManagePanel] Fetch error:", e)
+        } finally {
+            setInitialLoad(false)
+        }
+    }, [baseUrl, adminToken, headers, error])
+
+    // Fetch active event
     useEffect(() => {
         const fetchActiveEvent = async () => {
             try {
@@ -170,12 +296,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         }
         if (isAuthorized && adminToken) fetchActiveEvent()
         else setEventLoading(false)
-    }, [isAuthorized, adminToken, baseUrl, currentTrend])
+    }, [isAuthorized, adminToken, baseUrl, headers, currentTrend])
 
     // WebSocket for event_state updates
     useEffect(() => {
         if (!isAuthorized) return
-
         const wsUrl = "ws://localhost:8080/v1/events/ws"
         const ws = new WebSocket(wsUrl)
 
@@ -194,76 +319,27 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                         })
                     } else {
                         setActiveEventState(null)
-                        fetchData()
+                        fetchEvents(true)
                     }
                 }
             } catch { }
         }
 
         return () => ws.close()
-    }, [isAuthorized, currentTrend])
+    }, [isAuthorized, currentTrend, fetchEvents])
 
     // Countdown timer
     useEffect(() => {
         if (!activeEventState?.active) return
-
         const timer = setInterval(() => {
             const remaining = Math.max(0, Math.floor((activeEventState.endTime - Date.now()) / 1000))
             setActiveEventState(prev => prev ? { ...prev, countdown: remaining } : null)
-            if (remaining <= 0) {
-                setActiveEventState(null)
-            }
+            if (remaining <= 0) setActiveEventState(null)
         }, 1000)
-
         return () => clearInterval(timer)
     }, [activeEventState?.endTime])
 
-    const fetchData = useCallback(async () => {
-        if (!adminToken) return
-        try {
-            const [sessRes, trendRes, modeRes, eventsRes, volRes] = await Promise.all([
-                fetch(`${baseUrl}/v1/admin/sessions`, { headers }),
-                fetch(`${baseUrl}/v1/admin/trend`, { headers }),
-                fetch(`${baseUrl}/v1/admin/sessions/mode`, { headers }),
-                fetch(`${baseUrl}/v1/admin/events`, { headers }),
-                fetch(`${baseUrl}/v1/admin/volatility`, { headers })
-            ])
-
-            if (!sessRes.ok || !trendRes.ok || !modeRes.ok || !eventsRes.ok) {
-                throw new Error("API Error")
-            }
-
-            const sessData = await sessRes.json()
-            setSessions(sessData || [])
-            const active = (sessData || []).find((s: SessionConfig) => s.is_active)
-            if (active) setActiveSession(active.id)
-
-            const trendData = await trendRes.json()
-            setCurrentTrend(trendData.trend || "random")
-
-            const modeData = await modeRes.json()
-            setMode(modeData.mode || "manual")
-
-            const eventsData = await eventsRes.json()
-            setEvents(eventsData || [])
-
-            if (volRes.ok) {
-                const volData = await volRes.json()
-                setVolConfigs(volData.settings || [])
-                setVolMode(volData.mode || "auto")
-                const activeV = (volData.settings || []).find((v: VolatilityConfig) => v.is_active)
-                if (activeV) setActiveVol(activeV.id)
-            }
-
-            if (error === "Network Error") setError(null)
-        } catch (e) {
-            console.error("[ManagePanel] Fetch error:", e)
-        } finally {
-            setInitialLoad(false)
-        }
-    }, [baseUrl, adminToken])
-
-    // Fetch panel admins (for owner)
+    // Fetch panel admins
     const fetchAdmins = useCallback(async () => {
         if (!adminToken || userRole !== "owner") return
         try {
@@ -275,12 +351,27 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         } catch (e) {
             console.error("[ManagePanel] Fetch admins error:", e)
         }
-    }, [baseUrl, adminToken, userRole])
+    }, [baseUrl, adminToken, userRole, headers])
 
+    // Initial data load
     useEffect(() => {
         if (isAuthorized && adminToken) {
             fetchData()
+            fetchEvents(true)
             fetchAdmins()
+        }
+    }, [isAuthorized, adminToken])
+
+    // Reset events when filter changes
+    useEffect(() => {
+        if (isAuthorized && adminToken && !initialLoad) {
+            fetchEvents(true)
+        }
+    }, [filterType, customDateFrom, customDateTo])
+
+    // Auto refresh data (exclude events - those are paginated)
+    useEffect(() => {
+        if (isAuthorized && adminToken) {
             const interval = setInterval(() => {
                 fetchData()
                 fetchAdmins()
@@ -297,32 +388,26 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                 let targetId = "calm"
                 if (hour >= 9 && hour < 13) targetId = "turbo"
                 else if (hour >= 13 && hour < 19) targetId = "normal"
-
-                if (activeSession !== targetId) {
-                    switchSession(targetId)
-                }
+                if (activeSession !== targetId) switchSession(targetId)
             }
-
             checkAndSwitch()
             const timer = setInterval(checkAndSwitch, 10000)
             return () => clearInterval(timer)
         }
     }, [mode, activeSession, isAuthorized])
 
+    // Actions
     const switchSession = async (sessionId: string) => {
         if (!canAccess("sessions")) return
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/sessions/switch`, {
-                method: "POST",
-                headers,
+                method: "POST", headers,
                 body: JSON.stringify({ session_id: sessionId })
             })
             setActiveSession(sessionId)
             fetchData()
-        } catch (e) {
-            setError(String(e))
-        }
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
@@ -331,14 +416,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/trend`, {
-                method: "POST",
-                headers,
+                method: "POST", headers,
                 body: JSON.stringify({ trend })
             })
             setCurrentTrend(trend)
-        } catch (e) {
-            setError(String(e))
-        }
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
@@ -348,14 +430,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/sessions/mode`, {
-                method: "POST",
-                headers,
+                method: "POST", headers,
                 body: JSON.stringify({ mode: newMode })
             })
             setMode(newMode)
-        } catch (e) {
-            setError(String(e))
-        }
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
@@ -364,15 +443,12 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/volatility/activate`, {
-                method: "POST",
-                headers,
+                method: "POST", headers,
                 body: JSON.stringify({ id: volId })
             })
             setActiveVol(volId)
             fetchData()
-        } catch (e) {
-            setError(String(e))
-        }
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
@@ -382,14 +458,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/volatility/mode`, {
-                method: "POST",
-                headers,
+                method: "POST", headers,
                 body: JSON.stringify({ mode: newMode })
             })
             setVolMode(newMode)
-        } catch (e) {
-            setError(String(e))
-        }
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
@@ -398,17 +471,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/events`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
-                    direction: newDirection,
-                    duration_seconds: parseInt(newDuration)
-                })
+                method: "POST", headers,
+                body: JSON.stringify({ direction: newDirection, duration_seconds: parseInt(newDuration) })
             })
-            fetchData()
-        } catch (e) {
-            setError(String(e))
-        }
+            fetchEvents(true)
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
@@ -416,38 +483,25 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         if (!canAccess("events")) return
         setLoading(true)
         try {
-            await fetch(`${baseUrl}/v1/admin/events/${id}`, {
-                method: "DELETE",
-                headers
-            })
-            fetchData()
-        } catch (e) {
-            setError(String(e))
-        }
+            await fetch(`${baseUrl}/v1/admin/events/${id}`, { method: "DELETE", headers })
+            fetchEvents(true)
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
-    // Admin management (owner only)
     const createAdmin = async () => {
         if (userRole !== "owner" || !newAdminTgId || !newAdminName) return
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/panel-admins`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
-                    telegram_id: parseInt(newAdminTgId),
-                    name: newAdminName,
-                    rights: newAdminRights
-                })
+                method: "POST", headers,
+                body: JSON.stringify({ telegram_id: parseInt(newAdminTgId), name: newAdminName, rights: newAdminRights })
             })
             setNewAdminTgId("")
             setNewAdminName("")
             setNewAdminRights([])
             fetchAdmins()
-        } catch (e) {
-            setError(String(e))
-        }
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
@@ -455,14 +509,9 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         if (userRole !== "owner") return
         setLoading(true)
         try {
-            await fetch(`${baseUrl}/v1/admin/panel-admins/${id}`, {
-                method: "DELETE",
-                headers
-            })
+            await fetch(`${baseUrl}/v1/admin/panel-admins/${id}`, { method: "DELETE", headers })
             fetchAdmins()
-        } catch (e) {
-            setError(String(e))
-        }
+        } catch (e) { setError(String(e)) }
         setLoading(false)
     }
 
@@ -474,17 +523,26 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         }
     }
 
-    const sessionIcons: Record<string, any> = {
-        turbo: Zap,
-        normal: Timer,
-        calm: Gauge
+    const handleFilterSelect = (type: FilterType) => {
+        if (type === "custom") {
+            // Don't close modal, show date picker
+            return
+        }
+        setFilterType(type)
+        setCustomDateFrom(null)
+        setCustomDateTo(null)
+        setShowFilterModal(false)
     }
 
-    const sessionSchedule: Record<string, string> = {
-        turbo: "09:00 - 13:00",
-        normal: "13:00 - 19:00",
-        calm: "19:00 - 09:00"
+    const applyCustomFilter = () => {
+        if (customDateFrom && customDateTo) {
+            setFilterType("custom")
+            setShowFilterModal(false)
+        }
     }
+
+    const sessionIcons: Record<string, any> = { turbo: Zap, normal: Timer, calm: Gauge }
+    const sessionSchedule: Record<string, string> = { turbo: "09:00 - 13:00", normal: "13:00 - 19:00", calm: "19:00 - 09:00" }
 
     const trendConfig = [
         { id: "bullish", icon: TrendingUp, label: "Bullish", color: "#16a34a" },
@@ -493,7 +551,6 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         { id: "random", icon: Shuffle, label: "Random", color: "var(--accent-2)" }
     ]
 
-    // Loading state
     if (isValidating) {
         return (
             <div className="manage-panel-loading">
@@ -509,12 +566,8 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         )
     }
 
-    // Not authorized - should redirect to 404 but just in case
-    if (!isAuthorized) {
-        return null
-    }
+    if (!isAuthorized) return null
 
-    // Admin Dashboard
     return (
         <div className="admin-dashboard">
             {/* Header */}
@@ -550,16 +603,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             <Activity size={20} />
                             <h2>Trading Sessions</h2>
                             <div className="mode-toggle">
-                                {initialLoad ? (
-                                    <Skeleton width={120} height={24} radius={12} />
-                                ) : (
+                                {initialLoad ? <Skeleton width={120} height={24} radius={12} /> : (
                                     <>
                                         <span className={mode === "manual" ? "active" : ""}>Manual</span>
-                                        <button
-                                            className={`toggle-switch ${mode === "auto" ? "checked" : ""}`}
-                                            onClick={toggleMode}
-                                            disabled={loading}
-                                        >
+                                        <button className={`toggle-switch ${mode === "auto" ? "checked" : ""}`} onClick={toggleMode} disabled={loading}>
                                             <span className="toggle-thumb" />
                                         </button>
                                         <span className={mode === "auto" ? "active" : ""}>Auto</span>
@@ -568,42 +615,29 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             </div>
                         </div>
                         <div className="sessions-grid">
-                            {initialLoad ? (
-                                Array(3).fill(0).map((_, i) => (
-                                    <div key={i} className="session-card" style={{ pointerEvents: "none", opacity: 0.7 }}>
-                                        <Skeleton width={24} height={24} radius="50%" />
-                                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                                            <Skeleton width="60%" height={16} />
-                                            <Skeleton width="40%" height={12} />
-                                        </div>
+                            {initialLoad ? Array(3).fill(0).map((_, i) => (
+                                <div key={i} className="session-card" style={{ pointerEvents: "none", opacity: 0.7 }}>
+                                    <Skeleton width={24} height={24} radius="50%" />
+                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                                        <Skeleton width="60%" height={16} />
+                                        <Skeleton width="40%" height={12} />
                                     </div>
-                                ))
-                            ) : (
-                                sessions.map(s => {
-                                    const Icon = sessionIcons[s.id] || Timer
-                                    const isActive = activeSession === s.id
-                                    return (
-                                        <button
-                                            key={s.id}
-                                            className={`session-card ${isActive ? "active" : ""} ${mode === "auto" ? "auto-disabled" : ""}`}
-                                            onClick={() => switchSession(s.id)}
-                                            disabled={loading || mode === "auto"}
-                                            style={{ opacity: mode === "auto" && !isActive ? 0.6 : 1 }}
-                                        >
-                                            <Icon size={24} />
-                                            <span className="session-name">{s.name}</span>
-                                            {mode === "auto" ? (
-                                                <span className="session-rate" style={{ fontSize: 11 }}>
-                                                    {sessionSchedule[s.id] || "All Day"}
-                                                </span>
-                                            ) : (
-                                                <span className="session-rate">{s.update_rate_ms}ms</span>
-                                            )}
-                                            {isActive && <CheckCircle size={16} className="session-check" />}
-                                        </button>
-                                    )
-                                })
-                            )}
+                                </div>
+                            )) : sessions.map(s => {
+                                const Icon = sessionIcons[s.id] || Timer
+                                const isActive = activeSession === s.id
+                                return (
+                                    <button key={s.id} className={`session-card ${isActive ? "active" : ""} ${mode === "auto" ? "auto-disabled" : ""}`}
+                                        onClick={() => switchSession(s.id)} disabled={loading || mode === "auto"}
+                                        style={{ opacity: mode === "auto" && !isActive ? 0.6 : 1 }}>
+                                        <Icon size={24} />
+                                        <span className="session-name">{s.name}</span>
+                                        {mode === "auto" ? <span className="session-rate" style={{ fontSize: 11 }}>{sessionSchedule[s.id] || "All Day"}</span>
+                                            : <span className="session-rate">{s.update_rate_ms}ms</span>}
+                                        {isActive && <CheckCircle size={16} className="session-check" />}
+                                    </button>
+                                )
+                            })}
                         </div>
                     </div>
                 )}
@@ -615,16 +649,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             <Activity size={20} />
                             <h2>Market Volatility</h2>
                             <div className="mode-toggle">
-                                {initialLoad ? (
-                                    <Skeleton width={120} height={24} radius={12} />
-                                ) : (
+                                {initialLoad ? <Skeleton width={120} height={24} radius={12} /> : (
                                     <>
                                         <span className={volMode === "manual" ? "active" : ""}>Manual</span>
-                                        <button
-                                            className={`toggle-switch ${volMode === "auto" ? "checked" : ""}`}
-                                            onClick={toggleVolMode}
-                                            disabled={loading}
-                                        >
+                                        <button className={`toggle-switch ${volMode === "auto" ? "checked" : ""}`} onClick={toggleVolMode} disabled={loading}>
                                             <span className="toggle-thumb" />
                                         </button>
                                         <span className={volMode === "auto" ? "active" : ""}>Auto</span>
@@ -633,46 +661,32 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             </div>
                         </div>
                         <div className="sessions-grid">
-                            {initialLoad ? (
-                                Array(3).fill(0).map((_, i) => (
-                                    <div key={i} className="session-card" style={{ pointerEvents: "none", opacity: 0.7 }}>
-                                        <Skeleton width={24} height={24} radius="50%" />
-                                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                                            <Skeleton width="60%" height={16} />
-                                            <Skeleton width="40%" height={12} />
-                                        </div>
+                            {initialLoad ? Array(3).fill(0).map((_, i) => (
+                                <div key={i} className="session-card" style={{ pointerEvents: "none", opacity: 0.7 }}>
+                                    <Skeleton width={24} height={24} radius="50%" />
+                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                                        <Skeleton width="60%" height={16} />
+                                        <Skeleton width="40%" height={12} />
                                     </div>
-                                ))
-                            ) : (
-                                volConfigs.map(v => {
-                                    let Icon = Activity
-                                    if (v.id === "low") Icon = Moon
-                                    if (v.id === "medium") Icon = Sun
-                                    if (v.id === "high") Icon = Zap
-
-                                    const isActive = activeVol === v.id
-                                    return (
-                                        <button
-                                            key={v.id}
-                                            className={`session-card ${isActive ? "active" : ""} ${volMode === "auto" ? "auto-disabled" : ""}`}
-                                            onClick={() => switchVolatility(v.id)}
-                                            disabled={loading || volMode === "auto"}
-                                            style={{ opacity: volMode === "auto" && !isActive ? 0.6 : 1 }}
-                                        >
-                                            <Icon size={24} />
-                                            <span className="session-name">{v.name}</span>
-                                            {volMode === "auto" ? (
-                                                <span className="session-rate" style={{ fontSize: 11 }}>
-                                                    {v.schedule_start} - {v.schedule_end}
-                                                </span>
-                                            ) : (
-                                                <span className="session-rate">Spread: {v.spread.toExponential(0)}</span>
-                                            )}
-                                            {isActive && <CheckCircle size={16} className="session-check" />}
-                                        </button>
-                                    )
-                                })
-                            )}
+                                </div>
+                            )) : volConfigs.map(v => {
+                                let Icon = Activity
+                                if (v.id === "low") Icon = Moon
+                                if (v.id === "medium") Icon = Sun
+                                if (v.id === "high") Icon = Zap
+                                const isActive = activeVol === v.id
+                                return (
+                                    <button key={v.id} className={`session-card ${isActive ? "active" : ""} ${volMode === "auto" ? "auto-disabled" : ""}`}
+                                        onClick={() => switchVolatility(v.id)} disabled={loading || volMode === "auto"}
+                                        style={{ opacity: volMode === "auto" && !isActive ? 0.6 : 1 }}>
+                                        <Icon size={24} />
+                                        <span className="session-name">{v.name}</span>
+                                        {volMode === "auto" ? <span className="session-rate" style={{ fontSize: 11 }}>{v.schedule_start} - {v.schedule_end}</span>
+                                            : <span className="session-rate">Spread: {v.spread.toExponential(0)}</span>}
+                                        {isActive && <CheckCircle size={16} className="session-check" />}
+                                    </button>
+                                )
+                            })}
                         </div>
                     </div>
                 )}
@@ -685,41 +699,26 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             <h2>Market Trend</h2>
                         </div>
                         <div className={`trend-grid ${activeEventState?.active ? "event-running" : ""}`}>
-                            {(initialLoad || eventLoading) ? (
-                                Array(4).fill(0).map((_, i) => (
-                                    <div key={i} className="trend-btn" style={{ pointerEvents: "none", border: "1px solid var(--border-subtle)" }}>
-                                        <Skeleton width={22} height={22} radius="50%" />
-                                        <Skeleton width={60} height={14} />
-                                    </div>
-                                ))
-                            ) : (
-                                trendConfig.map(t => {
-                                    const isEventRunning = activeEventState?.active
-                                    const isManualActive = isEventRunning
-                                        ? activeEventState.manualTrend === t.id
-                                        : currentTrend === t.id
-                                    const isEventTrend = isEventRunning && activeEventState.trend === t.id
-                                    return (
-                                        <button
-                                            key={t.id}
-                                            className={`trend-btn ${isManualActive ? "active" : ""} ${isEventTrend ? "event-active" : ""} ${isEventRunning ? "event-disabled" : ""}`}
-                                            onClick={() => setTrend(t.id)}
-                                            disabled={loading || isEventRunning}
-                                            style={{
-                                                "--trend-color": t.color
-                                            } as React.CSSProperties}
-                                        >
-                                            <t.icon size={22} />
-                                            <span>{t.label}</span>
-                                            {isEventTrend && activeEventState && (
-                                                <span className="event-timer">
-                                                    {activeEventState.countdown}s
-                                                </span>
-                                            )}
-                                        </button>
-                                    )
-                                })
-                            )}
+                            {(initialLoad || eventLoading) ? Array(4).fill(0).map((_, i) => (
+                                <div key={i} className="trend-btn" style={{ pointerEvents: "none", border: "1px solid var(--border-subtle)" }}>
+                                    <Skeleton width={22} height={22} radius="50%" />
+                                    <Skeleton width={60} height={14} />
+                                </div>
+                            )) : trendConfig.map(t => {
+                                const isEventRunning = activeEventState?.active
+                                const isManualActive = isEventRunning ? activeEventState.manualTrend === t.id : currentTrend === t.id
+                                const isEventTrend = isEventRunning && activeEventState.trend === t.id
+                                return (
+                                    <button key={t.id}
+                                        className={`trend-btn ${isManualActive ? "active" : ""} ${isEventTrend ? "event-active" : ""} ${isEventRunning ? "event-disabled" : ""}`}
+                                        onClick={() => setTrend(t.id)} disabled={loading || isEventRunning}
+                                        style={{ "--trend-color": t.color } as React.CSSProperties}>
+                                        <t.icon size={22} />
+                                        <span>{t.label}</span>
+                                        {isEventTrend && activeEventState && <span className="event-timer">{activeEventState.countdown}s</span>}
+                                    </button>
+                                )
+                            })}
                         </div>
                     </div>
                 )}
@@ -730,6 +729,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                         <div className="admin-card-header">
                             <Target size={20} />
                             <h2>Scheduled Price Events</h2>
+                            <button className="filter-btn" onClick={() => setShowFilterModal(true)}>
+                                <Filter size={16} />
+                                <span>{filterLabels[filterType]}</span>
+                            </button>
                         </div>
 
                         {/* New Event Form */}
@@ -738,16 +741,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                 <div className="event-field">
                                     <label>Direction</label>
                                     <div className="direction-btns">
-                                        <button
-                                            className={newDirection === "up" ? "active up" : ""}
-                                            onClick={() => setNewDirection("up")}
-                                        >
+                                        <button className={newDirection === "up" ? "active up" : ""} onClick={() => setNewDirection("up")}>
                                             <TrendingUp size={16} /> Bullish
                                         </button>
-                                        <button
-                                            className={newDirection === "down" ? "active down" : ""}
-                                            onClick={() => setNewDirection("down")}
-                                        >
+                                        <button className={newDirection === "down" ? "active down" : ""} onClick={() => setNewDirection("down")}>
                                             <TrendingDown size={16} /> Bearish
                                         </button>
                                     </div>
@@ -755,21 +752,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                 <div className="event-field">
                                     <label>Duration</label>
                                     <div className="duration-input">
-                                        <input
-                                            type="number"
-                                            value={newDuration}
-                                            onChange={e => setNewDuration(e.target.value)}
-                                            placeholder="60"
-                                            min="5"
-                                        />
+                                        <input type="number" value={newDuration} onChange={e => setNewDuration(e.target.value)} placeholder="60" min="5" />
                                         <span>sec</span>
                                     </div>
                                 </div>
-                                <button
-                                    className="add-event-btn"
-                                    onClick={createEvent}
-                                    disabled={loading}
-                                >
+                                <button className="add-event-btn" onClick={createEvent} disabled={loading}>
                                     <Plus size={18} />
                                     <span>Start Event</span>
                                 </button>
@@ -778,126 +765,146 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
                         {/* Events List */}
                         <div className="events-list">
-                            {initialLoad ? (
-                                Array(2).fill(0).map((_, i) => (
-                                    <div key={i} className="event-item" style={{ pointerEvents: "none", opacity: 0.7 }}>
-                                        <div className="event-info">
-                                            <Skeleton width={60} height={20} />
-                                            <Skeleton width={40} height={16} />
-                                            <Skeleton width={50} height={16} />
-                                        </div>
-                                        <Skeleton width={24} height={24} radius={4} />
+                            {initialLoad ? Array(2).fill(0).map((_, i) => (
+                                <div key={i} className="event-item" style={{ pointerEvents: "none", opacity: 0.7 }}>
+                                    <div className="event-info">
+                                        <Skeleton width={60} height={20} />
+                                        <Skeleton width={40} height={16} />
+                                        <Skeleton width={50} height={16} />
                                     </div>
-                                ))
-                            ) : events.length === 0 ? (
+                                    <Skeleton width={24} height={24} radius={4} />
+                                </div>
+                            )) : events.length === 0 ? (
                                 <div className="no-events">
                                     <Calendar size={24} />
-                                    <span>No events yet</span>
+                                    <span>No events for {filterLabels[filterType]}</span>
                                 </div>
-                            ) : (
-                                events.map(evt => (
-                                    <div key={evt.id} className={`event-item ${evt.status}`}>
-                                        <div className="event-info">
-                                            <span className={`event-direction ${evt.direction}`}>
-                                                {evt.direction === "up" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                                {evt.direction === "up" ? "Bullish" : "Bearish"}
-                                            </span>
-                                            <span className="event-duration">
-                                                <Clock size={14} />
-                                                {evt.duration_seconds}s
-                                            </span>
-                                            <span className={`event-status ${evt.status}`}>{evt.status}</span>
-                                        </div>
-                                        {evt.status === "pending" && (
-                                            <button className="cancel-event-btn" onClick={() => cancelEvent(evt.id)}>
-                                                <X size={16} />
-                                            </button>
-                                        )}
+                            ) : events.map(evt => (
+                                <div key={evt.id} className={`event-item ${evt.status}`}>
+                                    <div className="event-info">
+                                        <span className={`event-direction ${evt.direction}`}>
+                                            {evt.direction === "up" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                            {evt.direction === "up" ? "Bullish" : "Bearish"}
+                                        </span>
+                                        <span className="event-duration">
+                                            <Clock size={14} />
+                                            {evt.duration_seconds}s
+                                        </span>
+                                        <span className={`event-status ${evt.status}`}>{evt.status}</span>
                                     </div>
-                                ))
-                            )}
+                                    {evt.status === "pending" && (
+                                        <button className="cancel-event-btn" onClick={() => cancelEvent(evt.id)}>
+                                            <X size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
                         </div>
+
+                        {/* Load More Button */}
+                        {hasMoreEvents && (
+                            <button className="load-more-btn" onClick={() => fetchEvents(false)} disabled={eventsLoading}>
+                                {eventsLoading ? <Loader2 size={18} className="spin" /> : <Plus size={18} />}
+                                <span>{eventsLoading ? "Загрузка..." : `Загрузить ещё (${events.length}/${eventsTotal})`}</span>
+                            </button>
+                        )}
                     </div>
                 )}
 
-                {/* Panel Admins Card (Owner only) */}
+                {/* Panel Admins Card */}
                 {userRole === "owner" && (
                     <div className="admin-card full-width">
                         <div className="admin-card-header">
                             <Shield size={20} />
                             <h2>Panel Administrators</h2>
                         </div>
-
-                        {/* Add Admin Form */}
                         <div className="admin-form">
                             <div className="admin-form-row">
-                                <input
-                                    type="number"
-                                    value={newAdminTgId}
-                                    onChange={e => setNewAdminTgId(e.target.value)}
-                                    placeholder="Telegram ID"
-                                />
-                                <input
-                                    type="text"
-                                    value={newAdminName}
-                                    onChange={e => setNewAdminName(e.target.value)}
-                                    placeholder="Admin Name"
-                                />
+                                <input type="number" value={newAdminTgId} onChange={e => setNewAdminTgId(e.target.value)} placeholder="Telegram ID" />
+                                <input type="text" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} placeholder="Admin Name" />
                             </div>
                             <div className="admin-rights-row">
                                 {allRights.map(right => (
                                     <label key={right} className="right-checkbox">
-                                        <input
-                                            type="checkbox"
-                                            checked={newAdminRights.includes(right)}
-                                            onChange={() => toggleAdminRight(right)}
-                                        />
+                                        <input type="checkbox" checked={newAdminRights.includes(right)} onChange={() => toggleAdminRight(right)} />
                                         {right}
                                     </label>
                                 ))}
                             </div>
-                            <button
-                                className="add-event-btn"
-                                onClick={createAdmin}
-                                disabled={loading || !newAdminTgId || !newAdminName}
-                            >
+                            <button className="add-event-btn" onClick={createAdmin} disabled={loading || !newAdminTgId || !newAdminName}>
                                 <Plus size={18} />
                                 <span>Add Admin</span>
                             </button>
                         </div>
-
-                        {/* Admins List */}
                         <div className="admins-list">
                             {panelAdmins.length === 0 ? (
                                 <div className="no-events">
                                     <User size={24} />
                                     <span>No admins yet</span>
                                 </div>
-                            ) : (
-                                panelAdmins.map(admin => (
-                                    <div key={admin.id} className="admin-item">
-                                        <div className="admin-info">
-                                            <User size={20} />
-                                            <div>
-                                                <span className="admin-name">{admin.name}</span>
-                                                <span className="admin-tg">ID: {admin.telegram_id}</span>
-                                            </div>
+                            ) : panelAdmins.map(admin => (
+                                <div key={admin.id} className="admin-item">
+                                    <div className="admin-info">
+                                        <User size={20} />
+                                        <div>
+                                            <span className="admin-name">{admin.name}</span>
+                                            <span className="admin-tg">ID: {admin.telegram_id}</span>
                                         </div>
-                                        <div className="admin-rights">
-                                            {admin.rights.map(r => (
-                                                <span key={r} className="right-badge">{r}</span>
-                                            ))}
-                                        </div>
-                                        <button className="cancel-event-btn" onClick={() => deleteAdmin(admin.id)}>
-                                            <Trash2 size={16} />
-                                        </button>
                                     </div>
-                                ))
-                            )}
+                                    <div className="admin-rights">
+                                        {admin.rights.map(r => <span key={r} className="right-badge">{r}</span>)}
+                                    </div>
+                                    <button className="cancel-event-btn" onClick={() => deleteAdmin(admin.id)}>
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
             </div>
+
+            {/* Filter Modal / Swiper */}
+            {showFilterModal && (
+                <>
+                    <div className="filter-overlay" onClick={() => setShowFilterModal(false)} />
+                    <div className={`filter-modal ${isMobile ? "swiper" : ""}`}>
+                        <div className="filter-header">
+                            <h3>Фильтр событий</h3>
+                            <button onClick={() => setShowFilterModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="filter-presets">
+                            {(["1d", "3d", "1w", "1m"] as FilterType[]).map(type => (
+                                <button key={type} className={`filter-preset-btn ${filterType === type ? "active" : ""}`}
+                                    onClick={() => handleFilterSelect(type)}>
+                                    {filterLabels[type]}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="filter-custom">
+                            <h4>Выбрать диапазон</h4>
+                            <div className="date-range-inputs">
+                                <div className="date-input-group">
+                                    <label>От</label>
+                                    <input type="date" value={customDateFrom ? customDateFrom.toISOString().split('T')[0] : ''}
+                                        onChange={e => setCustomDateFrom(e.target.value ? new Date(e.target.value) : null)} />
+                                </div>
+                                <div className="date-input-group">
+                                    <label>До</label>
+                                    <input type="date" value={customDateTo ? customDateTo.toISOString().split('T')[0] : ''}
+                                        onChange={e => setCustomDateTo(e.target.value ? new Date(e.target.value + 'T23:59:59') : null)} />
+                                </div>
+                            </div>
+                            <button className="apply-filter-btn" onClick={applyCustomFilter} disabled={!customDateFrom || !customDateTo}>
+                                Применить
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     )
 }

@@ -138,17 +138,52 @@ func (h *Handler) SetTrend(w http.ResponseWriter, r *http.Request) {
 
 // --- Price Event Endpoints ---
 
-// GetEvents returns all price events (history)
+// GetEvents returns price events with pagination and date filtering
 func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
-	events, err := h.store.GetAllEvents(r.Context())
+	// Parse query params
+	q := r.URL.Query()
+
+	// Limit (default 20)
+	limit := 20
+	if l := q.Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	// Offset (default 0)
+	offset := 0
+	if o := q.Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	// Date range (default: today)
+	now := time.Now()
+	dateFrom := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	dateTo := now
+
+	if df := q.Get("date_from"); df != "" {
+		if parsed, err := time.Parse(time.RFC3339, df); err == nil {
+			dateFrom = parsed
+		}
+	}
+	if dt := q.Get("date_to"); dt != "" {
+		if parsed, err := time.Parse(time.RFC3339, dt); err == nil {
+			dateTo = parsed
+		}
+	}
+
+	result, err := h.store.GetEventsPaginated(r.Context(), limit, offset, dateFrom, dateTo)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
-	if events == nil {
-		events = []PriceEvent{}
+	if result.Events == nil {
+		result.Events = []PriceEvent{}
 	}
-	httputil.WriteJSON(w, http.StatusOK, events)
+	httputil.WriteJSON(w, http.StatusOK, result)
 }
 
 // GetActiveEvent returns the current active event state

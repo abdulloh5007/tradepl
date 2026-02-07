@@ -245,7 +245,7 @@ func AdminAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 				return secret, nil
 			})
 			if err != nil || !token.Valid {
-				httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "invalid token"})
+				httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "invalid token"})
 				return
 			}
 
@@ -256,12 +256,18 @@ func AdminAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 			}
 
 			role, _ := claims["role"].(string)
-			if role != "admin" {
+			// Accept both "admin" (old login) and "owner"/"admin" (new Telegram token)
+			if role != "admin" && role != "owner" {
 				httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "admin access required"})
 				return
 			}
 
+			// Get username or telegram_id for context
 			username, _ := claims["username"].(string)
+			if username == "" {
+				// For Telegram tokens, use role as identifier
+				username = role
+			}
 			ctx := context.WithValue(r.Context(), adminUsernameKey, username)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

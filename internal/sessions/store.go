@@ -166,6 +166,52 @@ func (s *Store) GetAllEvents(ctx context.Context) ([]PriceEvent, error) {
 	return events, nil
 }
 
+// EventsResult contains paginated events and total count
+type EventsResult struct {
+	Events []PriceEvent `json:"events"`
+	Total  int          `json:"total"`
+}
+
+// GetEventsPaginated returns events with pagination and date filtering
+func (s *Store) GetEventsPaginated(ctx context.Context, limit, offset int, dateFrom, dateTo time.Time) (*EventsResult, error) {
+	// Count total matching events
+	var total int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM price_events
+		WHERE created_at >= $1 AND created_at <= $2
+	`, dateFrom, dateTo).Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get paginated events
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, created_at
+		FROM price_events
+		WHERE created_at >= $1 AND created_at <= $2
+		ORDER BY created_at DESC
+		LIMIT $3 OFFSET $4
+	`, dateFrom, dateTo, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []PriceEvent
+	for rows.Next() {
+		var pe PriceEvent
+		if err := rows.Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.StartedAt, &pe.CompletedAt, &pe.Status, &pe.CreatedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, pe)
+	}
+
+	return &EventsResult{
+		Events: events,
+		Total:  total,
+	}, nil
+}
+
 // CreateEvent creates a new price event
 func (s *Store) CreateEvent(ctx context.Context, pair string, targetPrice float64, direction string, durationSecs int, scheduledAt time.Time) (*PriceEvent, error) {
 	var pe PriceEvent
