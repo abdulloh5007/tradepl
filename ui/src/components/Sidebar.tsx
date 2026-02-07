@@ -1,4 +1,4 @@
-import { BarChart2, List, Wallet, Key, Droplet, Settings } from "lucide-react"
+import { BarChart2, List, Wallet, Key, Droplet } from "lucide-react"
 import type { View, Lang } from "../types"
 import { t } from "../utils/i18n"
 
@@ -14,8 +14,7 @@ export default function Sidebar({ view, setView, lang }: SidebarProps) {
         { key: "positions" as const, label: t("positions", lang), icon: List },
         { key: "balance" as const, label: t("balance", lang), icon: Wallet },
         { key: "api" as const, label: t("api", lang), icon: Key },
-        { key: "faucet" as const, label: t("faucet", lang), icon: Droplet },
-        { key: "admin" as const, label: "Admin", icon: Settings }
+        { key: "faucet" as const, label: t("faucet", lang), icon: Droplet }
     ]
 
     return (

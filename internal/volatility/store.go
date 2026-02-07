@@ -17,7 +17,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 }
 
 func (s *Store) GetSettings(ctx context.Context) ([]Setting, error) {
-	rows, err := s.pool.Query(ctx, "SELECT id, name, value, spread, schedule_start, schedule_end, is_active FROM volatility_settings ORDER BY value ASC")
+	rows, err := s.pool.Query(ctx, "SELECT id, name, value, spread, schedule_start, schedule_end, is_active FROM volatility_settings ORDER BY value DESC")
 	if err != nil {
 		return nil, err
 	}

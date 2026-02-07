@@ -111,3 +111,10 @@ func (s *Service) GetUser(ctx context.Context, userID string) (User, error) {
 	err := s.pool.QueryRow(ctx, "select id, email from users where id = $1", userID).Scan(&u.ID, &u.Email)
 	return u, err
 }
+
+// UserExists checks if a user exists in the database
+func (s *Service) UserExists(ctx context.Context, userID string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
+	return exists, err
+}

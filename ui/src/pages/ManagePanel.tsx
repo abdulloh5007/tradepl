@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSearchParams, useNavigate } from "react-router-dom"
 import {
     LogOut, Activity, TrendingUp, TrendingDown, Minus, Shuffle,
@@ -144,6 +144,9 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
     const allRights = ["sessions", "volatility", "trend", "events"]
 
+    // Error logging flags - prevent repeated console spam
+    const errorLogged = useRef({ fetchData: false, fetchEvents: false, fetchAdmins: false })
+
     // Check if mobile
     const isMobile = useMemo(() => {
         if (typeof window === "undefined") return false
@@ -223,7 +226,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                 setEventsTotal(data.total || 0)
             }
         } catch (e) {
-            console.error("[ManagePanel] Fetch events error:", e)
+            if (!errorLogged.current.fetchEvents) {
+                console.error("[ManagePanel] Fetch events error:", e)
+                errorLogged.current.fetchEvents = true
+            }
         }
         setEventsLoading(false)
     }, [adminToken, baseUrl, headers, filterType, customDateFrom, customDateTo, eventsOffset])
@@ -266,7 +272,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
             if (error === "Network Error") setError(null)
         } catch (e) {
-            console.error("[ManagePanel] Fetch error:", e)
+            if (!errorLogged.current.fetchData) {
+                console.error("[ManagePanel] Fetch error:", e)
+                errorLogged.current.fetchData = true
+            }
         } finally {
             setInitialLoad(false)
         }
@@ -349,7 +358,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                 setPanelAdmins(data || [])
             }
         } catch (e) {
-            console.error("[ManagePanel] Fetch admins error:", e)
+            if (!errorLogged.current.fetchAdmins) {
+                console.error("[ManagePanel] Fetch admins error:", e)
+                errorLogged.current.fetchAdmins = true
+            }
         }
     }, [baseUrl, adminToken, userRole, headers])
 
@@ -493,9 +505,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         if (userRole !== "owner" || !newAdminTgId || !newAdminName) return
         setLoading(true)
         try {
+            // Convert rights array to map[string]bool for backend
+            const rightsMap: Record<string, boolean> = {}
+            newAdminRights.forEach(r => { rightsMap[r] = true })
+
             await fetch(`${baseUrl}/v1/admin/panel-admins`, {
                 method: "POST", headers,
-                body: JSON.stringify({ telegram_id: parseInt(newAdminTgId), name: newAdminName, rights: newAdminRights })
+                body: JSON.stringify({ telegram_id: parseInt(newAdminTgId), name: newAdminName, rights: rightsMap })
             })
             setNewAdminTgId("")
             setNewAdminName("")

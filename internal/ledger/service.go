@@ -23,6 +23,19 @@ func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool}
 }
 
+func (s *Service) CheckUserExists(ctx context.Context, tx pgx.Tx, userID string) error {
+	// Check if user exists - return error if not
+	var exists bool
+	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("user not found, please register first")
+	}
+	return nil
+}
+
 func (s *Service) EnsureAccount(ctx context.Context, tx pgx.Tx, userID, assetID string, kind types.AccountKind) (string, error) {
 	var id string
 	err := tx.QueryRow(ctx, "select id from accounts where owner_type = 'user' and owner_user_id = $1 and asset_id = $2 and kind = $3", userID, assetID, string(kind)).Scan(&id)
@@ -30,6 +43,10 @@ func (s *Service) EnsureAccount(ctx context.Context, tx pgx.Tx, userID, assetID 
 		return id, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
+	}
+	// Check user exists before creating account
+	if err := s.CheckUserExists(ctx, tx, userID); err != nil {
 		return "", err
 	}
 	err = tx.QueryRow(ctx, "insert into accounts (owner_type, owner_user_id, asset_id, kind) values ('user', $1, $2, $3) returning id", userID, assetID, string(kind)).Scan(&id)

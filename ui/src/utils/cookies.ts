@@ -22,7 +22,7 @@ export function storedTheme(): "dark" | "light" {
 }
 
 export function storedBaseUrl(): string {
-    return getCookie("lv_baseurl") || ""
+    return getCookie("lv_baseurl") || "http://localhost:8080"
 }
 
 export function storedToken(): string {

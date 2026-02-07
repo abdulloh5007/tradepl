@@ -65,3 +65,17 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request, userID string) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"id": user.ID, "email": user.Email})
 }
+
+// Verify checks if user exists in database - used on page load to validate session
+func (h *Handler) Verify(w http.ResponseWriter, r *http.Request, userID string) {
+	exists, err := h.svc.UserExists(r.Context(), userID)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "verification failed"})
+		return
+	}
+	if !exists {
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "user not found, please login again"})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"valid": true, "user_id": userID})
+}

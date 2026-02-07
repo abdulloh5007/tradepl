@@ -17,7 +17,7 @@ import { Header, Sidebar } from "./components"
 import ConnectionBanner from "./components/ConnectionBanner"
 
 // Pages
-import { TradingPage, PositionsPage, BalancePage, ApiPage, FaucetPage, AdminPage } from "./pages"
+import { TradingPage, PositionsPage, BalancePage, ApiPage, FaucetPage } from "./pages"
 
 // Config
 const marketPairs = ["UZS-USD"]
@@ -38,7 +38,7 @@ export default function App() {
   const [lang, setLang] = useState<Lang>(storedLang)
   const [theme, setTheme] = useState<Theme>(storedTheme)
   const [view, setView] = useState<View>(resolveView)
-  const [baseUrl, setBaseUrl] = useState(storedBaseUrl() || "")
+  const [baseUrl, setBaseUrl] = useState(storedBaseUrl())
   const [token, setToken] = useState(storedToken())
 
   // Market state
@@ -59,6 +59,9 @@ export default function App() {
     pl: "0"
   })
 
+  // Error logging flags - prevent repeated console spam
+  const errorLogged = useRef({ ws: false, fetch: false })
+
   // Auth form state
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -69,6 +72,34 @@ export default function App() {
     setToken("")
     setCookie("lv_token", "")
   }, [])
+
+  // Verify session on page load - check if user exists in DB
+  useEffect(() => {
+    if (!token || !baseUrl) return
+
+    const verifySession = async () => {
+      try {
+        const normalizedUrl = normalizeBaseUrl(baseUrl)
+        const res = await fetch(`${normalizedUrl}/v1/auth/verify`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        if (res.status === 401) {
+          // User not found in DB - clear token and force re-login
+          console.log("[Auth] Session invalid - user not found, logging out")
+          logout()
+        } else if (res.status === 429) {
+          // Rate limited - just warn, don't logout
+          console.warn("[Auth] Verify rate limited, skipping")
+        }
+      } catch (e) {
+        // Network error - don't logout, might be temporary
+        console.warn("[Auth] Verify failed (network):", e)
+      }
+    }
+
+    verifySession()
+  }, [baseUrl, token, logout])
 
   // Memoized API client (prevents recreation on every render = fixes lag)
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
@@ -101,12 +132,14 @@ export default function App() {
     timeframeRef.current = timeframe
   }, [timeframe])
 
-  // WebSocket
+  // WebSocket - only connect if authenticated (token required by backend)
   useEffect(() => {
+    // Skip WS connection if no token - backend will reject anyway
+    if (!token) return
+
     const wsUrl = createWsUrl(normalizedBaseUrl, token)
     if (!wsUrl) return
 
-    // console.log("[WS] Connecting to:", wsUrl.split("?")[0]) // Log only base URL for security
     const ws = new WebSocket(wsUrl)
 
     // Throttled state update function
@@ -223,7 +256,12 @@ export default function App() {
       } catch { /* ignore */ }
     }
 
-    ws.onerror = (err) => console.error("[WS] Error:", err)
+    ws.onerror = (err) => {
+      if (!errorLogged.current.ws) {
+        console.error("[WS] Error:", err)
+        errorLogged.current.ws = true
+      }
+    }
     ws.onclose = () => console.log("[WS] Closed")
 
     return () => {
@@ -465,16 +503,12 @@ export default function App() {
               api={api}
               onMetricsUpdate={setMetrics}
               lang={lang}
+              token={token}
+              onLoginRequired={() => setView("api")}
             />
           )}
 
-          {view === "admin" && (
-            <AdminPage
-              baseUrl={normalizedBaseUrl}
-              theme={theme}
-              onThemeToggle={() => setTheme(t => t === "dark" ? "light" : "dark")}
-            />
-          )}
+
         </main>
       </div>
     </div>

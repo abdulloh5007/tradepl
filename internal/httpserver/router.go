@@ -64,6 +64,18 @@ func NewRouter(d RouterDeps) http.Handler {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", d.AuthHandler.Register)
 			r.Post("/login", d.AuthHandler.Login)
+			// Verify endpoint - check if user exists in DB (with rate limiting)
+			r.With(VerifyRateLimitMiddleware).Group(func(r chi.Router) {
+				r.Use(WithAuth(d.AuthService))
+				r.Get("/verify", func(w http.ResponseWriter, r *http.Request) {
+					userID, ok := UserID(r)
+					if !ok {
+						httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+						return
+					}
+					d.AuthHandler.Verify(w, r, userID)
+				})
+			})
 		})
 		r.Get("/ws", d.WSHandler.ServeHTTP)
 		r.Get("/events/ws", d.EventsWSHandler.ServeHTTP) // Unauthenticated WebSocket for event_state

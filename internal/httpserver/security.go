@@ -105,3 +105,83 @@ func RateLimitMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// Verify endpoint rate limiter: 30 requests/min, 15 min ban on exceed
+type verifyLimiter struct {
+	mu       sync.Mutex
+	visitors map[string]*verifyVisitor
+}
+
+type verifyVisitor struct {
+	count       int
+	windowStart time.Time
+	bannedUntil time.Time
+}
+
+var verifyRL = &verifyLimiter{
+	visitors: make(map[string]*verifyVisitor),
+}
+
+func init() {
+	// Cleanup verify limiter
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			verifyRL.mu.Lock()
+			now := time.Now()
+			for ip, v := range verifyRL.visitors {
+				if now.Sub(v.windowStart) > 20*time.Minute && now.After(v.bannedUntil) {
+					delete(verifyRL.visitors, ip)
+				}
+			}
+			verifyRL.mu.Unlock()
+		}
+	}()
+}
+
+// VerifyRateLimitMiddleware limits /auth/verify to 30 req/min, 15 min ban on exceed
+func VerifyRateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+
+		verifyRL.mu.Lock()
+		v, exists := verifyRL.visitors[ip]
+		now := time.Now()
+
+		if !exists {
+			v = &verifyVisitor{count: 0, windowStart: now}
+			verifyRL.visitors[ip] = v
+		}
+
+		// Check if banned
+		if now.Before(v.bannedUntil) {
+			remaining := int(v.bannedUntil.Sub(now).Minutes()) + 1
+			verifyRL.mu.Unlock()
+			httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorResponse{
+				Error: "rate limit exceeded, try again in " + string(rune('0'+remaining)) + " minutes",
+			})
+			return
+		}
+
+		// Reset window if minute passed
+		if now.Sub(v.windowStart) > time.Minute {
+			v.count = 0
+			v.windowStart = now
+		}
+
+		v.count++
+
+		// Check limit (30 per minute)
+		if v.count > 30 {
+			v.bannedUntil = now.Add(15 * time.Minute)
+			verifyRL.mu.Unlock()
+			httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorResponse{
+				Error: "rate limit exceeded, try again in 15 minutes",
+			})
+			return
+		}
+
+		verifyRL.mu.Unlock()
+		next.ServeHTTP(w, r)
+	})
+}
