@@ -138,6 +138,8 @@ func NewRouter(d RouterDeps) http.Handler {
 		r.Route("/admin", func(r chi.Router) {
 			// Public login endpoint
 			r.Post("/login", d.AdminHandler.Login)
+			// Public token validation (for Telegram bot tokens)
+			r.Get("/validate-token", d.AdminHandler.ValidateToken)
 
 			// Protected routes
 			r.Group(func(r chi.Router) {
@@ -162,6 +164,11 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.Get("/volatility", d.VolatilityHandler.GetSettings)
 				r.Post("/volatility/activate", d.VolatilityHandler.SetActive)
 				r.Post("/volatility/mode", d.VolatilityHandler.SetMode)
+				// Panel admins management (owner only feature on UI)
+				r.Get("/panel-admins", d.AdminHandler.GetPanelAdmins)
+				r.Post("/panel-admins", d.AdminHandler.CreatePanelAdmin)
+				r.Put("/panel-admins/{id}", d.AdminHandler.UpdatePanelAdmin)
+				r.Delete("/panel-admins/{id}", d.AdminHandler.DeletePanelAdmin)
 			})
 		})
 	})
