@@ -685,7 +685,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                         <Skeleton width="40%" height={12} />
                                     </div>
                                 </div>
-                            )) : volConfigs.map(v => {
+                            )) : [...volConfigs].sort((a, b) => {
+                                const order: Record<string, number> = { high: 0, medium: 1, low: 2 }
+                                return (order[a.id] ?? 9) - (order[b.id] ?? 9)
+                            }).map(v => {
                                 let Icon = Activity
                                 if (v.id === "low") Icon = Moon
                                 if (v.id === "medium") Icon = Sun
@@ -868,7 +871,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                         </div>
                                     </div>
                                     <div className="admin-rights">
-                                        {admin.rights.map(r => <span key={r} className="right-badge">{r}</span>)}
+                                        {Array.isArray(admin.rights) && admin.rights.map(r => <span key={r} className="right-badge">{r}</span>)}
                                     </div>
                                     <button className="cancel-event-btn" onClick={() => deleteAdmin(admin.id)}>
                                         <Trash2 size={16} />

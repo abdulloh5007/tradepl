@@ -3,6 +3,7 @@ package matching
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"lv-tradepl/internal/ledger"
 	"lv-tradepl/internal/marketdata"
@@ -44,6 +45,7 @@ type MatchInput struct {
 }
 
 func (e *Engine) Match(ctx context.Context, tx pgx.Tx, in MatchInput) (model.Order, error) {
+	fmt.Printf("[DEBUG] Match Start: Pair=%s Side=%s Type=%s\n", in.PairID, in.TakerOrder.Side, in.TakerOrder.Type)
 	order := in.TakerOrder
 	if in.MatchLimit <= 0 {
 		return order, errors.New("match limit required")
@@ -106,6 +108,18 @@ func (e *Engine) Match(ctx context.Context, tx pgx.Tx, in MatchInput) (model.Ord
 			if err != nil {
 				return order, err
 			}
+			if order.Type == types.OrderTypeMarket {
+				filledQty := order.Qty.Sub(order.RemainingQty)
+				fmt.Printf("[DEBUG] Match Market: ID=%s Side=%s Spent=%s FilledQty=%s\n", order.ID, order.Side, order.SpentAmount, filledQty)
+				if filledQty.GreaterThan(decimal.Zero) {
+					avgPrice := order.SpentAmount.Div(filledQty)
+					order.Price = &avgPrice
+					fmt.Printf("[DEBUG] Calculated AvgPrice: %s\n", avgPrice)
+				} else {
+					fmt.Printf("[DEBUG] FilledQty is Zero or Low\n")
+				}
+			}
+
 			if err := e.store.UpdateOrderFill(ctx, tx, order.ID, order.Price, order.Qty, order.RemainingQty, order.RemainingQuote, order.SpentAmount, order.Status); err != nil {
 				return order, err
 			}
@@ -169,6 +183,7 @@ func applyOrderFill(buy model.Order, sell model.Order, qty, quoteAmount decimal.
 	buy.SpentAmount = buy.SpentAmount.Add(quoteAmount)
 	sell.SpentAmount = sell.SpentAmount.Add(qty)
 	if buy.Type == types.OrderTypeMarket && buy.Side == types.OrderSideBuy {
+		buy.Qty = buy.Qty.Add(qty)
 		if buy.RemainingQuote != nil {
 			v := buy.RemainingQuote.Sub(quoteAmount)
 			buy.RemainingQuote = &v

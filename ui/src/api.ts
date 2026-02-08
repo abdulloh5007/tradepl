@@ -23,6 +23,11 @@ export type Candle = {
   close: string
 }
 
+export type MarketConfig = {
+  invertForApi?: boolean
+  displayDecimals?: number
+}
+
 type Json = Record<string, unknown>
 
 type ClientState = {
@@ -78,6 +83,7 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     },
     placeOrder: (payload: PlaceOrderPayload) => request<{ order_id: string; status: string }>("/v1/orders", "POST", payload, true),
     faucet: (payload: FaucetPayload) => request<{ status: string }>("/v1/faucet", "POST", payload, true),
+    config: () => request<Record<string, MarketConfig>>("/v1/market/config", "GET"),
     candles: (pair: string, timeframe: string, limit = 200, fresh = false, before?: number) => {
       let url = `/v1/market/candles?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&fresh=${fresh ? "1" : "0"}`
       if (before) url += `&before=${before}`

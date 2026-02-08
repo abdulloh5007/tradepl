@@ -79,6 +79,7 @@ func NewRouter(d RouterDeps) http.Handler {
 		})
 		r.Get("/ws", d.WSHandler.ServeHTTP)
 		r.Get("/events/ws", d.EventsWSHandler.ServeHTTP) // Unauthenticated WebSocket for event_state
+		r.Get("/market/config", d.MarketHandler.GetConfig)
 		r.Get("/market/candles", d.MarketHandler.Candles)
 		r.Get("/market/ws", d.MarketHandler.WS.ServeHTTP)
 		r.Get("/market/candles/ws", d.MarketHandler.CandleWS.ServeHTTP)

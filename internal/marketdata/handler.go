@@ -18,6 +18,17 @@ func NewHandler(ws *MarketWS, candleWS *CandleWS) *Handler {
 	return &Handler{WS: ws, CandleWS: candleWS}
 }
 
+func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
+	// Hardcoded config for now
+	config := map[string]map[string]interface{}{
+		"UZS-USD": {
+			"invertForApi":    true, // Invert price for API (1/price)
+			"displayDecimals": 2,    // Display 2 decimal places
+		},
+	}
+	httputil.WriteJSON(w, http.StatusOK, config)
+}
+
 func (h *Handler) Candles(w http.ResponseWriter, r *http.Request) {
 	pair := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("pair")))
 	if pair == "" {

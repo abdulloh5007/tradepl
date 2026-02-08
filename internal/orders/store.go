@@ -2,6 +2,7 @@ package orders
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"lv-tradepl/internal/model"
@@ -97,6 +98,7 @@ func (s *Store) ListMatchingOrders(ctx context.Context, tx pgx.Tx, pairID string
 }
 
 func (s *Store) UpdateOrderFill(ctx context.Context, tx pgx.Tx, orderID string, price *decimal.Decimal, qty decimal.Decimal, remainingQty decimal.Decimal, remainingQuote *decimal.Decimal, spentAmount decimal.Decimal, status types.OrderStatus) error {
+	fmt.Printf("[STORE] UpdateOrderFill: id=%s price=%v qty=%s\n", orderID, price, qty)
 	if remainingQuote == nil {
 		_, err := tx.Exec(ctx, "update orders set price = $1, qty = $2, remaining_qty = $3, spent_amount = $4, status = $5, updated_at = $6 where id = $7", price, qty, remainingQty, spentAmount, string(status), time.Now().UTC(), orderID)
 		return err

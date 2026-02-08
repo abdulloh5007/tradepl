@@ -48,16 +48,7 @@ export default function PositionsTable({ orders, quote, marketPair, marketConfig
                                 let entryPrice = parseFloat(o.price || "0")
                                 let currentPrice = marketPrice
 
-                                const cfg = marketConfig[marketPair]
-                                if (cfg?.invertForApi) {
-                                    entryPrice = entryPrice > 0 ? 1 / entryPrice : 0
-                                    // marketPrice is already inverted in App.tsx if passed from there? 
-                                    // Wait, marketPrice in App.tsx is derived from quote.last which IS inverted.
-                                    // But let's check. App.tsx passes `marketPrice={parseFloat(quote.last)}` which IS inverted.
-                                    // So currentPrice is ALREADY inverted.
-                                    // But entryPrice (from DB) is RAW (0.00007). So we MUST invert entryPrice.
-                                }
-
+                                const cfg = marketConfig[marketPair] || (marketPair === "UZS-USD" ? { invertForApi: true, displayDecimals: 2 } : undefined)
                                 let profit = 0
                                 // Profit calc needs RAW prices or consistent logic.
                                 // P/L in DB is calculated using RAW prices.

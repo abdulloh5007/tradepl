@@ -32,7 +32,7 @@ type pairProfile struct {
 }
 
 var pairProfiles = map[string]pairProfile{
-	"UZS-USD": {Base: 1.0 / 12850.0, Vol: 0.0005, Prec: 11, Spread: 0.0000000023},
+	"UZS-USD": {Base: 1.0 / 12850.0, Vol: 0.00005, Prec: 11, Spread: 0.0000000023},
 	"XAUUSD":  {Base: 2710.0, Vol: 0.008, Prec: 2, Spread: 0.35},    // 35 cents spread
 	"BTCUSD":  {Base: 68500.0, Vol: 0.015, Prec: 2, Spread: 25.0},   // $25 spread
 	"EURUSD":  {Base: 1.0850, Vol: 0.004, Prec: 5, Spread: 0.00015}, // 1.5 pips
