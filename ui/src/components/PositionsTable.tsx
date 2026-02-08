@@ -11,7 +11,7 @@ interface PositionsTableProps {
     lang: Lang
 }
 
-export default function PositionsTable({ orders, quote, marketPrice, onClose, lang }: PositionsTableProps) {
+export default function PositionsTable({ orders, quote, marketPair, marketConfig, marketPrice, onClose, lang }: PositionsTableProps) {
     const askPrice = quote?.ask ? parseFloat(quote.ask) : marketPrice
 
     return (
@@ -45,14 +45,78 @@ export default function PositionsTable({ orders, quote, marketPrice, onClose, la
                         ) : (
                             orders.map(o => {
                                 const isBuy = o.side === "buy"
-                                const entryPrice = parseFloat(o.price || "0")
-                                const currentPrice = marketPrice
+                                let entryPrice = parseFloat(o.price || "0")
+                                let currentPrice = marketPrice
+
+                                const cfg = marketConfig[marketPair]
+                                if (cfg?.invertForApi) {
+                                    entryPrice = entryPrice > 0 ? 1 / entryPrice : 0
+                                    // marketPrice is already inverted in App.tsx if passed from there? 
+                                    // Wait, marketPrice in App.tsx is derived from quote.last which IS inverted.
+                                    // But let's check. App.tsx passes `marketPrice={parseFloat(quote.last)}` which IS inverted.
+                                    // So currentPrice is ALREADY inverted.
+                                    // But entryPrice (from DB) is RAW (0.00007). So we MUST invert entryPrice.
+                                }
 
                                 let profit = 0
+                                // Profit calc needs RAW prices or consistent logic.
+                                // P/L in DB is calculated using RAW prices.
+                                // Here we display P/L estimated.
+                                // If we want to show P/L in Quote Asset (USD), we use RAW prices.
+                                // (0.000076 - 0.000075) * 1000 = 0.001 USD.
+                                // Correct.
+                                // But USER wants to see PRICE as 12800.
+
+                                // So we use RAW for profit, but INVERTED for display.
+                                const rawEntryPrice = parseFloat(o.price || "0")
+                                const rawCurrentPrice = cfg?.invertForApi ? (1 / currentPrice) : currentPrice
+
+                                // Wait, currentPrice passed to props IS already inverted?
+                                // In App.tsx: marketPrice={parseFloat(quote.last)}
+                                // quote.last IS inverted in App.tsx line 237/243.
+                                // So `currentPrice` inside PositionsTable IS 12800.
+
+                                // So:
+                                // Display Entry: 1 / rawEntry
+                                // Display Current: currentPrice (already 12800)
+                                // Profit: (1/currentPrice - rawEntry) ??? NO.
+                                // Profit is in USD.
+                                // Profit = (RawCurrent - RawEntry) * Qty
+                                // RawCurrent = 1 / currentPrice (if inverted)
+
+                                const rawCurrent = cfg?.invertForApi && currentPrice > 0 ? 1 / currentPrice : currentPrice
+
                                 if (isBuy) {
-                                    profit = (currentPrice - entryPrice) * parseFloat(o.qty || "0")
+                                    profit = (rawCurrent - rawEntryPrice) * parseFloat(o.qty || "0")
                                 } else {
-                                    profit = (entryPrice - askPrice) * parseFloat(o.qty || "0")
+                                    profit = (rawEntryPrice - (cfg?.invertForApi && askPrice > 0 ? 1 / askPrice : askPrice)) * parseFloat(o.qty || "0")
+                                    // askPrice passed is also inverted? 
+                                    // quote passes {ask: ...} which IS inverted strings.
+                                    // askPrice = parseFloat(quote.ask) -> Inverted (12805)
+                                    // So RawAsk = 1 / askPrice
+                                }
+
+                                // Let's simplify. 
+                                // 1. Calculate Profit using RAW values (re-derived from inverted props if needed)
+                                // actually, askPrice is derived from quote.ask which is inverted string.
+
+                                const valEntryDisplay = cfg?.invertForApi && entryPrice > 0 ? 1 / entryPrice : entryPrice
+                                const valCurrentDisplay = isBuy ? currentPrice : askPrice
+
+                                // Re-calculate raw for profit
+                                const valCurrentRaw = cfg?.invertForApi && valCurrentDisplay > 0 ? 1 / valCurrentDisplay : valCurrentDisplay
+
+                                if (isBuy) {
+                                    profit = (valCurrentRaw - rawEntryPrice) * parseFloat(o.qty || "0")
+                                } else {
+                                    // For sell, we need Ask price (which is valCurrentDisplay for Sell?? No.
+                                    // currentPrice passed is Last.
+                                    // askPrice is passed or derived.
+                                    // In table:
+                                    // <td style={{ padding: 8 }}>{(isBuy ? currentPrice : askPrice).toFixed(5)}</td>
+                                    // So for display we use askPrice.
+
+                                    profit = (rawEntryPrice - valCurrentRaw) * parseFloat(o.qty || "0")
                                 }
 
                                 const isPending = o.status === "new"
@@ -65,10 +129,10 @@ export default function PositionsTable({ orders, quote, marketPrice, onClose, la
                                             {(o.side || "—").toUpperCase()}
                                         </td>
                                         <td style={{ padding: 8 }}>{o.qty ? parseFloat(o.qty).toFixed(2) : "0.00"}</td>
-                                        <td style={{ padding: 8 }}>{isNaN(entryPrice) ? "—" : entryPrice.toFixed(5)}</td>
+                                        <td style={{ padding: 8 }}>{isNaN(valEntryDisplay) ? "—" : valEntryDisplay.toFixed(cfg?.displayDecimals || 5)}</td>
                                         <td style={{ padding: 8 }}>0.00000</td>
                                         <td style={{ padding: 8 }}>0.00000</td>
-                                        <td style={{ padding: 8 }}>{(isBuy ? currentPrice : askPrice).toFixed(5)}</td>
+                                        <td style={{ padding: 8 }}>{valCurrentDisplay.toFixed(cfg?.displayDecimals || 5)}</td>
                                         <td style={{ padding: 8, color: profit >= 0 ? "#16a34a" : "#ef4444", fontWeight: 600 }}>
                                             {isPending ? "—" : profit.toFixed(2)}
                                         </td>

@@ -263,7 +263,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		order.RemainingQuote = nil
 		order.Price = &execPrice // Entry Price
 
-		err = s.store.UpdateOrderFill(ctx, tx, order.ID, order.RemainingQty, order.RemainingQuote, order.SpentAmount, order.Status)
+		err = s.store.UpdateOrderFill(ctx, tx, order.ID, order.Price, order.Qty, order.RemainingQty, order.RemainingQuote, order.SpentAmount, order.Status)
 		if err != nil {
 			return PlaceOrderResult{}, err
 		}
@@ -548,11 +548,106 @@ func (s *Service) ListOpenOrders(ctx context.Context, userID string) ([]model.Or
 	return orders, nil
 }
 
+// ClosePosition closes an open position at current market price
+// This is used for "closing" a trade (not canceling an unfilled order)
 func (s *Service) CancelOrder(ctx context.Context, userID, orderID string) error {
-	// 1. Get Order
-	// 2. If status not open, error
-	// 3. Update status to cancelled
-	// 4. Refund reserved funds
-	// This requires DB tx.
-	return nil
+	// Start transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Get the position/order
+	order, err := s.store.GetOrderForUpdate(ctx, tx, orderID)
+	if err != nil {
+		return fmt.Errorf("order not found: %w", err)
+	}
+
+	// 2. Verify ownership
+	if order.UserID != userID {
+		return errors.New("not your order")
+	}
+
+	// 3. Only filled orders can be "closed" as positions
+	if order.Status != types.OrderStatusFilled {
+		return errors.New("only filled positions can be closed")
+	}
+
+	// 4. Get pair info for asset IDs
+	pair, err := s.market.GetPairByID(ctx, order.PairID)
+	if err != nil {
+		return fmt.Errorf("pair not found: %w", err)
+	}
+
+	// 5. Get current market price
+	bid, ask, err := marketdata.GetCurrentQuote(pair.Symbol)
+	if err != nil {
+		return fmt.Errorf("failed to get market price: %w", err)
+	}
+
+	// 6. Calculate exit price and P/L
+	var exitPrice decimal.Decimal
+	var pnl decimal.Decimal
+	entryPrice := *order.Price
+	qty := order.Qty
+
+	if order.Side == types.OrderSideBuy {
+		// Bought asset, now selling at Bid price
+		exitPrice = decimal.NewFromFloat(bid)
+		// P/L = (Exit - Entry) * Qty
+		pnl = exitPrice.Sub(entryPrice).Mul(qty)
+	} else {
+		// Sold asset (short), now buying back at Ask price
+		exitPrice = decimal.NewFromFloat(ask)
+		// P/L = (Entry - Exit) * Qty (profit if price went down)
+		pnl = entryPrice.Sub(exitPrice).Mul(qty)
+	}
+
+	// 7. Update user's USD balance
+	// Get the user's available USD account
+	usdAvailable, err := s.ledger.EnsureAccount(ctx, tx, userID, pair.QuoteAssetID, types.AccountKindAvailable)
+	if err != nil {
+		return fmt.Errorf("failed to get USD account: %w", err)
+	}
+
+	// Calculate total return: original investment + P/L
+	// For a buy: we spent order.SpentAmount (USD), now we get it back + P/L
+	closeAmount := order.SpentAmount.Add(pnl)
+
+	if closeAmount.GreaterThan(decimal.Zero) {
+		// Credit the return to available balance
+		_, err = s.ledger.CreditAccount(ctx, tx, usdAvailable, closeAmount, types.LedgerEntryTypeTrade, "close_position")
+		if err != nil {
+			return fmt.Errorf("failed to credit balance: %w", err)
+		}
+	} else {
+		// If closeAmount is negative (total loss exceeded investment), debit the difference
+		// This shouldn't happen in normal trading but handle edge case
+		_, err = s.ledger.DebitAccount(ctx, tx, usdAvailable, closeAmount.Abs(), types.LedgerEntryTypeTrade, "close_position_loss")
+		if err != nil {
+			return fmt.Errorf("failed to debit balance: %w", err)
+		}
+	}
+
+	// 8. If it was a buy order, we also need to remove the base asset
+	if order.Side == types.OrderSideBuy {
+		baseAvailable, err := s.ledger.EnsureAccount(ctx, tx, userID, pair.BaseAssetID, types.AccountKindAvailable)
+		if err != nil {
+			return fmt.Errorf("failed to get base account: %w", err)
+		}
+		// Debit the base asset (we're selling it)
+		_, err = s.ledger.DebitAccount(ctx, tx, baseAvailable, qty, types.LedgerEntryTypeTrade, "close_position")
+		if err != nil {
+			return fmt.Errorf("failed to debit base asset: %w", err)
+		}
+	}
+
+	// 9. Mark order as closed (we use 'cancelled' status for closed positions)
+	if err := s.store.UpdateOrderStatus(ctx, tx, orderID, types.OrderStatusCanceled); err != nil {
+		return fmt.Errorf("failed to update order status: %w", err)
+	}
+
+	// 10. Commit transaction
+	return tx.Commit(ctx)
 }

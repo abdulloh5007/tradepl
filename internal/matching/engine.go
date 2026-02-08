@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/shopspring/decimal"
 	"lv-tradepl/internal/ledger"
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/model"
 	"lv-tradepl/internal/types"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 )
 
 type Engine struct {
@@ -20,7 +21,7 @@ type Engine struct {
 
 type Store interface {
 	ListMatchingOrders(ctx context.Context, tx pgx.Tx, pairID string, side types.OrderSide, limitPrice *decimal.Decimal, limit int) ([]model.Order, error)
-	UpdateOrderFill(ctx context.Context, tx pgx.Tx, orderID string, remainingQty decimal.Decimal, remainingQuote *decimal.Decimal, spentAmount decimal.Decimal, status types.OrderStatus) error
+	UpdateOrderFill(ctx context.Context, tx pgx.Tx, orderID string, price *decimal.Decimal, qty decimal.Decimal, remainingQty decimal.Decimal, remainingQuote *decimal.Decimal, spentAmount decimal.Decimal, status types.OrderStatus) error
 	CreateTrade(ctx context.Context, tx pgx.Tx, pairID string, price, qty decimal.Decimal, takerOrderID, makerOrderID string) (string, error)
 	CreateFill(ctx context.Context, tx pgx.Tx, orderID, tradeID string, qty, price decimal.Decimal) error
 }
@@ -34,12 +35,12 @@ func NewEngine(store Store, ledgerSvc *ledger.Service, pub Publisher) *Engine {
 }
 
 type MatchInput struct {
-	PairID        string
-	BaseAssetID   string
-	QuoteAssetID  string
-	TakerOrder    model.Order
-	LimitPrice    *decimal.Decimal
-	MatchLimit    int
+	PairID       string
+	BaseAssetID  string
+	QuoteAssetID string
+	TakerOrder   model.Order
+	LimitPrice   *decimal.Decimal
+	MatchLimit   int
 }
 
 func (e *Engine) Match(ctx context.Context, tx pgx.Tx, in MatchInput) (model.Order, error) {
@@ -105,10 +106,10 @@ func (e *Engine) Match(ctx context.Context, tx pgx.Tx, in MatchInput) (model.Ord
 			if err != nil {
 				return order, err
 			}
-			if err := e.store.UpdateOrderFill(ctx, tx, order.ID, order.RemainingQty, order.RemainingQuote, order.SpentAmount, order.Status); err != nil {
+			if err := e.store.UpdateOrderFill(ctx, tx, order.ID, order.Price, order.Qty, order.RemainingQty, order.RemainingQuote, order.SpentAmount, order.Status); err != nil {
 				return order, err
 			}
-			if err := e.store.UpdateOrderFill(ctx, tx, maker.ID, maker.RemainingQty, maker.RemainingQuote, maker.SpentAmount, maker.Status); err != nil {
+			if err := e.store.UpdateOrderFill(ctx, tx, maker.ID, maker.Price, maker.Qty, maker.RemainingQty, maker.RemainingQuote, maker.SpentAmount, maker.Status); err != nil {
 				return order, err
 			}
 			if order.Status == types.OrderStatusFilled {

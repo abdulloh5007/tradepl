@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/shopspring/decimal"
 	"lv-tradepl/internal/model"
 	"lv-tradepl/internal/types"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 )
 
 type Store struct{}
@@ -17,14 +18,14 @@ func NewStore() *Store {
 }
 
 type Trade struct {
-	ID          string
-	PairID      string
-	Price       decimal.Decimal
-	Qty         decimal.Decimal
-	TakerOrder  string
-	MakerOrder  string
-	Sequence    int64
-	CreatedAt   time.Time
+	ID         string
+	PairID     string
+	Price      decimal.Decimal
+	Qty        decimal.Decimal
+	TakerOrder string
+	MakerOrder string
+	Sequence   int64
+	CreatedAt  time.Time
 }
 
 func (s *Store) CreateOrder(ctx context.Context, tx pgx.Tx, o model.Order) (string, error) {
@@ -95,12 +96,12 @@ func (s *Store) ListMatchingOrders(ctx context.Context, tx pgx.Tx, pairID string
 	return out, rows.Err()
 }
 
-func (s *Store) UpdateOrderFill(ctx context.Context, tx pgx.Tx, orderID string, remainingQty decimal.Decimal, remainingQuote *decimal.Decimal, spentAmount decimal.Decimal, status types.OrderStatus) error {
+func (s *Store) UpdateOrderFill(ctx context.Context, tx pgx.Tx, orderID string, price *decimal.Decimal, qty decimal.Decimal, remainingQty decimal.Decimal, remainingQuote *decimal.Decimal, spentAmount decimal.Decimal, status types.OrderStatus) error {
 	if remainingQuote == nil {
-		_, err := tx.Exec(ctx, "update orders set remaining_qty = $1, spent_amount = $2, status = $3, updated_at = $4 where id = $5", remainingQty, spentAmount, string(status), time.Now().UTC(), orderID)
+		_, err := tx.Exec(ctx, "update orders set price = $1, qty = $2, remaining_qty = $3, spent_amount = $4, status = $5, updated_at = $6 where id = $7", price, qty, remainingQty, spentAmount, string(status), time.Now().UTC(), orderID)
 		return err
 	}
-	_, err := tx.Exec(ctx, "update orders set remaining_qty = $1, remaining_quote = $2, spent_amount = $3, status = $4, updated_at = $5 where id = $6", remainingQty, remainingQuote, spentAmount, string(status), time.Now().UTC(), orderID)
+	_, err := tx.Exec(ctx, "update orders set price = $1, qty = $2, remaining_qty = $3, remaining_quote = $4, spent_amount = $5, status = $6, updated_at = $7 where id = $8", price, qty, remainingQty, remainingQuote, spentAmount, string(status), time.Now().UTC(), orderID)
 	return err
 }
 
