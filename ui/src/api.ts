@@ -78,7 +78,11 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     },
     placeOrder: (payload: PlaceOrderPayload) => request<{ order_id: string; status: string }>("/v1/orders", "POST", payload, true),
     faucet: (payload: FaucetPayload) => request<{ status: string }>("/v1/faucet", "POST", payload, true),
-    candles: (pair: string, timeframe: string, limit = 200, fresh = false) => request<Candle[]>(`/v1/market/candles?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&fresh=${fresh ? "1" : "0"}`, "GET"),
+    candles: (pair: string, timeframe: string, limit = 200, fresh = false, before?: number) => {
+      let url = `/v1/market/candles?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&fresh=${fresh ? "1" : "0"}`
+      if (before) url += `&before=${before}`
+      return request<Candle[]>(url, "GET")
+    },
     metrics: () => request<{ balance: string; equity: string; margin: string; free_margin: string; margin_level: string; pl: string }>("/v1/metrics", "GET", undefined, true),
     orders: () => request<Array<{ id: string; pair_id: string; side: string; price: string; qty: string; status: string; created_at: string }> | null>("/v1/orders", "GET", undefined, true),
     cancelOrder: (id: string) => request<{ status: string }>(`/v1/orders/${id}`, "DELETE", undefined, true)

@@ -25,7 +25,8 @@ const marketConfig: Record<string, MarketConfig> = {
   "UZS-USD": { displayBase: 12850, displayDecimals: 2, apiDecimals: 8, invertForApi: true, spread: 5.0 }
 }
 const timeframes = ["1m", "5m", "10m", "15m", "30m", "1h"]
-const candleLimit = 500
+const candleLimit = 1000   // Initial load
+const lazyLoadLimit = 500  // Load more when scrolling
 
 function resolveView(): View {
   const hash = typeof window !== "undefined" ? window.location.hash.replace("#", "") : ""
@@ -58,6 +59,10 @@ export default function App() {
     margin_level: "0",
     pl: "0"
   })
+
+  // Lazy loading state
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [hasMoreData, setHasMoreData] = useState(true)
 
   // Error logging flags - prevent repeated console spam
   const errorLogged = useRef({ ws: false, fetch: false })
@@ -278,8 +283,50 @@ export default function App() {
       const display = raw.map(c => toDisplayCandle(marketPair, c, marketConfig))
       candlesRef.current = display // Sync ref for WebSocket updates
       setCandles(display)
+      // Reset lazy loading state when fetching new data
+      // Don't check candleLimit here - lazy loading will detect end of data
+      setHasMoreData(true)
+      setIsLoadingMore(false)
     } catch { /* ignore */ }
   }, [api, marketPair, timeframe])
+
+  // Load more candles when scrolling back (lazy loading)
+  const loadMoreCandles = useCallback(async (beforeTime: number) => {
+    if (isLoadingMore || !hasMoreData) return
+    setIsLoadingMore(true)
+
+    try {
+      const raw = await api.candles(marketPair, timeframe, lazyLoadLimit, false, beforeTime)
+      if (raw.length === 0) {
+        setHasMoreData(false)
+        setIsLoadingMore(false)
+        return
+      }
+
+      const display = raw.map(c => toDisplayCandle(marketPair, c, marketConfig))
+
+      // Merge with existing candles, deduplicate by time
+      const existingTimes = new Set(candles.map(c => c.time))
+      const newCandles = display.filter(c => !existingTimes.has(c.time))
+
+      if (newCandles.length === 0) {
+        setHasMoreData(false)
+        setIsLoadingMore(false)
+        return
+      }
+
+      const merged = [...newCandles, ...candles].sort((a, b) => a.time - b.time)
+      candlesRef.current = merged
+      setCandles(merged)
+
+      // If we got less than requested, no more data available
+      if (raw.length < lazyLoadLimit) {
+        setHasMoreData(false)
+      }
+    } catch { /* ignore */ }
+
+    setIsLoadingMore(false)
+  }, [api, marketPair, timeframe, candles, isLoadingMore, hasMoreData])
 
   useEffect(() => {
     fetchCandles()
@@ -477,6 +524,9 @@ export default function App() {
               onBuy={() => handleQuickOrder("buy")}
               onSell={() => handleQuickOrder("sell")}
               lang={lang}
+              onLoadMore={loadMoreCandles}
+              isLoadingMore={isLoadingMore}
+              hasMoreData={hasMoreData}
             />
           )}
 

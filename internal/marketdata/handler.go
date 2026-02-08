@@ -44,6 +44,14 @@ func (h *Handler) Candles(w http.ResponseWriter, r *http.Request) {
 		limit = 500
 	}
 
+	// Parse 'before' parameter for lazy loading (unix seconds)
+	var before int64 = 0
+	if v := r.URL.Query().Get("before"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			before = n
+		}
+	}
+
 	// ЕДИНСТВЕННЫЙ ИСТОЧНИК - 1м кэш. Без генерации новой истории!
 	key := pair + "|1m"
 	candlesByTF.mu.Lock()
@@ -53,6 +61,16 @@ func (h *Handler) Candles(w http.ResponseWriter, r *http.Request) {
 	// Для 1м - отдаем как есть
 	if interval == time.Minute {
 		result := cached
+		// Filter by 'before' if provided
+		if before > 0 {
+			filtered := make([]Candle, 0)
+			for _, c := range result {
+				if c.Time < before {
+					filtered = append(filtered, c)
+				}
+			}
+			result = filtered
+		}
 		if len(result) > limit {
 			result = result[len(result)-limit:]
 		}
@@ -62,6 +80,16 @@ func (h *Handler) Candles(w http.ResponseWriter, r *http.Request) {
 
 	// Для других таймфреймов - агрегируем из 1м (никакой генерации!)
 	agg := aggregateCandles(cached, interval, profile.Prec)
+	// Filter by 'before' if provided
+	if before > 0 {
+		filtered := make([]Candle, 0)
+		for _, c := range agg {
+			if c.Time < before {
+				filtered = append(filtered, c)
+			}
+		}
+		agg = filtered
+	}
 	if len(agg) > limit {
 		agg = agg[len(agg)-limit:]
 	}

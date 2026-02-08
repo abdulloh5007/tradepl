@@ -10,9 +10,12 @@ interface TradingChartProps {
     marketConfig: Record<string, MarketConfig>
     theme: "dark" | "light"
     timeframe: string
+    onLoadMore?: (beforeTime: number) => void
+    isLoadingMore?: boolean
+    hasMoreData?: boolean
 }
 
-export default function TradingChart({ candles, quote, openOrders, marketPair, marketConfig, theme, timeframe }: TradingChartProps) {
+export default function TradingChart({ candles, quote, openOrders, marketPair, marketConfig, theme, timeframe, onLoadMore, isLoadingMore, hasMoreData = true }: TradingChartProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
@@ -23,6 +26,20 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const resizeObserverRef = useRef<ResizeObserver | null>(null)
     // Track timeframe to detect changes
     const lastTimeframeRef = useRef(timeframe)
+
+    // Refs for lazy loading (to avoid chart recreation)
+    const onLoadMoreRef = useRef(onLoadMore)
+    const isLoadingMoreRef = useRef(isLoadingMore)
+    const hasMoreDataRef = useRef(hasMoreData)
+    const candlesRef = useRef(candles)
+    const initialRenderDoneRef = useRef(false) // Skip lazy load on first render
+    const lastRangeFromRef = useRef<number | null>(null) // Track scroll direction
+
+    // Keep refs in sync
+    onLoadMoreRef.current = onLoadMore
+    isLoadingMoreRef.current = isLoadingMore
+    hasMoreDataRef.current = hasMoreData
+    candlesRef.current = candles
 
     // Initialize chart
     useEffect(() => {
@@ -77,29 +94,89 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
         })
         resizeObserverRef.current.observe(containerRef.current)
 
+        // Subscribe to visible range changes for lazy loading
+        // Use refs to avoid recreating chart on callback changes
+        let loadMoreTimeout: ReturnType<typeof setTimeout> | null = null
+        const rangeHandler = (range: { from: number; to: number } | null) => {
+            if (!range) return
+
+            // Skip first few renders until chart is stable
+            if (!initialRenderDoneRef.current) {
+                // Wait for initial data and first render
+                setTimeout(() => { initialRenderDoneRef.current = true }, 1000)
+                lastRangeFromRef.current = range.from
+                return
+            }
+
+            // Only trigger lazy load when user scrolls LEFT (range.from decreases)
+            const lastFrom = lastRangeFromRef.current
+            lastRangeFromRef.current = range.from
+
+            // If scrolling right or no change, skip
+            if (lastFrom !== null && range.from >= lastFrom) return
+
+            // Access current values via refs to avoid deps
+            const loadMore = onLoadMoreRef.current
+            const loading = isLoadingMoreRef.current
+            const hasMore = hasMoreDataRef.current
+            const currentCandles = candlesRef.current
+
+            if (!loadMore || loading || !hasMore) return
+
+            // Trigger load more when user scrolled near the beginning
+            if (range.from < 10 && currentCandles.length > 0) {
+                // Debounce: wait 300ms before loading more to avoid spam
+                if (loadMoreTimeout) clearTimeout(loadMoreTimeout)
+                loadMoreTimeout = setTimeout(() => {
+                    const oldestTime = candlesRef.current[0]?.time
+                    if (oldestTime && !isLoadingMoreRef.current && hasMoreDataRef.current) {
+                        onLoadMoreRef.current?.(oldestTime)
+                    }
+                }, 300)
+            }
+        }
+        chart.timeScale().subscribeVisibleLogicalRangeChange(rangeHandler)
+
         return () => {
             resizeObserverRef.current?.disconnect()
+            chart.timeScale().unsubscribeVisibleLogicalRangeChange(rangeHandler)
             chart.remove()
         }
-    }, [theme])
+    }, [theme]) // Only recreate on theme change
 
     // Update candles - optimized to use update() for last candle
     useEffect(() => {
         const series = seriesRef.current
+        const chart = chartRef.current
         if (!series || candles.length === 0) return
 
         const timeframeChanged = lastTimeframeRef.current !== timeframe
+        const candlesDiff = candles.length - lastCandleCountRef.current
 
-        // If timeframe changed OR initial load OR distinct length change, force full update
-        if (timeframeChanged || lastCandleCountRef.current === 0 || Math.abs(candles.length - lastCandleCountRef.current) > 1) {
+        // If timeframe changed OR initial load OR multiple candles added (lazy loading or reload)
+        if (timeframeChanged || lastCandleCountRef.current === 0 || Math.abs(candlesDiff) > 1) {
+            // Save current visible range before update
+            const currentRange = chart?.timeScale().getVisibleLogicalRange()
+
             series.setData(candles)
-            if (lastCandleCountRef.current === 0 || timeframeChanged) {
-                chartRef.current?.timeScale().fitContent()
+
+            // Restore scroll position if this is a prepend (lazy loading adds older candles)
+            if (candlesDiff > 1 && !timeframeChanged && lastCandleCountRef.current > 0 && currentRange) {
+                // Shift visible range by the number of new candles added at the beginning
+                const shift = candlesDiff
+                chart?.timeScale().setVisibleLogicalRange({
+                    from: currentRange.from + shift,
+                    to: currentRange.to + shift
+                })
+            } else if (lastCandleCountRef.current === 0 || timeframeChanged) {
+                chart?.timeScale().fitContent()
             }
+
             lastCandleCountRef.current = candles.length
             lastTimeframeRef.current = timeframe
         } else {
-            // For single candle updates, use update() which is much faster
+            // For single candle updates or real-time updates to current candle
+            // candlesDiff === 1 means new candle, candlesDiff === 0 means update to current candle
             const lastCandle = candles[candles.length - 1]
             try {
                 series.update(lastCandle)

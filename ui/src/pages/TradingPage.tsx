@@ -19,6 +19,9 @@ interface TradingPageProps {
     onBuy: () => void
     onSell: () => void
     lang: Lang
+    onLoadMore?: (beforeTime: number) => void
+    isLoadingMore?: boolean
+    hasMoreData?: boolean
 }
 
 export default function TradingPage({
@@ -36,7 +39,10 @@ export default function TradingPage({
     setQuickQty,
     onBuy,
     onSell,
-    lang
+    lang,
+    onLoadMore,
+    isLoadingMore,
+    hasMoreData
 }: TradingPageProps) {
     return (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, height: "100%" }}>
@@ -81,6 +87,9 @@ export default function TradingPage({
                         marketConfig={marketConfig}
                         theme={theme}
                         timeframe={timeframe}
+                        onLoadMore={onLoadMore}
+                        isLoadingMore={isLoadingMore}
+                        hasMoreData={hasMoreData}
                     />
                 </div>
             </div>

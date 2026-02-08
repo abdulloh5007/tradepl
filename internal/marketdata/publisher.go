@@ -56,7 +56,7 @@ func StartPublisherWithDB(bus *Bus, pair string, dir string, pool *pgxpool.Pool)
 		prec = profile.Prec
 	}
 
-	candles, err := store.LoadRecent(key, 500, prec)
+	candles, err := store.LoadRecent(key, 10000, prec)
 	if err != nil || len(candles) == 0 {
 		log.Printf("[Publisher] Generating 500 historical candles for %s", pair)
 		candles = GenerateInitialCandles(pair, 5000)
