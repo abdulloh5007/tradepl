@@ -54,6 +54,14 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [sessions, setSessions] = useState<SessionConfig[]>([])
     const [activeSession, setActiveSession] = useState<string>("")
     const [currentTrend, setCurrentTrend] = useState<string>("random")
+    const [trendMode, setTrendMode] = useState<string>("auto")
+    const [autoTrendState, setAutoTrendState] = useState<{
+        active: boolean
+        trend: string
+        session_id: string
+        next_switch_at: number
+        remaining_sec: number
+    } | null>(null)
     const [mode, setMode] = useState<string>("manual")
     const [loading, setLoading] = useState(false)
     const [initialLoad, setInitialLoad] = useState(true)
@@ -205,14 +213,30 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
             if (canTrend) {
                 jobs.push((async () => {
-                    const trendRes = await fetch(`${baseUrl}/v1/admin/trend`, { headers })
+                    const [trendRes, trendModeRes, trendStateRes] = await Promise.all([
+                        fetch(`${baseUrl}/v1/admin/trend`, { headers }),
+                        fetch(`${baseUrl}/v1/admin/trend/mode`, { headers }),
+                        fetch(`${baseUrl}/v1/admin/trend/state`, { headers })
+                    ])
                     if (trendRes.ok) {
                         const trendData = await trendRes.json()
                         setCurrentTrend(trendData.trend || "random")
                     }
+                    if (trendModeRes.ok) {
+                        const trendModeData = await trendModeRes.json()
+                        setTrendMode(trendModeData.mode || "auto")
+                    }
+                    if (trendStateRes.ok) {
+                        const trendStateData = await trendStateRes.json()
+                        setAutoTrendState(trendStateData || null)
+                    } else {
+                        setAutoTrendState(null)
+                    }
                 })())
             } else {
                 setCurrentTrend("random")
+                setTrendMode("auto")
+                setAutoTrendState(null)
                 setActiveEventState(null)
             }
 
@@ -364,15 +388,36 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(false)
     }
 
-    const setTrend = async (trend: string) => {
+    const setTrend = async (trend: string, durationSeconds?: number) => {
         if (!canAccess("trend")) return
         setLoading(true)
         try {
+            const payload: Record<string, unknown> = { trend }
+            if ((trend === "bullish" || trend === "bearish") && (durationSeconds === 180 || durationSeconds === 300)) {
+                payload.duration_seconds = durationSeconds
+            }
             await fetch(`${baseUrl}/v1/admin/trend`, {
                 method: "POST", headers,
-                body: JSON.stringify({ trend })
+                body: JSON.stringify(payload)
             })
             setCurrentTrend(trend)
+            setTrendMode("manual")
+            fetchData()
+        } catch (e) { setError(String(e)) }
+        setLoading(false)
+    }
+
+    const toggleTrendMode = async () => {
+        if (!canAccess("trend")) return
+        const newMode = trendMode === "auto" ? "manual" : "auto"
+        setLoading(true)
+        try {
+            await fetch(`${baseUrl}/v1/admin/trend/mode`, {
+                method: "POST", headers,
+                body: JSON.stringify({ mode: newMode })
+            })
+            setTrendMode(newMode)
+            if (newMode === "auto") fetchData()
         } catch (e) { setError(String(e)) }
         setLoading(false)
     }
@@ -517,12 +562,15 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
                 <TrendCard
                     currentTrend={currentTrend}
+                    mode={trendMode}
+                    autoTrendState={autoTrendState}
                     activeEventState={activeEventState}
                     loading={loading}
                     initialLoad={initialLoad}
                     eventLoading={eventLoading}
                     canAccess={canTrend}
                     onSetTrend={setTrend}
+                    onToggleMode={toggleTrendMode}
                 />
 
                 <PriceEventsCard

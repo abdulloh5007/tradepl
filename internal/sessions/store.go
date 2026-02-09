@@ -36,8 +36,10 @@ type PriceEvent struct {
 
 // AdminSettings key constants
 const (
-	SettingSessionMode  = "session_mode"
-	SettingCurrentTrend = "current_trend"
+	SettingSessionMode      = "session_mode"
+	SettingCurrentTrend     = "current_trend"
+	SettingTrendMode        = "trend_mode"
+	SettingTrendManualUntil = "trend_manual_until"
 )
 
 // Store handles database operations for sessions

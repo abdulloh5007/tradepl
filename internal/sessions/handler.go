@@ -107,13 +107,68 @@ func (h *Handler) GetTrend(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		trend = "random"
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]string{"trend": trend})
+	expiresAtMs := int64(0)
+	if raw, err := h.store.GetSetting(r.Context(), SettingTrendManualUntil); err == nil && raw != "" {
+		if parsed, perr := strconv.ParseInt(raw, 10, 64); perr == nil && parsed > time.Now().UnixMilli() {
+			expiresAtMs = parsed
+		}
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"trend":      trend,
+		"expires_at": expiresAtMs,
+	})
+}
+
+// GetTrendMode returns current trend mode (auto/manual)
+func (h *Handler) GetTrendMode(w http.ResponseWriter, r *http.Request) {
+	mode, err := h.store.GetSetting(r.Context(), SettingTrendMode)
+	if err != nil || (mode != "auto" && mode != "manual") {
+		mode = "auto"
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"mode": mode})
+}
+
+// GetTrendState returns current auto-trend runtime state
+func (h *Handler) GetTrendState(w http.ResponseWriter, r *http.Request) {
+	if getTrendStateFn != nil {
+		state := getTrendStateFn()
+		httputil.WriteJSON(w, http.StatusOK, state)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"active":         false,
+		"trend":          "random",
+		"session_id":     "",
+		"next_switch_at": 0,
+		"remaining_sec":  0,
+	})
+}
+
+// SetTrendMode sets trend mode (auto/manual)
+func (h *Handler) SetTrendMode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if req.Mode != "auto" && req.Mode != "manual" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "mode must be 'auto' or 'manual'"})
+		return
+	}
+	if err := h.store.SetSetting(r.Context(), SettingTrendMode, req.Mode); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "mode": req.Mode})
 }
 
 // SetTrend sets the trend bias (bullish/bearish/sideways/random)
 func (h *Handler) SetTrend(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Trend string `json:"trend"`
+		Trend           string `json:"trend"`
+		DurationSeconds int    `json:"duration_seconds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request body"})
@@ -125,15 +180,40 @@ func (h *Handler) SetTrend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	expiresAtMs := int64(0)
+	if req.Trend == "bullish" || req.Trend == "bearish" {
+		if req.DurationSeconds == 0 {
+			req.DurationSeconds = 180
+		}
+		if req.DurationSeconds != 180 && req.DurationSeconds != 300 {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "duration_seconds must be 180 or 300"})
+			return
+		}
+		expiresAtMs = time.Now().Add(time.Duration(req.DurationSeconds) * time.Second).UnixMilli()
+		if err := h.store.SetSetting(r.Context(), SettingTrendManualUntil, strconv.FormatInt(expiresAtMs, 10)); err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+			return
+		}
+	} else {
+		_ = h.store.SetSetting(r.Context(), SettingTrendManualUntil, "0")
+	}
 	if err := h.store.SetSetting(r.Context(), SettingCurrentTrend, req.Trend); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
 
+	// Manual trend change acts as explicit override.
+	_ = h.store.SetSetting(r.Context(), SettingTrendMode, "manual")
+
 	// Notify publisher about trend change
 	NotifyTrendChange(req.Trend)
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "trend": req.Trend})
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status":           "ok",
+		"trend":            req.Trend,
+		"duration_seconds": req.DurationSeconds,
+		"expires_at":       expiresAtMs,
+	})
 }
 
 // --- Price Event Endpoints ---
@@ -201,10 +281,16 @@ func (h *Handler) GetActiveEvent(w http.ResponseWriter, r *http.Request) {
 
 // Callback for getting event state from marketdata package
 var getEventStateFn func() interface{}
+var getTrendStateFn func() interface{}
 
 // SetEventStateCallback sets the callback function to get current event state
 func SetEventStateCallback(fn func() interface{}) {
 	getEventStateFn = fn
+}
+
+// SetTrendStateCallback sets callback for auto-trend runtime state
+func SetTrendStateCallback(fn func() interface{}) {
+	getTrendStateFn = fn
 }
 
 // CreateEvent creates a new scheduled price event

@@ -91,6 +91,9 @@ func main() {
 	sessions.SetEventStateCallback(func() interface{} {
 		return marketdata.GetCurrentEventState()
 	})
+	sessions.SetTrendStateCallback(func() interface{} {
+		return marketdata.GetCurrentAutoTrendState()
+	})
 
 	// Start quote/candle publisher with session support
 	marketdata.StartPublisherWithDB(bus, "UZS-USD", cfg.MarketDataDir, pool)

@@ -612,7 +612,10 @@ export default function App() {
 
 
   const handleQuickOrder = async (side: "buy" | "sell") => {
-    if (!quickQty || Number(quickQty) <= 0) {
+    const qtyRaw = (quickQty || "").trim()
+    const qtyOk = /^\d{1,3}(\.\d{1,2})?$/.test(qtyRaw)
+    const qtyNum = Number(qtyRaw)
+    if (!qtyOk || !Number.isFinite(qtyNum) || qtyNum < 0.01 || qtyNum > 999.99) {
       toast.message(t("qty", lang))
       return
     }
@@ -634,7 +637,7 @@ export default function App() {
         pair: marketPair,
         side,
         type: "market",
-        qty: quickQty,
+        qty: qtyNum.toFixed(2),
         time_in_force: "ioc"
       })
       toast.success(t("statusOrderPlaced", lang))

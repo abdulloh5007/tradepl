@@ -2,6 +2,58 @@ import { useEffect, useRef, useCallback } from "react"
 import { createChart, ColorType, ISeriesApi, IPriceLine } from "lightweight-charts"
 import type { Candle, Quote, Order, MarketConfig } from "../types"
 
+const VIEWPORT_COOKIE_KEY = "lv_chart_viewport_v1"
+const VIEWPORT_TTL_MS = 45 * 60 * 1000 // 45 minutes
+const VIEWPORT_MAX_ENTRIES = 8
+
+type SavedViewport = {
+    key: string
+    from: number
+    to: number
+    rightOffset: number
+    barSpacing: number
+    savedAt: number
+}
+
+function readCookie(name: string): string | null {
+    if (typeof document === "undefined") return null
+    const parts = document.cookie.split("; ")
+    for (const part of parts) {
+        if (part.startsWith(`${name}=`)) {
+            return decodeURIComponent(part.slice(name.length + 1))
+        }
+    }
+    return null
+}
+
+function writeCookie(name: string, value: string, maxAgeSec: number): void {
+    if (typeof document === "undefined") return
+    document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSec}; samesite=lax`
+}
+
+function readSavedViewports(): SavedViewport[] {
+    const raw = readCookie(VIEWPORT_COOKIE_KEY)
+    if (!raw) return []
+    try {
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return []
+        return parsed.filter((item): item is SavedViewport =>
+            item &&
+            typeof item.key === "string" &&
+            typeof item.from === "number" &&
+            typeof item.to === "number" &&
+            typeof item.rightOffset === "number" &&
+            typeof item.barSpacing === "number" &&
+            typeof item.savedAt === "number")
+    } catch {
+        return []
+    }
+}
+
+function writeSavedViewports(entries: SavedViewport[]): void {
+    writeCookie(VIEWPORT_COOKIE_KEY, JSON.stringify(entries), 60 * 60 * 24 * 7)
+}
+
 interface TradingChartProps {
     candles: Candle[]
     quote: Quote | null
@@ -36,6 +88,10 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const candlesRef = useRef(candles)
     const initialRenderDoneRef = useRef(false) // Skip lazy load on first render
     const lastRangeFromRef = useRef<number | null>(null) // Track scroll direction
+    const saveViewportTimerRef = useRef<number | null>(null)
+    const restoredViewportKeyRef = useRef<string>("")
+    const viewportKeyRef = useRef("")
+    const prevViewportKeyRef = useRef("")
 
     // Keep refs in sync
     onLoadMoreRef.current = onLoadMore
@@ -58,9 +114,77 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
         })
     }, [])
 
+    const viewportKey = `${marketPair}|${timeframe}`
+    viewportKeyRef.current = viewportKey
+
+    const restoreViewport = useCallback((key: string): boolean => {
+        const chart = chartRef.current
+        if (!chart) return false
+
+        const now = Date.now()
+        const entries = readSavedViewports().filter((entry) => now-entry.savedAt <= VIEWPORT_TTL_MS)
+        if (entries.length === 0) return false
+
+        const entry = entries.find((item) => item.key === key)
+        if (!entry) return false
+
+        const barSpacing = Math.max(0.5, Math.min(80, entry.barSpacing))
+        chart.timeScale().applyOptions({
+            rightOffset: entry.rightOffset,
+            barSpacing
+        })
+        chart.timeScale().setVisibleLogicalRange({ from: entry.from, to: entry.to })
+        return true
+    }, [])
+
+    const persistViewport = useCallback((key: string) => {
+        const chart = chartRef.current
+        if (!chart) return
+        const range = chart.timeScale().getVisibleLogicalRange()
+        if (!range) return
+
+        const tsOpts = chart.timeScale().options()
+        const entry: SavedViewport = {
+            key,
+            from: range.from,
+            to: range.to,
+            rightOffset: tsOpts.rightOffset ?? 0,
+            barSpacing: tsOpts.barSpacing ?? 6,
+            savedAt: Date.now()
+        }
+
+        const active = readSavedViewports()
+            .filter((item) => Date.now()-item.savedAt <= VIEWPORT_TTL_MS)
+            .filter((item) => item.key !== key)
+        active.unshift(entry)
+        writeSavedViewports(active.slice(0, VIEWPORT_MAX_ENTRIES))
+    }, [])
+
+    const schedulePersistViewport = useCallback((key: string) => {
+        if (saveViewportTimerRef.current !== null) {
+            window.clearTimeout(saveViewportTimerRef.current)
+        }
+        saveViewportTimerRef.current = window.setTimeout(() => {
+            persistViewport(key)
+            saveViewportTimerRef.current = null
+        }, 350)
+    }, [persistViewport])
+
     // Initialize chart
     useEffect(() => {
         if (!containerRef.current) return
+
+        const resizeChartToContainer = () => {
+            const chart = chartRef.current
+            const container = containerRef.current
+            if (!chart || !container) return
+            const rect = container.getBoundingClientRect()
+            const width = Math.floor(rect.width)
+            const height = Math.floor(rect.height)
+            if (width <= 0 || height <= 0) return
+            chart.applyOptions({ width, height })
+            updateOrderLabelPositions()
+        }
 
         const chart = createChart(containerRef.current, {
             width: containerRef.current.clientWidth,
@@ -111,11 +235,33 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
         resizeObserverRef.current = new ResizeObserver((entries) => {
             if (chartRef.current && entries[0]) {
                 const { width, height } = entries[0].contentRect
-                chartRef.current.applyOptions({ width, height })
-                updateOrderLabelPositions()
+                if (width > 0 && height > 0) {
+                    chartRef.current.applyOptions({ width, height })
+                    updateOrderLabelPositions()
+                }
             }
         })
         resizeObserverRef.current.observe(containerRef.current)
+        if (containerRef.current.parentElement) {
+            resizeObserverRef.current.observe(containerRef.current.parentElement)
+        }
+
+        const onWindowResize = () => {
+            // Delay to next frame so layout changes (e.g. devtools open/close) are applied.
+            requestAnimationFrame(resizeChartToContainer)
+        }
+        window.addEventListener("resize", onWindowResize)
+        window.addEventListener("orientationchange", onWindowResize)
+        window.visualViewport?.addEventListener("resize", onWindowResize)
+        // Fallback watchdog: catches edge-cases where browser skips resize/observer notifications.
+        const resizeWatchdog = window.setInterval(() => {
+            resizeChartToContainer()
+        }, 250)
+        const shell = containerRef.current.closest(".trading-chart-shell")
+        shell?.addEventListener("transitionend", onWindowResize)
+        shell?.addEventListener("animationend", onWindowResize)
+        // Initial sync after first paint.
+        requestAnimationFrame(resizeChartToContainer)
 
         // Subscribe to visible range changes for lazy loading
         // Use refs to avoid recreating chart on callback changes
@@ -130,6 +276,9 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
                 lastRangeFromRef.current = range.from
                 return
             }
+
+            // Persist viewport for both pan + zoom changes.
+            schedulePersistViewport(viewportKeyRef.current)
 
             // Only trigger lazy load when user scrolls LEFT (range.from decreases)
             const lastFrom = lastRangeFromRef.current
@@ -157,17 +306,48 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
                     }
                 }, 300)
             }
+
         }
         chart.timeScale().subscribeVisibleLogicalRangeChange(rangeHandler)
 
         return () => {
             resizeObserverRef.current?.disconnect()
+            window.removeEventListener("resize", onWindowResize)
+            window.removeEventListener("orientationchange", onWindowResize)
+            window.visualViewport?.removeEventListener("resize", onWindowResize)
+            window.clearInterval(resizeWatchdog)
+            shell?.removeEventListener("transitionend", onWindowResize)
+            shell?.removeEventListener("animationend", onWindowResize)
             chart.timeScale().unsubscribeVisibleLogicalRangeChange(rangeHandler)
+            persistViewport(viewportKeyRef.current)
+            if (saveViewportTimerRef.current !== null) {
+                window.clearTimeout(saveViewportTimerRef.current)
+                saveViewportTimerRef.current = null
+            }
             orderLabelItemsRef.current.forEach((item) => item.node.remove())
             orderLabelItemsRef.current = []
             chart.remove()
         }
-    }, [theme, updateOrderLabelPositions]) // Only recreate on theme change
+    }, [updateOrderLabelPositions, persistViewport, schedulePersistViewport]) // Keep chart mounted; avoid remount on pair/timeframe/theme changes
+
+    // Apply visual theme without recreating chart (keeps viewport and zoom intact).
+    useEffect(() => {
+        const chart = chartRef.current
+        const series = seriesRef.current
+        if (!chart || !series) return
+
+        chart.applyOptions({
+            layout: {
+                background: { type: ColorType.Solid, color: theme === "dark" ? "#0a0a0f" : "#ffffff" },
+                textColor: theme === "dark" ? "#d1d5db" : "#374151"
+            },
+            grid: {
+                vertLines: { color: theme === "dark" ? "#1f2937" : "#e5e7eb" },
+                horzLines: { color: theme === "dark" ? "#1f2937" : "#e5e7eb" }
+            },
+            rightPriceScale: { borderColor: theme === "dark" ? "#374151" : "#d1d5db" }
+        })
+    }, [theme])
 
     // Update candles - optimized to use update() for last candle
     useEffect(() => {
@@ -194,7 +374,13 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
                     to: currentRange.to + shift
                 })
             } else if (lastCandleCountRef.current === 0 || timeframeChanged) {
-                chart?.timeScale().fitContent()
+                if (restoredViewportKeyRef.current !== viewportKey) {
+                    const restored = restoreViewport(viewportKey)
+                    restoredViewportKeyRef.current = viewportKey
+                    if (!restored) {
+                        chart?.timeScale().fitContent()
+                    }
+                }
             }
 
             lastCandleCountRef.current = candles.length
@@ -213,7 +399,17 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             lastCandleCountRef.current = candles.length
         }
         updateOrderLabelPositions()
-    }, [candles, timeframe, updateOrderLabelPositions])
+    }, [candles, timeframe, viewportKey, restoreViewport, updateOrderLabelPositions])
+
+    // Save previous key state and allow restore when pair/timeframe key changes.
+    useEffect(() => {
+        const prev = prevViewportKeyRef.current
+        if (prev && prev !== viewportKey) {
+            persistViewport(prev)
+            restoredViewportKeyRef.current = ""
+        }
+        prevViewportKeyRef.current = viewportKey
+    }, [viewportKey, persistViewport])
 
     // Update price lines - throttled
     const updatePriceLines = useCallback(() => {
@@ -260,7 +456,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             }
         }
 
-    }, [quote, theme])
+    }, [quote])
 
     useEffect(() => {
         updatePriceLines()
@@ -315,7 +511,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             }
         })
         updateOrderLabelPositions()
-    }, [openOrders, marketPair, marketConfig, theme, updateOrderLabelPositions])
+    }, [openOrders, marketPair, marketConfig, updateOrderLabelPositions])
 
     // Keep left-side lot labels synced with price scale/viewport changes
     useEffect(() => {
@@ -332,9 +528,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             style={{
                 position: "relative",
                 width: "100%",
-                height: "100%",
-                minHeight: "300px",
-                maxHeight: "calc(100vh - 200px)"
+                height: "100%"
             }}
         >
             <div ref={orderLabelsLayerRef} className="order-labels-layer" />

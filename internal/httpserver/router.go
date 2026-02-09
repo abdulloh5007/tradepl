@@ -217,7 +217,10 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.With(admin.RequireRight("sessions")).Post("/sessions/mode", d.SessionsHandler.SetMode)
 				// Trend
 				r.With(admin.RequireRight("trend")).Get("/trend", d.SessionsHandler.GetTrend)
+				r.With(admin.RequireRight("trend")).Get("/trend/mode", d.SessionsHandler.GetTrendMode)
+				r.With(admin.RequireRight("trend")).Get("/trend/state", d.SessionsHandler.GetTrendState)
 				r.With(admin.RequireRight("trend")).Post("/trend", d.SessionsHandler.SetTrend)
+				r.With(admin.RequireRight("trend")).Post("/trend/mode", d.SessionsHandler.SetTrendMode)
 				// Price events
 				r.With(admin.RequireRight("events")).Get("/events", d.SessionsHandler.GetEvents)
 				r.With(admin.RequireRight("events")).Get("/events/active", d.SessionsHandler.GetActiveEvent)
