@@ -4,7 +4,7 @@ import {
     LogOut, Activity, TrendingUp, TrendingDown, Minus, Shuffle,
     Zap, Timer, Gauge, Target, Plus, X, Calendar, Clock,
     Sun, Moon, Settings, CheckCircle, AlertCircle, User, Trash2, Shield,
-    Filter, ChevronLeft, ChevronRight, Loader2
+    Filter, ChevronLeft, ChevronRight, Loader2, StopCircle, Edit2, RefreshCw
 } from "lucide-react"
 import Skeleton from "../components/Skeleton"
 
@@ -140,7 +140,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [panelAdmins, setPanelAdmins] = useState<PanelAdmin[]>([])
     const [newAdminTgId, setNewAdminTgId] = useState("")
     const [newAdminName, setNewAdminName] = useState("")
+
     const [newAdminRights, setNewAdminRights] = useState<string[]>([])
+    const [editingAdmin, setEditingAdmin] = useState<any>(null)
+    const [editAdminName, setEditAdminName] = useState("")
+    const [editAdminRights, setEditAdminRights] = useState<string[]>([])
 
     const allRights = ["sessions", "volatility", "trend", "events"]
 
@@ -531,6 +535,46 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(false)
     }
 
+    const startEditing = (admin: any) => {
+        setEditingAdmin(admin)
+        setEditAdminName(admin.name)
+        setEditAdminRights(Array.isArray(admin.rights) ? admin.rights : [])
+    }
+
+    const updateAdmin = async () => {
+        if (!editingAdmin) return
+        setLoading(true)
+        try {
+            const rightsMap: Record<string, boolean> = {}
+            editAdminRights.forEach(r => rightsMap[r] = true)
+
+            const res = await fetch(`${baseUrl}/v1/admin/panel-admins/${editingAdmin.id}`, {
+                method: "PUT",
+                headers: {
+                    ...headers,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    name: editAdminName,
+                    rights: rightsMap
+                })
+            })
+            if (!res.ok) throw new Error("Failed to update admin")
+
+            // Convert rights map back to array for UI
+            const rightsArr = []
+            if (editAdminRights) {
+                // We use local state updating, but better fetch fresh list
+                fetchAdmins()
+            }
+            setEditingAdmin(null)
+        } catch (e) {
+            setError("Failed to update admin")
+        } finally {
+            setLoading(false)
+        }
+    }
+
     const toggleAdminRight = (right: string) => {
         if (newAdminRights.includes(right)) {
             setNewAdminRights(newAdminRights.filter(r => r !== right))
@@ -551,7 +595,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     }
 
     const applyCustomFilter = () => {
-        if (customDateFrom && customDateTo) {
+        if (customDateFrom) {
+            // If To is missing, set to today end of day
+            if (!customDateTo) {
+                const today = new Date()
+                today.setHours(23, 59, 59, 999)
+                setCustomDateTo(today)
+            }
             setFilterType("custom")
             setShowFilterModal(false)
         }
@@ -842,12 +892,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                 <input type="number" value={newAdminTgId} onChange={e => setNewAdminTgId(e.target.value)} placeholder="Telegram ID" />
                                 <input type="text" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} placeholder="Admin Name" />
                             </div>
-                            <div className="admin-rights-row">
+                            <div className="rights-chips">
                                 {allRights.map(right => (
-                                    <label key={right} className="right-checkbox">
-                                        <input type="checkbox" checked={newAdminRights.includes(right)} onChange={() => toggleAdminRight(right)} />
-                                        {right}
-                                    </label>
+                                    <button key={right}
+                                        className={`right-chip ${newAdminRights.includes(right) ? 'active' : ''}`}
+                                        onClick={() => toggleAdminRight(right)}>
+                                        {right.charAt(0).toUpperCase() + right.slice(1)}
+                                    </button>
                                 ))}
                             </div>
                             <button className="add-event-btn" onClick={createAdmin} disabled={loading || !newAdminTgId || !newAdminName}>
@@ -873,9 +924,14 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                     <div className="admin-rights">
                                         {Array.isArray(admin.rights) && admin.rights.map(r => <span key={r} className="right-badge">{r}</span>)}
                                     </div>
-                                    <button className="cancel-event-btn" onClick={() => deleteAdmin(admin.id)}>
-                                        <Trash2 size={16} />
-                                    </button>
+                                    <div className="admin-actions">
+                                        <button className="edit-admin-btn" onClick={() => startEditing(admin)} style={{ marginRight: 8 }}>
+                                            <Edit2 size={16} />
+                                        </button>
+                                        <button className="delete-admin-btn" onClick={() => deleteAdmin(admin.id)}>
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -907,18 +963,63 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             <h4>Выбрать диапазон</h4>
                             <div className="date-range-inputs">
                                 <div className="date-input-group">
-                                    <label>От</label>
+                                    <label>From</label>
                                     <input type="date" value={customDateFrom ? customDateFrom.toISOString().split('T')[0] : ''}
                                         onChange={e => setCustomDateFrom(e.target.value ? new Date(e.target.value) : null)} />
                                 </div>
                                 <div className="date-input-group">
-                                    <label>До</label>
+                                    <label>To (Optional)</label>
                                     <input type="date" value={customDateTo ? customDateTo.toISOString().split('T')[0] : ''}
-                                        onChange={e => setCustomDateTo(e.target.value ? new Date(e.target.value + 'T23:59:59') : null)} />
+                                        onChange={e => setCustomDateTo(e.target.value ? new Date(e.target.value + 'T23:59:59') : null)}
+                                        placeholder="Today" />
                                 </div>
                             </div>
-                            <button className="apply-filter-btn" onClick={applyCustomFilter} disabled={!customDateFrom || !customDateTo}>
-                                Применить
+                            <button className="apply-filter-btn" onClick={applyCustomFilter} disabled={!customDateFrom}>
+                                Apply Filter
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* Edit Admin Modal */}
+            {editingAdmin && (
+                <>
+                    <div className="filter-overlay" onClick={() => setEditingAdmin(null)} />
+                    <div className={`filter-modal ${isMobile ? "swiper" : ""}`}>
+                        <div className="filter-header">
+                            <h3>Edit Admin</h3>
+                            <button onClick={() => setEditingAdmin(null)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="filter-custom">
+                            <div className="date-range-inputs">
+                                <div className="date-input-group" style={{ gridColumn: "1 / -1" }}>
+                                    <label>Name</label>
+                                    <input type="text" value={editAdminName} onChange={e => setEditAdminName(e.target.value)} />
+                                </div>
+                            </div>
+
+                            <label style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8, display: "block" }}>Rights</label>
+                            <div className="rights-chips" style={{ marginBottom: 20 }}>
+                                {allRights.map(right => (
+                                    <button key={right}
+                                        className={`right-chip ${editAdminRights.includes(right) ? 'active' : ''}`}
+                                        onClick={() => {
+                                            if (editAdminRights.includes(right)) {
+                                                setEditAdminRights(prev => prev.filter(r => r !== right))
+                                            } else {
+                                                setEditAdminRights(prev => [...prev, right])
+                                            }
+                                        }}>
+                                        {right.charAt(0).toUpperCase() + right.slice(1)}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button className="apply-filter-btn" onClick={updateAdmin} disabled={loading || !editAdminName}>
+                                {loading ? <Loader2 className="spin" /> : "Save Changes"}
                             </button>
                         </div>
                     </div>

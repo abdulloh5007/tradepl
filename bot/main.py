@@ -110,15 +110,27 @@ async def cmd_getownerpanel(message: types.Message):
     # Generate link
     link = f"{SITE_URL}/manage-panel?token={token}"
     
-    # Create inline keyboard with clickable button
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link)]
-    ])
+    # Check if local
+    is_local = "localhost" in SITE_URL or "127.0.0.1" in SITE_URL
     
-    await message.answer(
+    keyboard = None
+    if not is_local:
+        # Create inline keyboard with clickable button
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link)]
+        ])
+    
+    msg_text = (
         f"🔐 <b>Owner Panel Access</b>\n\n"
         f"⏱ <b>Valid for:</b> {duration_text}\n\n"
-        f"⚠️ <i>This link will expire after the specified time.</i>",
+        f"⚠️ <i>This link will expire after the specified time.</i>"
+    )
+    
+    if is_local:
+        msg_text += f"\n\n🔗 {link}"
+    
+    await message.answer(
+        msg_text,
         parse_mode="HTML",
         reply_markup=keyboard
     )
@@ -151,15 +163,26 @@ async def cmd_getadminpanel(message: types.Message):
     rights = await db.get_admin_rights(user_id)
     
     # Create inline keyboard with clickable button
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link)]
-    ])
+    keyboard = None
+    is_local = "localhost" in SITE_URL or "127.0.0.1" in SITE_URL
     
-    await message.answer(
+    if not is_local:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link)]
+        ])
+        
+    msg_text = (
         f"👤 <b>Admin Panel Access</b>\n\n"
         f"⏱ <b>Valid for:</b> {duration_text}\n"
         f"🔑 <b>Your Rights:</b> {format_rights(rights)}\n\n"
-        f"⚠️ <i>This link will expire after the specified time.</i>",
+        f"⚠️ <i>This link will expire after the specified time.</i>"
+    )
+
+    if is_local:
+        msg_text += f"\n\n🔗 {link}"
+    
+    await message.answer(
+        msg_text,
         parse_mode="HTML",
         reply_markup=keyboard
     )

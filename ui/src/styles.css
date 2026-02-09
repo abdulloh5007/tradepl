@@ -2107,3 +2107,75 @@ input[type=number] {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Global Form Styles --- */
+input,
+select,
+textarea {
+  background: var(--panel-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px rgba(46, 107, 228, 0.15);
+}
+
+/* Date input specific */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+  filter: invert(var(--invert-icon));
+}
+
+html[data-theme="dark"] {
+  --invert-icon: 1;
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --invert-icon: 0;
+  color-scheme: light;
+}
+
+/* Admin Rights Chips */
+.rights-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.right-chip {
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.right-chip:hover {
+  background: var(--bg2);
+}
+
+.right-chip.active {
+  background: rgba(46, 107, 228, 0.15);
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+  font-weight: 600;
+}

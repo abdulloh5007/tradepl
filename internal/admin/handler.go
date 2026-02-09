@@ -13,6 +13,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"lv-tradepl/internal/httputil"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // Handler handles admin authentication
@@ -182,7 +184,7 @@ func (h *Handler) CreatePanelAdmin(w http.ResponseWriter, r *http.Request) {
 
 // UpdatePanelAdmin updates a panel admin
 func (h *Handler) UpdatePanelAdmin(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
+	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid id"})
@@ -209,7 +211,7 @@ func (h *Handler) UpdatePanelAdmin(w http.ResponseWriter, r *http.Request) {
 
 // DeletePanelAdmin deletes a panel admin
 func (h *Handler) DeletePanelAdmin(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
+	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid id"})
