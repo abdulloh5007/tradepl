@@ -639,7 +639,7 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 		if leverage.GreaterThan(decimal.Zero) {
 			positionMargin = positionMargin.Add(notional.Div(leverage))
 		}
-		orderPnL := calculateOrderPnL(pair.Symbol, o.Side, entryRaw, markRaw, filledQty, contractSize)
+		orderPnL := calculateOrderPnL(pair.Symbol, o.Side, entryRaw, markRaw, filledQty, pairPnLContractSize(pair))
 		floatingPnL = floatingPnL.Add(orderPnL)
 		if o.Status == types.OrderStatusFilled {
 			positions = append(positions, positionRisk{Order: o, PnL: orderPnL})
@@ -812,7 +812,7 @@ func (s *Service) ListOpenOrdersByAccount(ctx context.Context, userID, accountID
 					if o.Side == types.OrderSideSell {
 						mark = qm.ask
 					}
-					pnl := calculateOrderPnL(pair.Symbol, o.Side, *o.Price, mark, filledQty, pairContractSize(pair))
+					pnl := calculateOrderPnL(pair.Symbol, o.Side, *o.Price, mark, filledQty, pairPnLContractSize(pair))
 					o.UnrealizedPnL = &pnl
 				}
 			}
@@ -985,7 +985,7 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 	if order.Side == types.OrderSideSell {
 		exitPrice = decimal.NewFromFloat(ask)
 	}
-	pnl = calculateOrderPnL(pair.Symbol, order.Side, entryPrice, exitPrice, qty, contractSize)
+	pnl = calculateOrderPnL(pair.Symbol, order.Side, entryPrice, exitPrice, qty, pairPnLContractSize(pair))
 
 	// 7. Update user's USD balance
 	// Get the user's available USD account
@@ -1201,6 +1201,14 @@ func pairContractSize(pair marketdata.Pair) decimal.Decimal {
 		return decimal.NewFromInt(1)
 	}
 	return size
+}
+
+func pairPnLContractSize(pair marketdata.Pair) decimal.Decimal {
+	size, err := decimal.NewFromString(strings.TrimSpace(pair.PnLContractSize))
+	if err == nil && size.GreaterThan(decimal.Zero) {
+		return size
+	}
+	return pairContractSize(pair)
 }
 
 func pairMinLot(pair marketdata.Pair) decimal.Decimal {

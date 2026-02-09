@@ -17,7 +17,6 @@ export default function AccountMetrics({ metrics, lang }: AccountMetricsProps) {
   const formatMarginLevel = (v: string) => {
     const num = parseFloat(v || "0")
     if (!Number.isFinite(num) || num <= 0) return "—"
-    if (num >= 1_000_000) return "∞"
     return `${formatNumber(num, 2, 2)}%`
   }
 

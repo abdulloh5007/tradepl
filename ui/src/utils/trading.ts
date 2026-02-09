@@ -20,7 +20,7 @@ export function calcOrderProfit(
   const entryRaw = parseFloat(order.price || "0")
   if (!Number.isFinite(entryRaw) || entryRaw <= 0) return Number.isFinite(backendPnL) ? backendPnL : 0
 
-  const contractSize = marketPair === "UZS-USD" ? 20 : 1
+  const contractSize = marketPair === "UZS-USD" ? 100 : 1
   const hasLiveQuote = Number.isFinite(bidDisplay) && Number.isFinite(askDisplay) && bidDisplay > 0 && askDisplay > 0
   if (!hasLiveQuote) return Number.isFinite(backendPnL) ? backendPnL : 0
 

@@ -83,9 +83,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 // Me returns admin info
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	username := r.Context().Value(adminUsernameKey).(string)
+	role, _ := r.Context().Value(adminRoleKey).(string)
+	if role == "" {
+		role = "admin"
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{
 		"username": username,
-		"role":     "admin",
+		"role":     role,
 	})
 }
 
@@ -279,6 +283,84 @@ func (h *Handler) UpdateTradingPair(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
+func (h *Handler) GetTradingPnLConfig(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+
+	rows, err := h.pool.Query(r.Context(), `
+		SELECT symbol, COALESCE(pnl_contract_size, contract_size)::text
+		FROM trading_pairs
+		ORDER BY symbol ASC
+	`)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type rowOut struct {
+		Symbol          string `json:"symbol"`
+		PnLContractSize string `json:"pnl_contract_size"`
+	}
+	out := make([]rowOut, 0, 4)
+	for rows.Next() {
+		var item rowOut
+		if err := rows.Scan(&item.Symbol, &item.PnLContractSize); err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+			return
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) UpdateTradingPnLConfig(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+
+	symbol := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "symbol")))
+	if symbol == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "symbol is required"})
+		return
+	}
+
+	var req struct {
+		PnLContractSize string `json:"pnl_contract_size"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
+		return
+	}
+	req.PnLContractSize = strings.TrimSpace(req.PnLContractSize)
+	if !isPositiveNumeric(req.PnLContractSize) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "pnl_contract_size must be positive"})
+		return
+	}
+
+	cmd, err := h.pool.Exec(r.Context(), `
+		UPDATE trading_pairs
+		SET pnl_contract_size = $2::numeric
+		WHERE symbol = $1
+	`, symbol, req.PnLContractSize)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if cmd.RowsAffected() == 0 {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorResponse{Error: "pair not found"})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
 // ValidateToken validates an access token from Telegram bot
 func (h *Handler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
@@ -335,6 +417,9 @@ func (h *Handler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 
 // GetPanelAdmins returns all panel admins (owner only)
 func (h *Handler) GetPanelAdmins(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
 	admins, err := h.tokenStore.GetPanelAdmins(r.Context())
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
@@ -348,6 +433,9 @@ func (h *Handler) GetPanelAdmins(w http.ResponseWriter, r *http.Request) {
 
 // CreatePanelAdmin creates a new panel admin
 func (h *Handler) CreatePanelAdmin(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
 	var req struct {
 		TelegramID int64           `json:"telegram_id"`
 		Name       string          `json:"name"`
@@ -374,6 +462,9 @@ func (h *Handler) CreatePanelAdmin(w http.ResponseWriter, r *http.Request) {
 
 // UpdatePanelAdmin updates a panel admin
 func (h *Handler) UpdatePanelAdmin(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -401,6 +492,9 @@ func (h *Handler) UpdatePanelAdmin(w http.ResponseWriter, r *http.Request) {
 
 // DeletePanelAdmin deletes a panel admin
 func (h *Handler) DeletePanelAdmin(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -461,6 +555,7 @@ func AdminAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 				username = role
 			}
 			ctx := context.WithValue(r.Context(), adminUsernameKey, username)
+			ctx = context.WithValue(ctx, adminRoleKey, role)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -474,3 +569,13 @@ func isPositiveNumeric(raw string) bool {
 type contextKey string
 
 const adminUsernameKey contextKey = "admin_username"
+const adminRoleKey contextKey = "admin_role"
+
+func requireOwner(w http.ResponseWriter, r *http.Request) bool {
+	role, _ := r.Context().Value(adminRoleKey).(string)
+	if role != "owner" {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "owner access required"})
+		return false
+	}
+	return true
+}

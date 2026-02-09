@@ -181,8 +181,6 @@ export default function App() {
     let marginLevel = 0
     if (baseMargin > 0) {
       marginLevel = (equity / baseMargin) * 100
-    } else if (equity > 0) {
-      marginLevel = 1_000_000
     }
 
     return {
