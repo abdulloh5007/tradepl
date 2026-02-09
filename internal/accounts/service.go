@@ -20,6 +20,17 @@ func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool}
 }
 
+var allowedLeverageValues = map[int]struct{}{
+	0: {}, // unlimited
+	2: {}, 5: {}, 10: {}, 20: {}, 30: {}, 40: {}, 50: {},
+	100: {}, 200: {}, 500: {}, 1000: {}, 2000: {}, 3000: {},
+}
+
+func isAllowedLeverage(v int) bool {
+	_, ok := allowedLeverageValues[v]
+	return ok
+}
+
 type Plan struct {
 	ID               string  `json:"id"`
 	Name             string  `json:"name"`
@@ -34,6 +45,7 @@ type TradingAccount struct {
 	UserID    string          `json:"user_id"`
 	PlanID    string          `json:"plan_id"`
 	Plan      Plan            `json:"plan"`
+	Leverage  int             `json:"leverage"`
 	Mode      string          `json:"mode"`
 	Name      string          `json:"name"`
 	IsActive  bool            `json:"is_active"`
@@ -58,9 +70,11 @@ func (s *Service) ensureDefaultAccountsTx(ctx context.Context, tx pgx.Tx, userID
 	}
 
 	_, err := tx.Exec(ctx, `
-		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active)
-		SELECT $1, 'standard', 'demo', 'Demo Standard', FALSE
-		WHERE NOT EXISTS (
+		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active, leverage)
+		SELECT $1, 'standard', 'demo', 'Demo Standard', FALSE, p.leverage
+		FROM account_plans p
+		WHERE p.id = 'standard'
+		  AND NOT EXISTS (
 			SELECT 1 FROM trading_accounts
 			WHERE user_id = $1 AND mode = 'demo' AND plan_id = 'standard'
 		)
@@ -70,9 +84,11 @@ func (s *Service) ensureDefaultAccountsTx(ctx context.Context, tx pgx.Tx, userID
 	}
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active)
-		SELECT $1, 'standard', 'real', 'Real Standard', FALSE
-		WHERE NOT EXISTS (
+		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active, leverage)
+		SELECT $1, 'standard', 'real', 'Real Standard', FALSE, p.leverage
+		FROM account_plans p
+		WHERE p.id = 'standard'
+		  AND NOT EXISTS (
 			SELECT 1 FROM trading_accounts
 			WHERE user_id = $1 AND mode = 'real' AND plan_id = 'standard'
 		)
@@ -127,7 +143,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]TradingAccount, er
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT
-			ta.id, ta.user_id, ta.plan_id, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
+			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
 			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage,
 			COALESCE(SUM(
 				CASE WHEN ast.symbol = 'USD' AND a.kind = 'available' THEN le.amount ELSE 0 END
@@ -139,7 +155,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]TradingAccount, er
 		LEFT JOIN ledger_entries le ON le.account_id = a.id
 		WHERE ta.user_id = $1
 		GROUP BY
-			ta.id, ta.user_id, ta.plan_id, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
+			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
 			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage
 		ORDER BY ta.created_at ASC
 	`, userID)
@@ -153,7 +169,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]TradingAccount, er
 		var a TradingAccount
 		var p Plan
 		if err := rows.Scan(
-			&a.ID, &a.UserID, &a.PlanID, &a.Mode, &a.Name, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
+			&a.ID, &a.UserID, &a.PlanID, &a.Leverage, &a.Mode, &a.Name, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
 			&p.ID, &p.Name, &p.Description, &p.SpreadMultiplier, &p.CommissionRate, &p.Leverage,
 			&a.Balance,
 		); err != nil {
@@ -171,13 +187,13 @@ func (s *Service) getByID(ctx context.Context, tx pgx.Tx, userID, accountID stri
 	var p Plan
 	err := tx.QueryRow(ctx, `
 		SELECT
-			ta.id, ta.user_id, ta.plan_id, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
+			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
 			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage
 		FROM trading_accounts ta
 		JOIN account_plans p ON p.id = ta.plan_id
 		WHERE ta.id = $1 AND ta.user_id = $2
 	`, accountID, userID).Scan(
-		&a.ID, &a.UserID, &a.PlanID, &a.Mode, &a.Name, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.UserID, &a.PlanID, &a.Leverage, &a.Mode, &a.Name, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
 		&p.ID, &p.Name, &p.Description, &p.SpreadMultiplier, &p.CommissionRate, &p.Leverage,
 	)
 	if err != nil {
@@ -292,20 +308,20 @@ func (s *Service) Create(ctx context.Context, userID, planID, mode, name string,
 	}
 	defer tx.Rollback(ctx)
 
-	var planExists bool
-	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM account_plans WHERE id = $1)", planID).Scan(&planExists); err != nil {
+	var defaultLeverage int
+	if err := tx.QueryRow(ctx, "SELECT leverage FROM account_plans WHERE id = $1", planID).Scan(&defaultLeverage); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("plan not found")
+		}
 		return nil, err
-	}
-	if !planExists {
-		return nil, errors.New("plan not found")
 	}
 
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active)
-		VALUES ($1, $2, $3, $4, FALSE)
+		INSERT INTO trading_accounts (user_id, plan_id, leverage, mode, name, is_active)
+		VALUES ($1, $2, $3, $4, $5, FALSE)
 		RETURNING id
-	`, userID, planID, mode, name).Scan(&id)
+	`, userID, planID, defaultLeverage, mode, name).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
@@ -327,6 +343,60 @@ func (s *Service) Create(ctx context.Context, userID, planID, mode, name string,
 		acc.IsActive = true
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return acc, nil
+}
+
+func (s *Service) UpdateLeverage(ctx context.Context, userID, accountID string, leverage int) (*TradingAccount, error) {
+	if userID == "" || accountID == "" {
+		return nil, errors.New("user_id and account_id are required")
+	}
+	if !isAllowedLeverage(leverage) {
+		return nil, errors.New("unsupported leverage value; allowed: 0 (unlimited), 2, 5, 10, 20, 30, 40, 50, 100, 200, 500, 1000, 2000, 3000")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	acc, err := s.getByID(ctx, tx, userID, accountID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("account not found")
+		}
+		return nil, err
+	}
+
+	var hasOpenPositions bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM orders
+			WHERE user_id = $1
+			  AND trading_account_id = $2
+			  AND status IN ('open', 'partially_filled', 'filled')
+			LIMIT 1
+		)
+	`, userID, accountID).Scan(&hasOpenPositions); err != nil {
+		return nil, err
+	}
+	if hasOpenPositions {
+		return nil, errors.New("cannot change leverage while there are open positions; close them first")
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE trading_accounts
+		SET leverage = $1, updated_at = NOW()
+		WHERE id = $2
+	`, leverage, accountID); err != nil {
+		return nil, err
+	}
+
+	acc.Leverage = leverage
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}

@@ -89,6 +89,196 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
+	_, err := h.pool.Exec(r.Context(), `
+		INSERT INTO trading_risk_config (
+			id, max_open_positions, max_order_lots, max_order_notional_usd,
+			margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage
+		)
+		VALUES (1, 200, 100, 50000, 60, 20, 3000)
+		ON CONFLICT (id) DO NOTHING
+	`)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	var res struct {
+		MaxOpenPositions        int    `json:"max_open_positions"`
+		MaxOrderLots            string `json:"max_order_lots"`
+		MaxOrderNotionalUSD     string `json:"max_order_notional_usd"`
+		MarginCallLevelPercent  string `json:"margin_call_level_pct"`
+		StopOutLevelPercent     string `json:"stop_out_level_pct"`
+		UnlimitedEffectiveLevel int    `json:"unlimited_effective_leverage"`
+	}
+	err = h.pool.QueryRow(r.Context(), `
+		SELECT max_open_positions, max_order_lots, max_order_notional_usd, margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage
+		FROM trading_risk_config
+		WHERE id = 1
+	`).Scan(
+		&res.MaxOpenPositions, &res.MaxOrderLots, &res.MaxOrderNotionalUSD,
+		&res.MarginCallLevelPercent, &res.StopOutLevelPercent, &res.UnlimitedEffectiveLevel,
+	)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, res)
+}
+
+func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		MaxOpenPositions        int    `json:"max_open_positions"`
+		MaxOrderLots            string `json:"max_order_lots"`
+		MaxOrderNotionalUSD     string `json:"max_order_notional_usd"`
+		MarginCallLevelPercent  string `json:"margin_call_level_pct"`
+		StopOutLevelPercent     string `json:"stop_out_level_pct"`
+		UnlimitedEffectiveLevel int    `json:"unlimited_effective_leverage"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
+		return
+	}
+
+	if req.MaxOpenPositions <= 0 || req.UnlimitedEffectiveLevel <= 0 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "max_open_positions and unlimited_effective_leverage must be > 0"})
+		return
+	}
+	if !isPositiveNumeric(req.MaxOrderLots) || !isPositiveNumeric(req.MaxOrderNotionalUSD) || !isPositiveNumeric(req.MarginCallLevelPercent) || !isPositiveNumeric(req.StopOutLevelPercent) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "numeric fields must be positive numbers"})
+		return
+	}
+
+	_, err := h.pool.Exec(r.Context(), `
+		INSERT INTO trading_risk_config (
+			id, max_open_positions, max_order_lots, max_order_notional_usd,
+			margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage, updated_at
+		)
+		VALUES (1, $1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, NOW())
+		ON CONFLICT (id) DO UPDATE
+		SET max_open_positions = EXCLUDED.max_open_positions,
+			max_order_lots = EXCLUDED.max_order_lots,
+			max_order_notional_usd = EXCLUDED.max_order_notional_usd,
+			margin_call_level_pct = EXCLUDED.margin_call_level_pct,
+			stop_out_level_pct = EXCLUDED.stop_out_level_pct,
+			unlimited_effective_leverage = EXCLUDED.unlimited_effective_leverage,
+			updated_at = NOW()
+	`, req.MaxOpenPositions, req.MaxOrderLots, req.MaxOrderNotionalUSD, req.MarginCallLevelPercent, req.StopOutLevelPercent, req.UnlimitedEffectiveLevel)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	h.GetTradingRisk(w, r)
+}
+
+func (h *Handler) GetTradingPairs(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.pool.Query(r.Context(), `
+		SELECT symbol, contract_size, lot_step, min_lot, max_lot, status
+		FROM trading_pairs
+		ORDER BY symbol ASC
+	`)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type pairSpec struct {
+		Symbol       string `json:"symbol"`
+		ContractSize string `json:"contract_size"`
+		LotStep      string `json:"lot_step"`
+		MinLot       string `json:"min_lot"`
+		MaxLot       string `json:"max_lot"`
+		Status       string `json:"status"`
+	}
+	out := make([]pairSpec, 0, 4)
+	for rows.Next() {
+		var p pairSpec
+		if err := rows.Scan(&p.Symbol, &p.ContractSize, &p.LotStep, &p.MinLot, &p.MaxLot, &p.Status); err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+			return
+		}
+		out = append(out, p)
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) UpdateTradingPair(w http.ResponseWriter, r *http.Request) {
+	symbol := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "symbol")))
+	if symbol == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "symbol is required"})
+		return
+	}
+
+	var req struct {
+		ContractSize *string `json:"contract_size"`
+		LotStep      *string `json:"lot_step"`
+		MinLot       *string `json:"min_lot"`
+		MaxLot       *string `json:"max_lot"`
+		Status       *string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
+		return
+	}
+
+	if req.ContractSize != nil && !isPositiveNumeric(*req.ContractSize) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "contract_size must be positive"})
+		return
+	}
+	if req.LotStep != nil && !isPositiveNumeric(*req.LotStep) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "lot_step must be positive"})
+		return
+	}
+	if req.MinLot != nil && !isPositiveNumeric(*req.MinLot) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "min_lot must be positive"})
+		return
+	}
+	if req.MaxLot != nil && !isPositiveNumeric(*req.MaxLot) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "max_lot must be positive"})
+		return
+	}
+
+	var contractSize, lotStep, minLot, maxLot, status string
+	if req.ContractSize != nil {
+		contractSize = strings.TrimSpace(*req.ContractSize)
+	}
+	if req.LotStep != nil {
+		lotStep = strings.TrimSpace(*req.LotStep)
+	}
+	if req.MinLot != nil {
+		minLot = strings.TrimSpace(*req.MinLot)
+	}
+	if req.MaxLot != nil {
+		maxLot = strings.TrimSpace(*req.MaxLot)
+	}
+	if req.Status != nil {
+		status = strings.TrimSpace(*req.Status)
+	}
+
+	cmd, err := h.pool.Exec(r.Context(), `
+		UPDATE trading_pairs
+		SET contract_size = COALESCE(NULLIF($2, '')::numeric, contract_size),
+			lot_step = COALESCE(NULLIF($3, '')::numeric, lot_step),
+			min_lot = COALESCE(NULLIF($4, '')::numeric, min_lot),
+			max_lot = COALESCE(NULLIF($5, '')::numeric, max_lot),
+			status = COALESCE(NULLIF($6, ''), status)
+		WHERE symbol = $1
+	`, symbol, contractSize, lotStep, minLot, maxLot, status)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if cmd.RowsAffected() == 0 {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorResponse{Error: "pair not found"})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
 // ValidateToken validates an access token from Telegram bot
 func (h *Handler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
@@ -274,6 +464,11 @@ func AdminAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func isPositiveNumeric(raw string) bool {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	return err == nil && v > 0
 }
 
 type contextKey string

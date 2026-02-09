@@ -2,7 +2,9 @@ package orders
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"lv-tradepl/internal/accounts"
 	"lv-tradepl/internal/httputil"
@@ -130,6 +132,47 @@ func (h *Handler) OpenOrders(w http.ResponseWriter, r *http.Request, userID stri
 	httputil.WriteJSON(w, http.StatusOK, orders)
 }
 
+func (h *Handler) OrderHistory(w http.ResponseWriter, r *http.Request, userID string) {
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	limit := 50
+	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
+		v, convErr := strconv.Atoi(rawLimit)
+		if convErr != nil || v <= 0 {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid limit"})
+			return
+		}
+		if v > 200 {
+			v = 200
+		}
+		limit = v
+	}
+
+	var before *time.Time
+	if rawBefore := strings.TrimSpace(r.URL.Query().Get("before")); rawBefore != "" {
+		parsed, parseErr := time.Parse(time.RFC3339Nano, rawBefore)
+		if parseErr != nil {
+			parsed, parseErr = time.Parse(time.RFC3339, rawBefore)
+		}
+		if parseErr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid before"})
+			return
+		}
+		before = &parsed
+	}
+
+	orders, err := h.svc.ListOrderHistoryByAccount(r.Context(), userID, account.ID, before, limit)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, orders)
+}
+
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request, userID string, orderID string) {
 	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
 	if err != nil {
@@ -141,4 +184,27 @@ func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request, userID string, 
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+func (h *Handler) CloseMany(w http.ResponseWriter, r *http.Request, userID string) {
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	var req struct {
+		Scope string `json:"scope"`
+	}
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	res, err := h.svc.CloseOrdersByScope(r.Context(), userID, account.ID, req.Scope)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, res)
 }

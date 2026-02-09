@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from "react"
-import { Wifi, WifiOff } from "lucide-react"
+import { AlertTriangle, Wifi, WifiOff } from "lucide-react"
 
-export default function ConnectionBanner() {
+interface ApiBackoffInfo {
+    source: "metrics" | "orders"
+    failures: number
+    retryAt: number
+}
+
+interface ConnectionBannerProps {
+    apiBackoff?: ApiBackoffInfo | null
+}
+
+export default function ConnectionBanner({ apiBackoff }: ConnectionBannerProps) {
     const [isOffline, setIsOffline] = useState(!navigator.onLine)
     const [justReconnected, setJustReconnected] = useState(false)
     const [isFading, setIsFading] = useState(false)
+    const [nowTs, setNowTs] = useState(Date.now())
 
     useEffect(() => {
         const handleOffline = () => {
@@ -37,13 +48,32 @@ export default function ConnectionBanner() {
         }
     }, [])
 
-    if (!isOffline && !justReconnected) return null
+    useEffect(() => {
+        const timer = setInterval(() => setNowTs(Date.now()), 1000)
+        return () => clearInterval(timer)
+    }, [])
+
+    const apiBackoffActive = !!apiBackoff && apiBackoff.retryAt > nowTs
+    const retrySeconds = apiBackoffActive && apiBackoff
+        ? Math.max(1, Math.ceil((apiBackoff.retryAt - nowTs) / 1000))
+        : 0
+
+    if (!isOffline && !justReconnected && !apiBackoffActive) return null
 
     // Determine banner styles and content based on state
-    const isError = isOffline
-    const bgColor = isError ? "#ef4444" : "#16a34a"
-    const Icon = isError ? WifiOff : Wifi
-    const message = isError ? "No Internet Connection" : "Connection Restored"
+    let bgColor = "#16a34a"
+    let Icon: typeof Wifi | typeof WifiOff | typeof AlertTriangle = Wifi
+    let message = "Connection Restored"
+
+    if (isOffline) {
+        bgColor = "#ef4444"
+        Icon = WifiOff
+        message = "No Internet Connection"
+    } else if (apiBackoffActive && apiBackoff) {
+        bgColor = apiBackoff.failures >= 2 ? "#b45309" : "#d97706"
+        Icon = AlertTriangle
+        message = `Server unstable. Retrying ${apiBackoff.source} in ${retrySeconds}s (${apiBackoff.failures} error${apiBackoff.failures > 1 ? "s" : ""})`
+    }
 
     return (
         <div style={{

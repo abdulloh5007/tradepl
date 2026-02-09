@@ -48,6 +48,7 @@ export type TradingAccount = {
     commission_rate: number
     leverage: number
   }
+  leverage: number
   mode: "demo" | "real"
   name: string
   is_active: boolean
@@ -103,6 +104,8 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     createAccount: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) =>
       request<TradingAccount>("/v1/accounts", "POST", payload, true),
     switchAccount: (accountID: string) => request<TradingAccount>("/v1/accounts/switch", "POST", { account_id: accountID }, true),
+    updateAccountLeverage: (payload: { account_id: string; leverage: number }) =>
+      request<TradingAccount>("/v1/accounts/leverage", "POST", payload, true),
     balances: async () => {
       const res = await request<Array<{ asset_id: string; symbol: string; kind: string; amount: string }> | null>("/v1/balances", "GET", undefined, true)
       return res || []
@@ -116,7 +119,53 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       return request<Candle[]>(url, "GET")
     },
     metrics: () => request<{ balance: string; equity: string; margin: string; free_margin: string; margin_level: string; pl: string }>("/v1/metrics", "GET", undefined, true),
-    orders: () => request<Array<{ id: string; pair_id: string; side: string; price: string; qty: string; status: string; created_at: string }> | null>("/v1/orders", "GET", undefined, true),
+    orders: () => request<Array<{
+      id: string
+      user_id?: string
+      trading_account_id?: string
+      pair_id: string
+      side: string
+      type?: string
+      price: string
+      qty: string
+      remaining_qty?: string
+      quote_amount?: string
+      remaining_quote?: string
+      reserved_amount?: string
+      spent_amount?: string
+      unrealized_pnl?: string
+      time_in_force?: string
+      status: string
+      created_at: string
+    }> | null>("/v1/orders", "GET", undefined, true),
+    orderHistory: (params?: { limit?: number; before?: string }) => {
+      let url = "/v1/orders/history"
+      const q: string[] = []
+      if (params?.limit && params.limit > 0) q.push(`limit=${params.limit}`)
+      if (params?.before) q.push(`before=${encodeURIComponent(params.before)}`)
+      if (q.length > 0) url += `?${q.join("&")}`
+      return request<Array<{
+      id: string
+      user_id?: string
+      trading_account_id?: string
+      pair_id: string
+      side: string
+      type?: string
+      price: string
+      qty: string
+      remaining_qty?: string
+      quote_amount?: string
+      remaining_quote?: string
+      reserved_amount?: string
+      spent_amount?: string
+      unrealized_pnl?: string
+      time_in_force?: string
+      status: string
+      created_at: string
+      }> | null>(url, "GET", undefined, true)
+    },
+    closeOrders: (scope: "all" | "profit" | "loss") =>
+      request<{ scope: string; total: number; closed: number; failed: number }>("/v1/orders/close", "POST", { scope }, true),
     cancelOrder: (id: string) => request<{ status: string }>(`/v1/orders/${id}`, "DELETE", undefined, true)
   }
 }

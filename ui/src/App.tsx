@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { toast, Toaster } from "sonner"
 
 // Types
-import type { Quote, View, Theme, Lang, MarketConfig, TradingAccount } from "./types"
+import type { Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics } from "./types"
 
 // Utils
 import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId } from "./utils/cookies"
@@ -17,7 +17,7 @@ import { Header, Sidebar } from "./components"
 import ConnectionBanner from "./components/ConnectionBanner"
 
 // Pages
-import { TradingPage, PositionsPage, BalancePage, AccountsPage, ApiPage, FaucetPage } from "./pages"
+import { TradingPage, PositionsPage, BalancePage, AccountsPage, ApiPage, FaucetPage, HistoryPage } from "./pages"
 
 // Config
 const marketPairs = ["UZS-USD"]
@@ -27,6 +27,10 @@ const marketConfig: Record<string, MarketConfig> = {
 const timeframes = ["1m", "5m", "10m", "15m", "30m", "1h"]
 const candleLimit = 1000   // Initial load
 const lazyLoadLimit = 500  // Load more when scrolling
+const historyPageLimit = 50
+
+type PollKey = "metrics" | "orders"
+type PollBackoffState = Record<PollKey, { failures: number; retryAt: number }>
 
 function applySpreadMultiplier(bid: number, ask: number, multiplier: number): [number, number] {
   if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) {
@@ -48,7 +52,7 @@ function spreadDecimals(ask: number, bid: number, baseDecimals: number): number 
 
 function resolveView(): View {
   const hash = typeof window !== "undefined" ? window.location.hash.replace("#", "") : ""
-  if (hash === "positions" || hash === "balance" || hash === "accounts" || hash === "api" || hash === "faucet") return hash
+  if (hash === "positions" || hash === "history" || hash === "balance" || hash === "accounts" || hash === "api" || hash === "faucet") return hash
   return "chart"
 }
 
@@ -70,8 +74,11 @@ export default function App() {
   const [quickQty, setQuickQty] = useState("1")
 
   // Trading state
-  const [openOrders, setOpenOrders] = useState<Array<{ id: string; pair_id: string; side: string; price: string; qty: string; status: string; created_at: string }>>([])
-  const [metrics, setMetrics] = useState({
+  const [openOrders, setOpenOrders] = useState<Order[]>([])
+  const [orderHistory, setOrderHistory] = useState<Order[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyHasMore, setHistoryHasMore] = useState(true)
+  const [metrics, setMetrics] = useState<Metrics>({
     balance: "0",
     equity: "0",
     margin: "0",
@@ -83,6 +90,11 @@ export default function App() {
   // Lazy loading state
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [hasMoreData, setHasMoreData] = useState(true)
+  const [bulkClosing, setBulkClosing] = useState(false)
+  const [pollBackoff, setPollBackoff] = useState<PollBackoffState>({
+    metrics: { failures: 0, retryAt: 0 },
+    orders: { failures: 0, retryAt: 0 }
+  })
 
   // Error logging flags - prevent repeated console spam
   const errorLogged = useRef({ ws: false, fetch: false })
@@ -97,6 +109,13 @@ export default function App() {
     setToken("")
     setActiveAccountId("")
     setAccounts([])
+    setOpenOrders([])
+    setOrderHistory([])
+    setHistoryHasMore(true)
+    setPollBackoff({
+      metrics: { failures: 0, retryAt: 0 },
+      orders: { failures: 0, retryAt: 0 }
+    })
     setCookie("lv_token", "")
     setCookie("lv_account_id", "")
   }, [])
@@ -133,6 +152,87 @@ export default function App() {
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
   const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token, activeAccountId }, logout), [normalizedBaseUrl, token, activeAccountId, logout])
   const marketPrice = quote?.bid ? parseFloat(quote.bid) : marketConfig[marketPair].displayBase
+  const bidDisplay = quote?.bid ? parseFloat(quote.bid) : marketPrice
+  const askDisplay = quote?.ask ? parseFloat(quote.ask) : marketPrice
+  const activeTradingAccount = useMemo(() => {
+    return accounts.find(a => a.id === activeAccountId) || accounts.find(a => a.is_active) || null
+  }, [accounts, activeAccountId])
+
+  const liveMetrics = useMemo<Metrics>(() => {
+    const toSafe = (v?: string) => {
+      const n = parseFloat(v || "0")
+      return Number.isFinite(n) ? n : 0
+    }
+
+    return {
+      balance: String(toSafe(metrics.balance)),
+      equity: String(toSafe(metrics.equity)),
+      margin: String(toSafe(metrics.margin)),
+      free_margin: String(toSafe(metrics.free_margin)),
+      margin_level: String(toSafe(metrics.margin_level)),
+      pl: String(toSafe(metrics.pl))
+    }
+  }, [metrics.balance, metrics.equity, metrics.margin, metrics.free_margin, metrics.margin_level, metrics.pl])
+
+  const isLiveTradingView = view === "chart" || view === "positions"
+
+  const setPollBackoffState = useCallback((key: PollKey, failures: number, retryAt: number) => {
+    setPollBackoff(prev => {
+      const current = prev[key]
+      if (current.failures === failures && current.retryAt === retryAt) return prev
+      return { ...prev, [key]: { failures, retryAt } }
+    })
+  }, [])
+
+  const apiBackoff = useMemo(() => {
+    const entries: Array<{ source: PollKey; failures: number; retryAt: number }> = []
+    if (pollBackoff.metrics.failures > 0 && pollBackoff.metrics.retryAt > 0) {
+      entries.push({ source: "metrics", failures: pollBackoff.metrics.failures, retryAt: pollBackoff.metrics.retryAt })
+    }
+    if (pollBackoff.orders.failures > 0 && pollBackoff.orders.retryAt > 0) {
+      entries.push({ source: "orders", failures: pollBackoff.orders.failures, retryAt: pollBackoff.orders.retryAt })
+    }
+    if (entries.length === 0) return null
+    entries.sort((a, b) => b.retryAt - a.retryAt)
+    return entries[0]
+  }, [pollBackoff])
+
+  const fetchOrderHistory = useCallback(async (reset = true) => {
+    if (!token || historyLoading) return
+
+    setHistoryLoading(true)
+    try {
+      const before = reset ? undefined : orderHistory[orderHistory.length - 1]?.created_at
+      const page = (await api.orderHistory({ limit: historyPageLimit, before })) || []
+
+      if (reset) {
+        setOrderHistory(page)
+      } else if (page.length > 0) {
+        setOrderHistory(prev => {
+          const seen = new Set(prev.map(o => o.id))
+          const merged = [...prev]
+          for (const order of page) {
+            if (!seen.has(order.id)) merged.push(order)
+          }
+          return merged
+        })
+      }
+
+      setHistoryHasMore(page.length === historyPageLimit)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [api, token, historyLoading, orderHistory])
+
+  const refreshOrders = useCallback(async () => {
+    const orders = (await api.orders()) || []
+    setOpenOrders(orders)
+  }, [api])
+
+  const refreshMetrics = useCallback(async () => {
+    const m = await api.metrics()
+    setMetrics(m)
+  }, [api])
 
   const refreshAccounts = useCallback(async (preferredID?: string) => {
     if (!token) return
@@ -161,6 +261,14 @@ export default function App() {
     if (!token) {
       setAccounts([])
       setActiveAccountId("")
+      setOpenOrders([])
+      setOrderHistory([])
+      setHistoryHasMore(true)
+      setHistoryLoading(false)
+      setPollBackoff({
+        metrics: { failures: 0, retryAt: 0 },
+        orders: { failures: 0, retryAt: 0 }
+      })
       return
     }
     refreshAccounts().catch(() => { })
@@ -396,25 +504,91 @@ export default function App() {
     fetchCandles()
   }, [fetchCandles])
 
-  // Polling metrics and orders
   useEffect(() => {
-    if (!token) return
-    let active = true
+    if (!token || view !== "history") return
+    if (orderHistory.length > 0) return
+    fetchOrderHistory(true).catch(() => { })
+  }, [token, view, orderHistory.length, fetchOrderHistory])
 
-    const poll = () => {
-      if (!active) return
-      api.metrics().then(m => active && setMetrics(m)).catch(() => { })
-      api.orders().then(o => active && setOpenOrders(o || [])).catch(() => { })
+  // Fast polling for account metrics on live trading views.
+  useEffect(() => {
+    if (!token || !isLiveTradingView) {
+      setPollBackoffState("metrics", 0, 0)
+      return
+    }
+
+    let cancelled = false
+    let failures = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const nextDelay = (base: number) => {
+      if (failures >= 2) return 20000
+      if (failures === 1) return 5000
+      return base
+    }
+
+    const poll = async () => {
+      if (cancelled) return
+      try {
+        await refreshMetrics()
+        failures = 0
+        setPollBackoffState("metrics", 0, 0)
+      } catch {
+        failures += 1
+        const delay = nextDelay(750)
+        setPollBackoffState("metrics", failures, Date.now() + delay)
+        if (!cancelled) timer = setTimeout(poll, delay)
+        return
+      }
+      if (!cancelled) timer = setTimeout(poll, 750)
     }
 
     poll()
-    const interval = setInterval(poll, 2000)
-
     return () => {
-      active = false
-      clearInterval(interval)
+      cancelled = true
+      if (timer) clearTimeout(timer)
     }
-  }, [api, token])
+  }, [token, isLiveTradingView, refreshMetrics, setPollBackoffState])
+
+  // Orders polling only on live views with backoff and cooldown.
+  useEffect(() => {
+    if (!token || !isLiveTradingView) {
+      setPollBackoffState("orders", 0, 0)
+      return
+    }
+
+    let cancelled = false
+    let failures = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const nextDelay = (base: number) => {
+      if (failures >= 2) return 20000
+      if (failures === 1) return 5000
+      return base
+    }
+
+    const poll = async () => {
+      if (cancelled) return
+      try {
+        await refreshOrders()
+        failures = 0
+        setPollBackoffState("orders", 0, 0)
+      } catch {
+        failures += 1
+        const delay = nextDelay(2000)
+        setPollBackoffState("orders", failures, Date.now() + delay)
+        if (!cancelled) timer = setTimeout(poll, delay)
+        return
+      }
+      if (!cancelled) timer = setTimeout(poll, 2000)
+    }
+
+    poll()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [token, isLiveTradingView, refreshOrders, setPollBackoffState])
 
 
 
@@ -422,6 +596,19 @@ export default function App() {
     if (!quickQty || Number(quickQty) <= 0) {
       toast.message(t("qty", lang))
       return
+    }
+    if (!activeTradingAccount) {
+      toast.error("Select active account first")
+      return
+    }
+    if (side === "buy") {
+      const usdBalance = Number(activeTradingAccount.balance || 0)
+      if (!Number.isFinite(usdBalance) || usdBalance <= 0) {
+        toast.error(activeTradingAccount.mode === "demo"
+          ? "Demo account balance is 0. Use Top Up in Accounts."
+          : "Real account balance is 0. Deposit funds first.")
+        return
+      }
     }
     try {
       await api.placeOrder({
@@ -432,8 +619,11 @@ export default function App() {
         time_in_force: "ioc"
       })
       toast.success(t("statusOrderPlaced", lang))
-      api.orders().then(o => setOpenOrders(o || []))
-      api.metrics().then(m => setMetrics(m))
+      await Promise.all([
+        refreshOrders().catch(() => { }),
+        fetchOrderHistory(true).catch(() => { }),
+        refreshMetrics().catch(() => { })
+      ])
     } catch (err: any) {
       toast.error(err?.message || "Error")
     }
@@ -443,11 +633,66 @@ export default function App() {
     try {
       await api.cancelOrder(orderId)
       toast.success("Position closed")
-      api.orders().then(o => setOpenOrders(o || []))
-      api.metrics().then(m => setMetrics(m))
+      await Promise.all([
+        refreshOrders().catch(() => { }),
+        fetchOrderHistory(true).catch(() => { }),
+        refreshMetrics().catch(() => { })
+      ])
     } catch (err: any) {
       toast.error(err?.message || "Error")
     }
+  }
+
+  const closeByScope = async (scope: "all" | "profit" | "loss", emptyMessage: string) => {
+    if (bulkClosing) return
+    if (!openOrders.some(o => o.status === "filled")) {
+      toast.message(emptyMessage)
+      return
+    }
+
+    setBulkClosing(true)
+    let closed = 0
+    let failed = 0
+    let total = 0
+    try {
+      const res = await api.closeOrders(scope)
+      closed = Number(res?.closed || 0)
+      failed = Number(res?.failed || 0)
+      total = Number(res?.total || 0)
+    } catch (err: any) {
+      setBulkClosing(false)
+      toast.error(err?.message || "Bulk close failed")
+      return
+    }
+
+    await Promise.all([
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { }),
+      refreshMetrics().catch(() => { })
+    ])
+
+    setBulkClosing(false)
+    if (total === 0) {
+      toast.message(emptyMessage)
+      return
+    }
+    if (failed > 0) {
+      toast.message(`Closed ${closed}, failed ${failed}`)
+    } else {
+      toast.success(`Closed ${closed} positions`)
+    }
+  }
+
+  const handleCloseAllPositions = async () => {
+    await closeByScope("all", "No open positions to close")
+  }
+
+  const handleCloseProfitPositions = async () => {
+    await closeByScope("profit", "No profitable positions")
+  }
+
+  const handleCloseLossPositions = async () => {
+    await closeByScope("loss", "No losing positions")
   }
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -478,8 +723,21 @@ export default function App() {
     setActiveAccountId(accountID)
     setCookie("lv_account_id", accountID)
     await refreshAccounts(accountID)
-    api.metrics().then(m => setMetrics(m)).catch(() => { })
-    api.orders().then(o => setOpenOrders(o || [])).catch(() => { })
+    await Promise.all([
+      refreshMetrics().catch(() => { }),
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { })
+    ])
+  }
+
+  const handleUpdateAccountLeverage = async (accountID: string, leverage: number) => {
+    await api.updateAccountLeverage({ account_id: accountID, leverage })
+    await refreshAccounts(accountID)
+    await Promise.all([
+      refreshMetrics().catch(() => { }),
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { })
+    ])
   }
 
   const handleCreateAccount = async (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => {
@@ -490,14 +748,17 @@ export default function App() {
       setCookie("lv_account_id", nextID)
     }
     await refreshAccounts(nextID)
-    api.metrics().then(m => setMetrics(m)).catch(() => { })
-    api.orders().then(o => setOpenOrders(o || [])).catch(() => { })
+    await Promise.all([
+      refreshMetrics().catch(() => { }),
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { })
+    ])
   }
 
   const handleTopUpDemo = async (amount: string) => {
     await api.faucet({ asset: "USD", amount, reference: "accounts_topup" })
     await refreshAccounts(activeAccountId)
-    api.metrics().then(m => setMetrics(m)).catch(() => { })
+    await refreshMetrics().catch(() => { })
   }
 
   // Show login form if not authenticated
@@ -584,7 +845,7 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)" }}>
-      <ConnectionBanner />
+      <ConnectionBanner apiBackoff={apiBackoff} />
       <Toaster position="top-right" />
 
       <Header
@@ -625,18 +886,34 @@ export default function App() {
 
           {view === "positions" && (
             <PositionsPage
+              metrics={liveMetrics}
               orders={openOrders}
               quote={quote}
               marketPair={marketPair}
               marketConfig={marketConfig}
               marketPrice={marketPrice}
               onClose={handleClosePosition}
+              onCloseAll={handleCloseAllPositions}
+              onCloseProfit={handleCloseProfitPositions}
+              onCloseLoss={handleCloseLossPositions}
+              bulkClosing={bulkClosing}
               lang={lang}
             />
           )}
 
+          {view === "history" && (
+            <HistoryPage
+              orders={orderHistory}
+              lang={lang}
+              loading={historyLoading}
+              hasMore={historyHasMore}
+              onRefresh={() => fetchOrderHistory(true)}
+              onLoadMore={() => fetchOrderHistory(false)}
+            />
+          )}
+
           {view === "balance" && (
-            <BalancePage metrics={metrics} lang={lang} />
+            <BalancePage metrics={liveMetrics} lang={lang} />
           )}
 
           {view === "accounts" && (
@@ -645,6 +922,7 @@ export default function App() {
               activeAccountId={activeAccountId}
               onSwitch={handleSwitchAccount}
               onCreate={handleCreateAccount}
+              onUpdateLeverage={handleUpdateAccountLeverage}
               onTopUpDemo={handleTopUpDemo}
             />
           )}

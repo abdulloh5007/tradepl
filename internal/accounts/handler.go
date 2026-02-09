@@ -60,3 +60,21 @@ func (h *Handler) Switch(w http.ResponseWriter, r *http.Request, userID string) 
 	}
 	httputil.WriteJSON(w, http.StatusOK, acc)
 }
+
+func (h *Handler) UpdateLeverage(w http.ResponseWriter, r *http.Request, userID string) {
+	var req struct {
+		AccountID string `json:"account_id"`
+		Leverage  int    `json:"leverage"`
+	}
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	acc, err := h.svc.UpdateLeverage(r.Context(), userID, req.AccountID, req.Leverage)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, acc)
+}

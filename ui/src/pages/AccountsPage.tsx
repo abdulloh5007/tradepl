@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { toast } from "sonner"
 import type { TradingAccount } from "../types"
 
 interface AccountsPageProps {
@@ -6,6 +7,7 @@ interface AccountsPageProps {
     activeAccountId: string
     onSwitch: (accountId: string) => Promise<void>
     onCreate: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => Promise<void>
+    onUpdateLeverage: (accountId: string, leverage: number) => Promise<void>
     onTopUpDemo: (amount: string) => Promise<void>
 }
 
@@ -15,6 +17,22 @@ const planOptions = [
     { id: "raw", label: "Raw Spread" },
     { id: "swapfree", label: "Swap Free" }
 ]
+
+const leverageOptions = [0, 2, 5, 10, 20, 30, 40, 50, 100, 200, 500, 1000, 2000, 3000]
+
+const leverageLabel = (value: number) => {
+    if (value === 0) return "Unlimited"
+    return `1:${value.toLocaleString("en-US")}`
+}
+
+const marginCallLevel = 60
+const stopOutLevel = 20
+
+const getLeverage = (account: TradingAccount) => {
+    if (Number.isFinite(account.leverage)) return account.leverage
+    if (Number.isFinite(account.plan?.leverage)) return account.plan.leverage
+    return 100
+}
 
 const modePillStyle = (mode: string) => ({
     padding: "4px 10px",
@@ -27,10 +45,13 @@ const modePillStyle = (mode: string) => ({
     background: mode === "demo" ? "rgba(22, 163, 74, 0.12)" : "rgba(245, 158, 11, 0.12)"
 })
 
-export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCreate, onTopUpDemo }: AccountsPageProps) {
+export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCreate, onUpdateLeverage, onTopUpDemo }: AccountsPageProps) {
     const [creating, setCreating] = useState(false)
     const [switchingId, setSwitchingId] = useState<string | null>(null)
     const [funding, setFunding] = useState(false)
+    const [updatingLeverageId, setUpdatingLeverageId] = useState<string | null>(null)
+    const [leverageDraft, setLeverageDraft] = useState<Record<string, number>>({})
+    const [actionError, setActionError] = useState("")
 
     const [mode, setMode] = useState<"demo" | "real">("demo")
     const [planID, setPlanID] = useState("standard")
@@ -45,6 +66,23 @@ export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCr
         const num = Number(value || 0)
         if (Number.isNaN(num)) return "0.00"
         return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+
+    const applyLeverage = async (account: TradingAccount, next: number) => {
+        const current = getLeverage(account)
+        if (next === current) return
+        setUpdatingLeverageId(account.id)
+        setActionError("")
+        try {
+            await onUpdateLeverage(account.id, next)
+            toast.success(`Leverage updated: ${leverageLabel(next)}`)
+        } catch (err: any) {
+            const msg = err?.message || "Failed to update leverage"
+            setActionError(msg)
+            toast.error(msg)
+        } finally {
+            setUpdatingLeverageId(null)
+        }
     }
 
     return (
@@ -68,12 +106,41 @@ export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCr
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                             <div>
                                 <div style={{ fontWeight: 700 }}>{activeAccount.name}</div>
-                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{activeAccount.plan?.name || activeAccount.plan_id}</div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                    {activeAccount.plan?.name || activeAccount.plan_id} • {leverageLabel(getLeverage(activeAccount))}
+                                </div>
                             </div>
                             <div style={modePillStyle(activeAccount.mode)}>{activeAccount.mode.toUpperCase()}</div>
                         </div>
                     </div>
                 )}
+            </div>
+
+            {actionError && (
+                <div style={{
+                    marginBottom: 12,
+                    background: "rgba(239, 68, 68, 0.12)",
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                    color: "#ef4444",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    fontSize: 13
+                }}>
+                    {actionError}
+                </div>
+            )}
+
+            <div style={{
+                marginBottom: 12,
+                background: "rgba(59,130,246,0.08)",
+                border: "1px solid rgba(59,130,246,0.22)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                fontSize: 13,
+                color: "var(--text-muted)"
+            }}>
+                Risk rules: Margin Call {marginCallLevel}% • Stop Out {stopOutLevel}%.
+                Leverage changes are blocked while positions are open.
             </div>
 
             <div style={{
@@ -195,7 +262,7 @@ export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCr
                                 <div>
                                     <div style={{ fontSize: 17, fontWeight: 700 }}>{account.name}</div>
                                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                                        {account.plan?.name || account.plan_id} • Leverage 1:{account.plan?.leverage || 100}
+                                        {account.plan?.name || account.plan_id} • Leverage {leverageLabel(getLeverage(account))}
                                     </div>
                                 </div>
                                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -219,6 +286,45 @@ export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCr
                                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Commission</div>
                                     <div style={{ fontWeight: 700 }}>{((account.plan?.commission_rate || 0) * 100).toFixed(2)}%</div>
                                 </div>
+                            </div>
+
+                            <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                    Leverage
+                                    <select
+                                        value={String(leverageDraft[account.id] ?? getLeverage(account))}
+                                        onChange={e => {
+                                            setActionError("")
+                                            const next = Number(e.target.value)
+                                            setLeverageDraft(prev => ({ ...prev, [account.id]: next }))
+                                            applyLeverage(account, next).catch(() => { })
+                                        }}
+                                        disabled={updatingLeverageId === account.id}
+                                        style={{ marginLeft: 8 }}
+                                    >
+                                        {leverageOptions.map(value => (
+                                            <option key={value} value={value}>{leverageLabel(value)}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <button
+                                    disabled={updatingLeverageId === account.id}
+                                    onClick={async () => {
+                                        const next = leverageDraft[account.id] ?? getLeverage(account)
+                                        await applyLeverage(account, next)
+                                    }}
+                                    style={{
+                                        border: "1px solid var(--border-subtle)",
+                                        borderRadius: 10,
+                                        padding: "8px 12px",
+                                        fontWeight: 700,
+                                        background: "var(--card-bg)",
+                                        color: "var(--text-base)",
+                                        cursor: "pointer"
+                                    }}
+                                >
+                                    {updatingLeverageId === account.id ? "Saving..." : "Apply Leverage"}
+                                </button>
                             </div>
 
                             <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
@@ -252,4 +358,3 @@ export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCr
         </div>
     )
 }
-

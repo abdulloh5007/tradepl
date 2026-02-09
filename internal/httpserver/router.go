@@ -127,6 +127,14 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.AccountsHandler.Switch(w, r, userID)
 			})
+			r.Post("/accounts/leverage", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.AccountsHandler.UpdateLeverage(w, r, userID)
+			})
 			r.Post("/orders", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {
@@ -142,6 +150,22 @@ func NewRouter(d RouterDeps) http.Handler {
 					return
 				}
 				d.OrderHandler.OpenOrders(w, r, userID)
+			})
+			r.Get("/orders/history", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.OrderHandler.OrderHistory(w, r, userID)
+			})
+			r.Post("/orders/close", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.OrderHandler.CloseMany(w, r, userID)
 			})
 			r.Delete("/orders/{id}", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
@@ -203,6 +227,11 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.Get("/volatility", d.VolatilityHandler.GetSettings)
 				r.Post("/volatility/activate", d.VolatilityHandler.SetActive)
 				r.Post("/volatility/mode", d.VolatilityHandler.SetMode)
+				// Trading risk + pair contract specs
+				r.Get("/trading/risk", d.AdminHandler.GetTradingRisk)
+				r.Post("/trading/risk", d.AdminHandler.UpdateTradingRisk)
+				r.Get("/trading/pairs", d.AdminHandler.GetTradingPairs)
+				r.Post("/trading/pairs/{symbol}", d.AdminHandler.UpdateTradingPair)
 				// Panel admins management (owner only feature on UI)
 				r.Get("/panel-admins", d.AdminHandler.GetPanelAdmins)
 				r.Post("/panel-admins", d.AdminHandler.CreatePanelAdmin)

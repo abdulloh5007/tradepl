@@ -23,6 +23,7 @@ type Order struct {
 	RemainingQuote   *decimal.Decimal  `json:"remaining_quote"`
 	ReservedAmount   decimal.Decimal   `json:"reserved_amount"`
 	SpentAmount      decimal.Decimal   `json:"spent_amount"`
+	UnrealizedPnL    *decimal.Decimal  `json:"unrealized_pnl,omitempty"`
 	TimeInForce      types.TimeInForce `json:"time_in_force"`
 	CreatedAt        time.Time         `json:"created_at"`
 }

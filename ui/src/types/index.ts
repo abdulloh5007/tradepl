@@ -26,11 +26,20 @@ export interface RawCandle {
 
 export interface Order {
     id: string
+    user_id?: string
+    trading_account_id?: string
     pair_id: string
     side: string
     type?: string
     price: string
     qty: string
+    remaining_qty?: string
+    quote_amount?: string
+    remaining_quote?: string
+    reserved_amount?: string
+    spent_amount?: string
+    unrealized_pnl?: string
+    time_in_force?: string
     status: string
     created_at: string
 }
@@ -73,6 +82,7 @@ export interface TradingAccount {
     user_id: string
     plan_id: string
     plan: AccountPlan
+    leverage: number
     mode: "demo" | "real"
     name: string
     is_active: boolean
@@ -83,4 +93,4 @@ export interface TradingAccount {
 
 export type Theme = "dark" | "light"
 export type Lang = "en" | "uz" | "ru"
-export type View = "chart" | "positions" | "balance" | "accounts" | "api" | "faucet" | "admin"
+export type View = "chart" | "positions" | "history" | "balance" | "accounts" | "api" | "faucet" | "admin"

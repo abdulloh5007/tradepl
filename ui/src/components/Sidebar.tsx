@@ -1,4 +1,4 @@
-import { BarChart2, List, Wallet, Key, Droplet, FolderKanban } from "lucide-react"
+import { BarChart2, List, Key, Droplet, FolderKanban, History } from "lucide-react"
 import type { View, Lang } from "../types"
 import { t } from "../utils/i18n"
 
@@ -12,7 +12,7 @@ export default function Sidebar({ view, setView, lang }: SidebarProps) {
     const tabs = [
         { key: "chart" as const, label: t("chart", lang), icon: BarChart2 },
         { key: "positions" as const, label: t("positions", lang), icon: List },
-        { key: "balance" as const, label: t("balance", lang), icon: Wallet },
+        { key: "history" as const, label: t("history", lang), icon: History },
         { key: "accounts" as const, label: t("accounts", lang), icon: FolderKanban },
         { key: "api" as const, label: t("api", lang), icon: Key },
         { key: "faucet" as const, label: t("faucet", lang), icon: Droplet }

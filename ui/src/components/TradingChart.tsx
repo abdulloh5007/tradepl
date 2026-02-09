@@ -21,6 +21,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
     const priceLineRef = useRef<IPriceLine | null>(null)
     const askLineRef = useRef<IPriceLine | null>(null)
+    const orderLinesRef = useRef<IPriceLine[]>([])
     const lastCandleCountRef = useRef(0)
     const resizeObserverRef = useRef<ResizeObserver | null>(null)
     // Track timeframe to detect changes
@@ -243,6 +244,41 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     useEffect(() => {
         updatePriceLines()
     }, [updatePriceLines])
+
+    // Update order lines
+    useEffect(() => {
+        const series = seriesRef.current
+        if (!series) return
+
+        // Remove old order lines
+        orderLinesRef.current.forEach(line => {
+            try { series.removePriceLine(line) } catch { /* ignore */ }
+        })
+        orderLinesRef.current = []
+
+        const cfg = marketConfig[marketPair]
+        openOrders.forEach(o => {
+            if (!o.price) return
+            let price = parseFloat(o.price)
+            if (cfg?.invertForApi && price > 0) {
+                price = 1 / price
+            }
+            if (isNaN(price) || price <= 0) return
+
+            const qty = parseFloat(o.qty || "0")
+            const lotTitle = !isNaN(qty) && qty > 0 ? qty.toFixed(2) : ""
+
+            const line = series.createPriceLine({
+                price,
+                color: o.side === "buy" ? "rgba(59,130,246,0.75)" : "rgba(239,68,68,0.75)",
+                lineWidth: 1,
+                lineStyle: 0,
+                axisLabelVisible: false,
+                title: lotTitle
+            })
+            orderLinesRef.current.push(line)
+        })
+    }, [openOrders, marketPair, marketConfig])
 
     return (
         <div
