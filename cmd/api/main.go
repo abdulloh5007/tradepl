@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"lv-tradepl/internal/accounts"
 	"lv-tradepl/internal/admin"
 	"lv-tradepl/internal/auth"
 	"lv-tradepl/internal/config"
@@ -42,18 +43,21 @@ func main() {
 	defer pool.Close()
 	bus := marketdata.NewBus()
 	market := marketdata.NewStore(pool)
+	accountSvc := accounts.NewService(pool)
+	accountHandler := accounts.NewHandler(accountSvc)
 	ledgerSvc := ledger.NewService(pool)
 	orderStore := orders.NewStore()
 	matchEngine := matching.NewEngine(orderStore, ledgerSvc, bus)
-	orderSvc := orders.NewService(pool, orderStore, ledgerSvc, market, matchEngine)
+	orderSvc := orders.NewService(pool, orderStore, ledgerSvc, market, matchEngine, accountSvc)
 	authSvc := auth.NewService(pool, cfg.JWTIssuer, []byte(cfg.JWTSecret), cfg.JWTTTL)
+	authSvc.SetAccountService(accountSvc)
 	authHandler := auth.NewHandler(authSvc)
 	faucetMax, err := decimal.NewFromString(cfg.FaucetMax)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ledgerHandler := ledger.NewHandler(ledgerSvc, market, cfg.FaucetEnabled, faucetMax)
-	orderHandler := orders.NewHandler(orderSvc)
+	ledgerHandler := ledger.NewHandler(ledgerSvc, market, accountSvc, cfg.FaucetEnabled, faucetMax)
+	orderHandler := orders.NewHandler(orderSvc, accountSvc)
 	marketWS := marketdata.NewMarketWS(cfg.WebSocketOrigin)
 	store := marketdata.NewCandleStore(cfg.MarketDataDir)
 	candleWS := marketdata.NewCandleWS(cfg.WebSocketOrigin, store)
@@ -67,6 +71,7 @@ func main() {
 	eventsWSHandler := httpserver.NewEventsWSHandler(bus, cfg.WebSocketOrigin)
 	router := httpserver.NewRouter(httpserver.RouterDeps{
 		AuthHandler:       authHandler,
+		AccountsHandler:   accountHandler,
 		LedgerHandler:     ledgerHandler,
 		OrderHandler:      orderHandler,
 		MarketHandler:     marketHandler,

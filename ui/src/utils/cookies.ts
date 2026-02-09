@@ -28,3 +28,7 @@ export function storedBaseUrl(): string {
 export function storedToken(): string {
     return getCookie("lv_token") || ""
 }
+
+export function storedAccountId(): string {
+    return getCookie("lv_account_id") || ""
+}

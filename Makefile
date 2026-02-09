@@ -21,7 +21,12 @@ db:
 	docker compose up -d db
 
 migrate:
-	psql "$(DB_DSN)" -f db/migrations/001_init.sql
+	@set -e; \
+	if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	for f in $$(ls db/migrations/*.sql | sort); do \
+		echo "Applying $$f"; \
+		psql "$${DB_DSN:-$(DB_DSN)}" -v ON_ERROR_STOP=1 -f "$$f"; \
+	done
 
 seed:
 	DB_DSN="$(DB_DSN)" ./scripts/seed.sh

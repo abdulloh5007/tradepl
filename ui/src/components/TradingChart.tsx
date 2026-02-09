@@ -19,9 +19,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const containerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
     const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
+    const priceLineRef = useRef<IPriceLine | null>(null)
     const askLineRef = useRef<IPriceLine | null>(null)
-    const bidLineRef = useRef<IPriceLine | null>(null)
-    const orderLinesRef = useRef<IPriceLine[]>([])
     const lastCandleCountRef = useRef(0)
     const resizeObserverRef = useRef<ResizeObserver | null>(null)
     // Track timeframe to detect changes
@@ -71,7 +70,12 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             borderDownColor: "#ef4444",
             borderUpColor: "#16a34a",
             wickDownColor: "#ef4444",
-            wickUpColor: "#16a34a"
+            wickUpColor: "#16a34a",
+            // Hide built-in last-price line to keep only custom 2 lines:
+            // current price (gray) + ask (red)
+            priceLineVisible: false,
+            // Hide built-in last-price label on the right price scale
+            lastValueVisible: false
         })
 
         // Initialize data immediately to avoid race condition
@@ -194,14 +198,29 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
         const series = seriesRef.current
         if (!series) return
 
-        // Remove old ask/bid lines
+        // Remove old lines
+        if (priceLineRef.current) {
+            try { series.removePriceLine(priceLineRef.current) } catch { /* ignore */ }
+            priceLineRef.current = null
+        }
         if (askLineRef.current) {
             try { series.removePriceLine(askLineRef.current) } catch { /* ignore */ }
             askLineRef.current = null
         }
-        if (bidLineRef.current) {
-            try { series.removePriceLine(bidLineRef.current) } catch { /* ignore */ }
-            bidLineRef.current = null
+
+        // Add current-price line
+        if (quote && quote.last) {
+            const currentPrice = parseFloat(quote.last)
+            if (!isNaN(currentPrice) && currentPrice > 0) {
+                priceLineRef.current = series.createPriceLine({
+                    price: currentPrice,
+                    color: "#4b5563",
+                    lineWidth: 1,
+                    lineStyle: 0,
+                    axisLabelVisible: true,
+                    title: ""
+                })
+            }
         }
 
         // Add ask line
@@ -219,45 +238,11 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             }
         }
 
-
     }, [quote])
 
     useEffect(() => {
         updatePriceLines()
     }, [updatePriceLines])
-
-    // Update order lines separately (less frequent)
-    useEffect(() => {
-        const series = seriesRef.current
-        if (!series) return
-
-        // Remove old order lines
-        orderLinesRef.current.forEach(line => {
-            try { series.removePriceLine(line) } catch { /* ignore */ }
-        })
-        orderLinesRef.current = []
-
-        // Add order lines
-        const cfg = marketConfig[marketPair]
-        openOrders.forEach(o => {
-            if (!o.price) return
-            let price = parseFloat(o.price)
-            if (cfg?.invertForApi && price > 0) {
-                price = 1 / price
-            }
-            if (isNaN(price) || price <= 0) return
-
-            const line = series.createPriceLine({
-                price,
-                color: o.side === "buy" ? "#16a34a" : "#ef4444",
-                lineWidth: 1,
-                lineStyle: 1,
-                axisLabelVisible: true,
-                title: o.side === "buy" ? "BUY" : "SELL"
-            })
-            orderLinesRef.current.push(line)
-        })
-    }, [openOrders, marketPair, marketConfig])
 
     return (
         <div

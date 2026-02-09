@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const turboVolatilityMultiplier = 2.5
+
 // PublisherConfig holds dynamic configuration for the publisher
 type PublisherConfig struct {
 	UpdateRateMs int
@@ -32,6 +34,24 @@ type EventState struct {
 }
 
 var currentEventState = &EventState{Active: false}
+
+func sessionVolatilityMultiplier(sessionID string) float64 {
+	if sessionID == "turbo" {
+		return turboVolatilityMultiplier
+	}
+	return 1.0
+}
+
+func volLevelMultiplier(volID string) float64 {
+	switch volID {
+	case "low":
+		return 3.0
+	case "medium":
+		return 2.0
+	default:
+		return 1.0
+	}
+}
 
 // GetCurrentEventState returns the current event state for API access
 func GetCurrentEventState() EventState {
@@ -91,11 +111,13 @@ func StartPublisherWithDB(bus *Bus, pair string, dir string, pool *pgxpool.Pool)
 
 	// Load session config from DB if available
 	var volStore *volatility.Store
+	activeSessionID := ""
 	if pool != nil {
 		sessStore := sessions.NewStore(pool)
 		volStore = volatility.NewStore(pool)
 		ctx := context.Background()
 		if session, err := sessStore.GetActiveSession(ctx); err == nil {
+			activeSessionID = session.ID
 			config.UpdateRateMs = session.UpdateRateMs
 			// Volatility/Spread now handled by volStore, but we start with session default if needed
 			// or wait for first poll.
@@ -111,24 +133,28 @@ func StartPublisherWithDB(bus *Bus, pair string, dir string, pool *pgxpool.Pool)
 
 		// Load initial Volatility Config
 		if volConfig, err := volStore.GetActiveConfig(ctx); err == nil {
-			// Apply multipliers: low*3, medium*2, high*1
-			multiplier := 1.0
-			switch volConfig.ID {
-			case "low":
-				multiplier = 3.0
-			case "medium":
-				multiplier = 2.0
-			}
-			config.Volatility = volConfig.Volatility * multiplier
+			levelMultiplier := volLevelMultiplier(volConfig.ID)
+			sessionMultiplier := sessionVolatilityMultiplier(activeSessionID)
+			config.Volatility = volConfig.Volatility * levelMultiplier * sessionMultiplier
 			config.Spread = volConfig.Spread
-			log.Printf("[Publisher] Loaded volatility config: id=%s, vol=%.5f (x%.1f), spread=%.8f", volConfig.ID, config.Volatility, multiplier, config.Spread)
+			log.Printf("[Publisher] Loaded volatility config: id=%s, vol=%.5f (level x%.1f, session x%.1f), spread=%.8f",
+				volConfig.ID, config.Volatility, levelMultiplier, sessionMultiplier, config.Spread)
 		}
 	}
 
-	go runPublisher(bus, pair, dir, prec, lastPrice, profile, config, pool, volStore)
+	// Prime live quote cache immediately on startup so order execution
+	// and metrics use the same source even before the first ticker tick.
+	initialSpread := config.Spread
+	if initialSpread < 0 {
+		initialSpread = 0
+	}
+	initialHalfSpread := initialSpread / 2
+	setLiveQuote(pair, lastPrice-initialHalfSpread, lastPrice+initialHalfSpread)
+
+	go runPublisher(bus, pair, dir, prec, lastPrice, profile, config, pool, volStore, activeSessionID)
 }
 
-func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64, profile pairProfile, config *PublisherConfig, pool *pgxpool.Pool, volStore *volatility.Store) {
+func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64, profile pairProfile, config *PublisherConfig, pool *pgxpool.Pool, volStore *volatility.Store, activeSessionID string) {
 	store := NewCandleStore(dir)
 	key := pair + "|1m"
 
@@ -223,6 +249,7 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 				sessStore := sessions.NewStore(pool)
 				ctx := context.Background()
 				if session, err := sessStore.GetActiveSession(ctx); err == nil {
+					activeSessionID = session.ID
 					log.Printf("[Publisher] Switching to session '%s'", session.Name)
 					config.UpdateRateMs = session.UpdateRateMs
 					// Volatility/Spread controlled by separate service
@@ -233,6 +260,14 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 					// Reset ticker with new rate
 					ticker.Stop()
 					ticker = time.NewTicker(time.Duration(config.UpdateRateMs) * time.Millisecond)
+
+					// Re-apply volatility with session multiplier immediately.
+					if volStore != nil {
+						if volConfig, err := volStore.GetActiveConfig(ctx); err == nil {
+							config.Volatility = volConfig.Volatility * volLevelMultiplier(volConfig.ID) * sessionVolatilityMultiplier(activeSessionID)
+							config.Spread = volConfig.Spread
+						}
+					}
 				}
 			}
 			_ = sessionID // avoid unused warning
@@ -245,17 +280,12 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 			if volStore != nil {
 				// Refresh Volatility/Spread
 				if volConfig, err := volStore.GetActiveConfig(context.Background()); err == nil {
-					// Check if changed (compare raw values, not multiplied)
-					multiplier := 1.0
-					switch volConfig.ID {
-					case "low":
-						multiplier = 3.0
-					case "medium":
-						multiplier = 2.0
-					}
-					newVol := volConfig.Volatility * multiplier
+					levelMultiplier := volLevelMultiplier(volConfig.ID)
+					sessionMultiplier := sessionVolatilityMultiplier(activeSessionID)
+					newVol := volConfig.Volatility * levelMultiplier * sessionMultiplier
 					if config.Volatility != newVol || config.Spread != volConfig.Spread {
-						log.Printf("[Publisher] Volatility Update: id=%s, vol=%.5f (x%.1f), spread=%.8f", volConfig.ID, newVol, multiplier, volConfig.Spread)
+						log.Printf("[Publisher] Volatility Update: id=%s, vol=%.5f (level x%.1f, session x%.1f), spread=%.8f",
+							volConfig.ID, newVol, levelMultiplier, sessionMultiplier, volConfig.Spread)
 						config.Volatility = newVol
 						config.Spread = volConfig.Spread
 					}

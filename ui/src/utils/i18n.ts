@@ -28,6 +28,7 @@ const translations: Record<string, Record<Lang, string>> = {
     register: { en: "Register", uz: "Ro'yxatdan o'tish", ru: "Регистрация" },
     login: { en: "Login", uz: "Kirish", ru: "Вход" },
     chart: { en: "Chart", uz: "Grafik", ru: "График" },
+    accounts: { en: "Accounts", uz: "Hisoblar", ru: "Счета" },
     api: { en: "API", uz: "API", ru: "API" },
     faucet: { en: "Faucet", uz: "Faucet", ru: "Кран" }
 }

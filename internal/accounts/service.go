@@ -1,0 +1,334 @@
+package accounts
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
+)
+
+type Service struct {
+	pool *pgxpool.Pool
+}
+
+func NewService(pool *pgxpool.Pool) *Service {
+	return &Service{pool: pool}
+}
+
+type Plan struct {
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	Description      string  `json:"description"`
+	SpreadMultiplier float64 `json:"spread_multiplier"`
+	CommissionRate   float64 `json:"commission_rate"`
+	Leverage         int     `json:"leverage"`
+}
+
+type TradingAccount struct {
+	ID        string          `json:"id"`
+	UserID    string          `json:"user_id"`
+	PlanID    string          `json:"plan_id"`
+	Plan      Plan            `json:"plan"`
+	Mode      string          `json:"mode"`
+	Name      string          `json:"name"`
+	IsActive  bool            `json:"is_active"`
+	Balance   decimal.Decimal `json:"balance"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+}
+
+func normalizeMode(mode string) string {
+	return strings.ToLower(strings.TrimSpace(mode))
+}
+
+func defaultAccountName(mode, planID string) string {
+	m := strings.Title(mode)
+	p := strings.Title(planID)
+	return fmt.Sprintf("%s %s", m, p)
+}
+
+func (s *Service) ensureDefaultAccountsTx(ctx context.Context, tx pgx.Tx, userID string) error {
+	if userID == "" {
+		return errors.New("user_id is required")
+	}
+
+	_, err := tx.Exec(ctx, `
+		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active)
+		SELECT $1, 'standard', 'demo', 'Demo Standard', FALSE
+		WHERE NOT EXISTS (
+			SELECT 1 FROM trading_accounts
+			WHERE user_id = $1 AND mode = 'demo' AND plan_id = 'standard'
+		)
+	`, userID)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active)
+		SELECT $1, 'standard', 'real', 'Real Standard', FALSE
+		WHERE NOT EXISTS (
+			SELECT 1 FROM trading_accounts
+			WHERE user_id = $1 AND mode = 'real' AND plan_id = 'standard'
+		)
+	`, userID)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `
+		WITH has_active AS (
+			SELECT EXISTS(
+				SELECT 1 FROM trading_accounts
+				WHERE user_id = $1 AND is_active = TRUE
+			) AS ok
+		), pick AS (
+			SELECT id
+			FROM trading_accounts
+			WHERE user_id = $1
+			ORDER BY (mode = 'demo') DESC, created_at ASC
+			LIMIT 1
+		)
+		UPDATE trading_accounts
+		SET is_active = TRUE, updated_at = NOW()
+		WHERE id IN (SELECT id FROM pick)
+		  AND (SELECT ok FROM has_active) = FALSE
+	`, userID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) EnsureDefaultAccounts(ctx context.Context, userID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.ensureDefaultAccountsTx(ctx, tx, userID); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *Service) List(ctx context.Context, userID string) ([]TradingAccount, error) {
+	if err := s.EnsureDefaultAccounts(ctx, userID); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+			ta.id, ta.user_id, ta.plan_id, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
+			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage,
+			COALESCE(SUM(
+				CASE WHEN ast.symbol = 'USD' AND a.kind = 'available' THEN le.amount ELSE 0 END
+			), 0) AS balance
+		FROM trading_accounts ta
+		JOIN account_plans p ON p.id = ta.plan_id
+		LEFT JOIN accounts a ON a.trading_account_id = ta.id
+		LEFT JOIN assets ast ON ast.id = a.asset_id
+		LEFT JOIN ledger_entries le ON le.account_id = a.id
+		WHERE ta.user_id = $1
+		GROUP BY
+			ta.id, ta.user_id, ta.plan_id, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
+			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage
+		ORDER BY ta.created_at ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]TradingAccount, 0, 4)
+	for rows.Next() {
+		var a TradingAccount
+		var p Plan
+		if err := rows.Scan(
+			&a.ID, &a.UserID, &a.PlanID, &a.Mode, &a.Name, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
+			&p.ID, &p.Name, &p.Description, &p.SpreadMultiplier, &p.CommissionRate, &p.Leverage,
+			&a.Balance,
+		); err != nil {
+			return nil, err
+		}
+		a.Plan = p
+		out = append(out, a)
+	}
+
+	return out, rows.Err()
+}
+
+func (s *Service) getByID(ctx context.Context, tx pgx.Tx, userID, accountID string) (*TradingAccount, error) {
+	var a TradingAccount
+	var p Plan
+	err := tx.QueryRow(ctx, `
+		SELECT
+			ta.id, ta.user_id, ta.plan_id, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
+			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage
+		FROM trading_accounts ta
+		JOIN account_plans p ON p.id = ta.plan_id
+		WHERE ta.id = $1 AND ta.user_id = $2
+	`, accountID, userID).Scan(
+		&a.ID, &a.UserID, &a.PlanID, &a.Mode, &a.Name, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
+		&p.ID, &p.Name, &p.Description, &p.SpreadMultiplier, &p.CommissionRate, &p.Leverage,
+	)
+	if err != nil {
+		return nil, err
+	}
+	a.Plan = p
+	return &a, nil
+}
+
+func (s *Service) Resolve(ctx context.Context, userID, requestedAccountID string) (*TradingAccount, error) {
+	if userID == "" {
+		return nil, errors.New("user_id is required")
+	}
+	if err := s.EnsureDefaultAccounts(ctx, userID); err != nil {
+		return nil, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if requestedAccountID != "" {
+		acc, err := s.getByID(ctx, tx, userID, requestedAccountID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, errors.New("account not found")
+			}
+			return nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		return acc, nil
+	}
+
+	var activeID string
+	err = tx.QueryRow(ctx, `
+		SELECT id FROM trading_accounts
+		WHERE user_id = $1 AND is_active = TRUE
+		ORDER BY created_at ASC
+		LIMIT 1
+	`, userID).Scan(&activeID)
+	if err != nil {
+		return nil, err
+	}
+
+	acc, err := s.getByID(ctx, tx, userID, activeID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return acc, nil
+}
+
+func (s *Service) SetActive(ctx context.Context, userID, accountID string) (*TradingAccount, error) {
+	if userID == "" || accountID == "" {
+		return nil, errors.New("user_id and account_id are required")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	acc, err := s.getByID(ctx, tx, userID, accountID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("account not found")
+		}
+		return nil, err
+	}
+
+	if _, err := tx.Exec(ctx, "UPDATE trading_accounts SET is_active = FALSE, updated_at = NOW() WHERE user_id = $1", userID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, "UPDATE trading_accounts SET is_active = TRUE, updated_at = NOW() WHERE id = $1", accountID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	acc.IsActive = true
+	return acc, nil
+}
+
+func (s *Service) Create(ctx context.Context, userID, planID, mode, name string, makeActive bool) (*TradingAccount, error) {
+	if userID == "" {
+		return nil, errors.New("user_id is required")
+	}
+	planID = strings.ToLower(strings.TrimSpace(planID))
+	if planID == "" {
+		planID = "standard"
+	}
+	mode = normalizeMode(mode)
+	if mode != "demo" && mode != "real" {
+		return nil, errors.New("mode must be demo or real")
+	}
+	if strings.TrimSpace(name) == "" {
+		name = defaultAccountName(mode, planID)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var planExists bool
+	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM account_plans WHERE id = $1)", planID).Scan(&planExists); err != nil {
+		return nil, err
+	}
+	if !planExists {
+		return nil, errors.New("plan not found")
+	}
+
+	var id string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active)
+		VALUES ($1, $2, $3, $4, FALSE)
+		RETURNING id
+	`, userID, planID, mode, name).Scan(&id)
+	if err != nil {
+		return nil, err
+	}
+
+	if makeActive {
+		if _, err := tx.Exec(ctx, "UPDATE trading_accounts SET is_active = FALSE, updated_at = NOW() WHERE user_id = $1", userID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, "UPDATE trading_accounts SET is_active = TRUE, updated_at = NOW() WHERE id = $1", id); err != nil {
+			return nil, err
+		}
+	}
+
+	acc, err := s.getByID(ctx, tx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if makeActive {
+		acc.IsActive = true
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return acc, nil
+}

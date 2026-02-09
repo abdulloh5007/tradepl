@@ -54,43 +54,10 @@ func (h *MarketWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ticker.C:
-			// 1. Try to get price from shared cache (synced with Chart)
-			var refPrice float64
-			var found bool
-
-			baseKey := pair + "|1m"
-			candlesByTF.mu.Lock()
-			base := candlesByTF.items[baseKey]
-			if len(base) > 0 {
-				last := base[len(base)-1]
-				// Use Close as current price
-				// Parse float
-				if v, err := strconv.ParseFloat(last.Close, 64); err == nil {
-					refPrice = v
-					found = true
-				}
-			}
-			candlesByTF.mu.Unlock()
-
-			var bidVal, askVal float64
-			var err error
-
-			if found {
-				// Use cached price
-				p, ok := pairProfiles[pair]
-				spread := 0.0
-				if ok {
-					spread = p.Spread
-				}
-				// Bid = Price
-				bidVal = refPrice
-				askVal = refPrice + spread
-			} else {
-				// Fallback to independent generation (might drift)
-				bidVal, askVal, err = GetCurrentQuote(pair)
-				if err != nil {
-					continue
-				}
+			// Single source of truth: use unified quote provider.
+			bidVal, askVal, err := GetCurrentQuote(pair)
+			if err != nil {
+				continue
 			}
 
 			spreadVal := askVal - bidVal

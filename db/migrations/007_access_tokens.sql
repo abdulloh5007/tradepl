@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS access_tokens (
 );
 
 -- Index for fast token lookup
-CREATE INDEX idx_access_tokens_token ON access_tokens(token);
-CREATE INDEX idx_access_tokens_expires ON access_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_access_tokens_token ON access_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_access_tokens_expires ON access_tokens(expires_at);
 
 -- Panel admins with rights (different from admin_users which is for login)
 CREATE TABLE IF NOT EXISTS panel_admins (
@@ -23,4 +23,4 @@ CREATE TABLE IF NOT EXISTS panel_admins (
 );
 
 -- Index for telegram_id lookup
-CREATE INDEX idx_panel_admins_telegram_id ON panel_admins(telegram_id);
+CREATE INDEX IF NOT EXISTS idx_panel_admins_telegram_id ON panel_admins(telegram_id);

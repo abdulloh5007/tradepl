@@ -151,19 +151,19 @@ func (e *Engine) applyLedger(ctx context.Context, tx pgx.Tx, taker model.Order, 
 }
 
 func (e *Engine) applyTrade(ctx context.Context, tx pgx.Tx, buy model.Order, sell model.Order, qty, quoteAmount decimal.Decimal, baseAssetID, quoteAssetID string) (model.Order, model.Order, error) {
-	buyQuoteReserved, err := e.ledger.EnsureAccount(ctx, tx, buy.UserID, quoteAssetID, types.AccountKindReserved)
+	buyQuoteReserved, err := e.ledger.EnsureAccountForTradingAccount(ctx, tx, buy.UserID, buy.TradingAccountID, quoteAssetID, types.AccountKindReserved)
 	if err != nil {
 		return buy, sell, err
 	}
-	buyBaseAvailable, err := e.ledger.EnsureAccount(ctx, tx, buy.UserID, baseAssetID, types.AccountKindAvailable)
+	buyBaseAvailable, err := e.ledger.EnsureAccountForTradingAccount(ctx, tx, buy.UserID, buy.TradingAccountID, baseAssetID, types.AccountKindAvailable)
 	if err != nil {
 		return buy, sell, err
 	}
-	sellBaseReserved, err := e.ledger.EnsureAccount(ctx, tx, sell.UserID, baseAssetID, types.AccountKindReserved)
+	sellBaseReserved, err := e.ledger.EnsureAccountForTradingAccount(ctx, tx, sell.UserID, sell.TradingAccountID, baseAssetID, types.AccountKindReserved)
 	if err != nil {
 		return buy, sell, err
 	}
-	sellQuoteAvailable, err := e.ledger.EnsureAccount(ctx, tx, sell.UserID, quoteAssetID, types.AccountKindAvailable)
+	sellQuoteAvailable, err := e.ledger.EnsureAccountForTradingAccount(ctx, tx, sell.UserID, sell.TradingAccountID, quoteAssetID, types.AccountKindAvailable)
 	if err != nil {
 		return buy, sell, err
 	}

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"lv-tradepl/internal/accounts"
 	"lv-tradepl/internal/httputil"
 	"lv-tradepl/internal/types"
 
@@ -11,11 +12,12 @@ import (
 )
 
 type Handler struct {
-	svc *Service
+	svc        *Service
+	accountSvc *accounts.Service
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, accountSvc *accounts.Service) *Handler {
+	return &Handler{svc: svc, accountSvc: accountSvc}
 }
 
 type placeOrderRequest struct {
@@ -30,6 +32,12 @@ type placeOrderRequest struct {
 }
 
 func (h *Handler) Place(w http.ResponseWriter, r *http.Request, userID string) {
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
 	var req placeOrderRequest
 	if err := httputil.ReadJSON(r, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
@@ -73,6 +81,7 @@ func (h *Handler) Place(w http.ResponseWriter, r *http.Request, userID string) {
 	}
 	res, err := h.svc.PlaceOrder(r.Context(), PlaceOrderRequest{
 		UserID:      userID,
+		AccountID:   account.ID,
 		PairSymbol:  pairSymbol,
 		Side:        types.OrderSide(req.Side),
 		Type:        types.OrderType(req.Type),
@@ -90,7 +99,12 @@ func (h *Handler) Place(w http.ResponseWriter, r *http.Request, userID string) {
 }
 
 func (h *Handler) Metrics(w http.ResponseWriter, r *http.Request, userID string) {
-	metrics, err := h.svc.GetAccountMetrics(r.Context(), userID)
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	metrics, err := h.svc.GetAccountMetricsByAccount(r.Context(), userID, account.ID)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
@@ -103,7 +117,12 @@ func (h *Handler) OpenOrders(w http.ResponseWriter, r *http.Request, userID stri
 	// But wait, the Service doesn't have a ListOrders method exposed yet?
 	// Let's add it quickly or check service.
 	// We need to implement ListOpenOrders in Service first.
-	orders, err := h.svc.ListOpenOrders(r.Context(), userID)
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	orders, err := h.svc.ListOpenOrdersByAccount(r.Context(), userID, account.ID)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
@@ -112,7 +131,12 @@ func (h *Handler) OpenOrders(w http.ResponseWriter, r *http.Request, userID stri
 }
 
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request, userID string, orderID string) {
-	if err := h.svc.CancelOrder(r.Context(), userID, orderID); err != nil {
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := h.svc.CancelOrder(r.Context(), userID, orderID, account.ID); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}

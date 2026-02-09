@@ -31,7 +31,7 @@ type Trade struct {
 
 func (s *Store) CreateOrder(ctx context.Context, tx pgx.Tx, o model.Order) (string, error) {
 	var id string
-	err := tx.QueryRow(ctx, "insert into orders (user_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning id", o.UserID, o.PairID, string(o.Side), string(o.Type), string(o.Status), o.Price, o.Qty, o.RemainingQty, o.QuoteAmount, o.RemainingQuote, o.ReservedAmount, o.SpentAmount, string(o.TimeInForce), time.Now().UTC(), time.Now().UTC()).Scan(&id)
+	err := tx.QueryRow(ctx, "insert into orders (user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id", o.UserID, o.TradingAccountID, o.PairID, string(o.Side), string(o.Type), string(o.Status), o.Price, o.Qty, o.RemainingQty, o.QuoteAmount, o.RemainingQuote, o.ReservedAmount, o.SpentAmount, string(o.TimeInForce), time.Now().UTC(), time.Now().UTC()).Scan(&id)
 	return id, err
 }
 
@@ -41,7 +41,7 @@ func (s *Store) GetOrderForUpdate(ctx context.Context, tx pgx.Tx, orderID string
 	var price *decimal.Decimal
 	var quoteAmount *decimal.Decimal
 	var remainingQuote *decimal.Decimal
-	err := tx.QueryRow(ctx, "select id, user_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where id = $1 for update", orderID).Scan(&o.ID, &o.UserID, &o.PairID, &side, &typ, &status, &price, &o.Qty, &o.RemainingQty, &quoteAmount, &remainingQuote, &o.ReservedAmount, &o.SpentAmount, &tif, &o.CreatedAt)
+	err := tx.QueryRow(ctx, "select id, user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where id = $1 for update", orderID).Scan(&o.ID, &o.UserID, &o.TradingAccountID, &o.PairID, &side, &typ, &status, &price, &o.Qty, &o.RemainingQty, &quoteAmount, &remainingQuote, &o.ReservedAmount, &o.SpentAmount, &tif, &o.CreatedAt)
 	if err != nil {
 		return o, err
 	}
@@ -60,15 +60,15 @@ func (s *Store) ListMatchingOrders(ctx context.Context, tx pgx.Tx, pairID string
 	var err error
 	if side == types.OrderSideBuy {
 		if limitPrice == nil {
-			rows, err = tx.Query(ctx, "select id, user_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where pair_id = $1 and side = 'sell' and status in ('open','partially_filled') and remaining_qty > 0 order by price asc, created_at asc, id asc limit $2 for update", pairID, limit)
+			rows, err = tx.Query(ctx, "select id, user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where pair_id = $1 and side = 'sell' and status in ('open','partially_filled') and remaining_qty > 0 order by price asc, created_at asc, id asc limit $2 for update", pairID, limit)
 		} else {
-			rows, err = tx.Query(ctx, "select id, user_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where pair_id = $1 and side = 'sell' and status in ('open','partially_filled') and remaining_qty > 0 and price <= $2 order by price asc, created_at asc, id asc limit $3 for update", pairID, limitPrice, limit)
+			rows, err = tx.Query(ctx, "select id, user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where pair_id = $1 and side = 'sell' and status in ('open','partially_filled') and remaining_qty > 0 and price <= $2 order by price asc, created_at asc, id asc limit $3 for update", pairID, limitPrice, limit)
 		}
 	} else {
 		if limitPrice == nil {
-			rows, err = tx.Query(ctx, "select id, user_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where pair_id = $1 and side = 'buy' and status in ('open','partially_filled') and remaining_qty > 0 order by price desc, created_at asc, id asc limit $2 for update", pairID, limit)
+			rows, err = tx.Query(ctx, "select id, user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where pair_id = $1 and side = 'buy' and status in ('open','partially_filled') and remaining_qty > 0 order by price desc, created_at asc, id asc limit $2 for update", pairID, limit)
 		} else {
-			rows, err = tx.Query(ctx, "select id, user_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where pair_id = $1 and side = 'buy' and status in ('open','partially_filled') and remaining_qty > 0 and price >= $2 order by price desc, created_at asc, id asc limit $3 for update", pairID, limitPrice, limit)
+			rows, err = tx.Query(ctx, "select id, user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where pair_id = $1 and side = 'buy' and status in ('open','partially_filled') and remaining_qty > 0 and price >= $2 order by price desc, created_at asc, id asc limit $3 for update", pairID, limitPrice, limit)
 		}
 	}
 	if err != nil {
@@ -82,7 +82,7 @@ func (s *Store) ListMatchingOrders(ctx context.Context, tx pgx.Tx, pairID string
 		var price *decimal.Decimal
 		var quoteAmount *decimal.Decimal
 		var remainingQuote *decimal.Decimal
-		if err := rows.Scan(&o.ID, &o.UserID, &o.PairID, &sideStr, &typ, &statusStr, &price, &o.Qty, &o.RemainingQty, &quoteAmount, &remainingQuote, &o.ReservedAmount, &o.SpentAmount, &tif, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.UserID, &o.TradingAccountID, &o.PairID, &sideStr, &typ, &statusStr, &price, &o.Qty, &o.RemainingQty, &quoteAmount, &remainingQuote, &o.ReservedAmount, &o.SpentAmount, &tif, &o.CreatedAt); err != nil {
 			return nil, err
 		}
 		o.Side = types.OrderSide(sideStr)

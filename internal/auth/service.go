@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"lv-tradepl/internal/accounts"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,10 +14,11 @@ import (
 )
 
 type Service struct {
-	pool   *pgxpool.Pool
-	issuer string
-	secret []byte
-	ttl    time.Duration
+	pool       *pgxpool.Pool
+	issuer     string
+	secret     []byte
+	ttl        time.Duration
+	accountSvc *accounts.Service
 }
 
 type User struct {
@@ -25,6 +28,10 @@ type User struct {
 
 func NewService(pool *pgxpool.Pool, issuer string, secret []byte, ttl time.Duration) *Service {
 	return &Service{pool: pool, issuer: issuer, secret: secret, ttl: ttl}
+}
+
+func (s *Service) SetAccountService(accountSvc *accounts.Service) {
+	s.accountSvc = accountSvc
 }
 
 func (s *Service) Register(ctx context.Context, email, password string) (string, error) {
@@ -51,6 +58,11 @@ func (s *Service) Register(ctx context.Context, email, password string) (string,
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", err
+	}
+	if s.accountSvc != nil {
+		if err := s.accountSvc.EnsureDefaultAccounts(ctx, userID); err != nil {
+			return "", err
+		}
 	}
 	return userID, nil
 }

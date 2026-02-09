@@ -49,20 +49,21 @@ func GetCurrentQuote(pair string) (bid, ask float64, err error) {
 		return liveBid, liveAsk, nil
 	}
 
-	p, ok := pairProfiles[pair]
-	if !ok {
-		return 0, 0, errors.New("pair not found")
+	// Fallback to the shared 1m candle cache (same stream as publisher/chart).
+	// If live quote is not ready yet, use mid=bid=ask to avoid a second price engine.
+	key := pair + "|1m"
+	candlesByTF.mu.Lock()
+	base := candlesByTF.items[key]
+	candlesByTF.mu.Unlock()
+	if len(base) > 0 {
+		last := base[len(base)-1]
+		price, parseErr := strconv.ParseFloat(last.Close, 64)
+		if parseErr == nil && price > 0 {
+			return price, price, nil
+		}
 	}
-	candle, err := LiveCandle(CandleParams{Pair: pair, Interval: time.Minute, Limit: 1})
-	if err != nil {
-		return 0, 0, err
-	}
-	price, _ := strconv.ParseFloat(candle.Close, 64)
 
-	// Candle Close is usually Bid in charts
-	bid = price
-	ask = price + p.Spread
-	return bid, ask, nil
+	return 0, 0, errors.New("live quote not ready")
 }
 
 func Candles(p CandleParams) ([]Candle, error) {

@@ -33,6 +33,27 @@ type Json = Record<string, unknown>
 type ClientState = {
   baseUrl: string
   token: string
+  activeAccountId?: string
+}
+
+export type TradingAccount = {
+  id: string
+  user_id: string
+  plan_id: string
+  plan: {
+    id: string
+    name: string
+    description: string
+    spread_multiplier: number
+    commission_rate: number
+    leverage: number
+  }
+  mode: "demo" | "real"
+  name: string
+  is_active: boolean
+  balance: string
+  created_at: string
+  updated_at: string
 }
 
 const parseBody = (text: string) => {
@@ -57,6 +78,7 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     const url = `${state.baseUrl}${path}${sep}_=${Date.now()}`
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
+    if (auth && state.activeAccountId) headers["X-Account-ID"] = state.activeAccountId
     const res = await fetch(url, {
       method,
       headers,
@@ -77,6 +99,10 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     register: (email: string, password: string) => request<{ user_id: string; access_token: string }>("/v1/auth/register", "POST", { email, password }),
     login: (email: string, password: string) => request<{ access_token: string }>("/v1/auth/login", "POST", { email, password }),
     me: () => request<{ id: string; email: string }>("/v1/me", "GET", undefined, true),
+    accounts: () => request<TradingAccount[] | null>("/v1/accounts", "GET", undefined, true),
+    createAccount: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) =>
+      request<TradingAccount>("/v1/accounts", "POST", payload, true),
+    switchAccount: (accountID: string) => request<TradingAccount>("/v1/accounts/switch", "POST", { account_id: accountID }, true),
     balances: async () => {
       const res = await request<Array<{ asset_id: string; symbol: string; kind: string; amount: string }> | null>("/v1/balances", "GET", undefined, true)
       return res || []

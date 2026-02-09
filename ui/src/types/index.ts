@@ -59,6 +59,28 @@ export interface Balance {
     amount: string
 }
 
+export interface AccountPlan {
+    id: string
+    name: string
+    description: string
+    spread_multiplier: number
+    commission_rate: number
+    leverage: number
+}
+
+export interface TradingAccount {
+    id: string
+    user_id: string
+    plan_id: string
+    plan: AccountPlan
+    mode: "demo" | "real"
+    name: string
+    is_active: boolean
+    balance: string
+    created_at: string
+    updated_at: string
+}
+
 export type Theme = "dark" | "light"
 export type Lang = "en" | "uz" | "ru"
-export type View = "chart" | "positions" | "balance" | "api" | "faucet" | "admin"
+export type View = "chart" | "positions" | "balance" | "accounts" | "api" | "faucet" | "admin"

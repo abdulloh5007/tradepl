@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { toast, Toaster } from "sonner"
 
 // Types
-import type { Quote, View, Theme, Lang, MarketConfig } from "./types"
+import type { Quote, View, Theme, Lang, MarketConfig, TradingAccount } from "./types"
 
 // Utils
-import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken } from "./utils/cookies"
+import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId } from "./utils/cookies"
 import { normalizeBaseUrl, apiPriceFromDisplay, toDisplayCandle } from "./utils/format"
 import { t } from "./utils/i18n"
 
@@ -17,7 +17,7 @@ import { Header, Sidebar } from "./components"
 import ConnectionBanner from "./components/ConnectionBanner"
 
 // Pages
-import { TradingPage, PositionsPage, BalancePage, ApiPage, FaucetPage } from "./pages"
+import { TradingPage, PositionsPage, BalancePage, AccountsPage, ApiPage, FaucetPage } from "./pages"
 
 // Config
 const marketPairs = ["UZS-USD"]
@@ -28,9 +28,27 @@ const timeframes = ["1m", "5m", "10m", "15m", "30m", "1h"]
 const candleLimit = 1000   // Initial load
 const lazyLoadLimit = 500  // Load more when scrolling
 
+function applySpreadMultiplier(bid: number, ask: number, multiplier: number): [number, number] {
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) {
+    return [bid, ask]
+  }
+  const safeMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
+  const mid = (bid + ask) / 2
+  const spread = Math.max(0, (ask - bid) * safeMultiplier)
+  return [mid - spread / 2, mid + spread / 2]
+}
+
+function spreadDecimals(ask: number, bid: number, baseDecimals: number): number {
+  const s = Math.abs(ask - bid)
+  if (!Number.isFinite(s)) return Math.max(2, baseDecimals)
+  if (s < 0.01) return Math.max(6, baseDecimals + 4)
+  if (s < 1) return Math.max(4, baseDecimals + 2)
+  return Math.max(2, baseDecimals)
+}
+
 function resolveView(): View {
   const hash = typeof window !== "undefined" ? window.location.hash.replace("#", "") : ""
-  if (hash === "positions" || hash === "balance" || hash === "api" || hash === "faucet") return hash
+  if (hash === "positions" || hash === "balance" || hash === "accounts" || hash === "api" || hash === "faucet") return hash
   return "chart"
 }
 
@@ -41,6 +59,8 @@ export default function App() {
   const [view, setView] = useState<View>(resolveView)
   const [baseUrl, setBaseUrl] = useState(storedBaseUrl())
   const [token, setToken] = useState(storedToken())
+  const [activeAccountId, setActiveAccountId] = useState(storedAccountId())
+  const [accounts, setAccounts] = useState<TradingAccount[]>([])
 
   // Market state
   const [marketPair] = useState(marketPairs[0])
@@ -75,7 +95,10 @@ export default function App() {
 
   const logout = useCallback(() => {
     setToken("")
+    setActiveAccountId("")
+    setAccounts([])
     setCookie("lv_token", "")
+    setCookie("lv_account_id", "")
   }, [])
 
   // Verify session on page load - check if user exists in DB
@@ -108,8 +131,40 @@ export default function App() {
 
   // Memoized API client (prevents recreation on every render = fixes lag)
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
-  const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token }, logout), [normalizedBaseUrl, token, logout])
+  const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token, activeAccountId }, logout), [normalizedBaseUrl, token, activeAccountId, logout])
   const marketPrice = quote?.bid ? parseFloat(quote.bid) : marketConfig[marketPair].displayBase
+
+  const refreshAccounts = useCallback(async (preferredID?: string) => {
+    if (!token) return
+    const list = (await api.accounts()) || []
+    setAccounts(list)
+
+    if (list.length === 0) {
+      if (activeAccountId) {
+        setActiveAccountId("")
+        setCookie("lv_account_id", "")
+      }
+      return
+    }
+
+    const preferred = preferredID || activeAccountId
+    const fallbackActive = list.find(a => a.is_active)?.id || list[0].id
+    const next = preferred && list.some(a => a.id === preferred) ? preferred : fallbackActive
+
+    if (next !== activeAccountId) {
+      setActiveAccountId(next)
+      setCookie("lv_account_id", next)
+    }
+  }, [api, token, activeAccountId])
+
+  useEffect(() => {
+    if (!token) {
+      setAccounts([])
+      setActiveAccountId("")
+      return
+    }
+    refreshAccounts().catch(() => { })
+  }, [token, refreshAccounts])
 
   // Persist preferences
   useEffect(() => {
@@ -130,6 +185,13 @@ export default function App() {
   const candlesRef = useRef<Array<{ time: number; open: number; high: number; low: number; close: number }>>([])
   const pendingCandleRef = useRef<{ time: number; open: number; high: number; low: number; close: number } | null>(null)
   const lastUpdateRef = useRef(0)
+  const spreadMultiplierRef = useRef(1)
+
+  useEffect(() => {
+    const active = accounts.find(a => a.id === activeAccountId) || accounts.find(a => a.is_active)
+    const next = active?.plan?.spread_multiplier
+    spreadMultiplierRef.current = Number.isFinite(next) && (next || 0) > 0 ? (next as number) : 1
+  }, [accounts, activeAccountId])
 
   // Track timeframe in ref to avoid WS reconnection on change
   const timeframeRef = useRef(timeframe)
@@ -228,6 +290,8 @@ export default function App() {
           let a = parseFloat(quoteData.ask)
           let l = parseFloat(quoteData.last) // New field
 
+          ;[b, a] = applySpreadMultiplier(b, a, spreadMultiplierRef.current)
+
           if (cfg?.invertForApi) {
             const rawBid = b
             const rawAsk = a
@@ -241,7 +305,7 @@ export default function App() {
             bid: isNaN(b) ? String(quoteData.bid) : b.toFixed(cfg?.displayDecimals || 2),
             ask: isNaN(a) ? String(quoteData.ask) : a.toFixed(cfg?.displayDecimals || 2),
             last: isNaN(l) ? (isNaN(b) ? "—" : b.toFixed(cfg?.displayDecimals || 2)) : l.toFixed(cfg?.displayDecimals || 2),
-            spread: (a - b).toFixed(2),
+            spread: (a - b).toFixed(spreadDecimals(a, b, cfg?.displayDecimals || 2)),
             ts: Number(quoteData.ts || Date.now())
           })
         } else if (eventType === "candle" || data.type === "candle") {
@@ -399,12 +463,41 @@ export default function App() {
         : await api.register(email, password)
       setToken(res.access_token)
       setCookie("lv_token", res.access_token)
+      setCookie("lv_account_id", "")
+      setActiveAccountId("")
       toast.success(authMode === "login" ? "Logged in!" : "Registered!")
     } catch (err: any) {
       toast.error(err?.message || "Auth error")
     } finally {
       setAuthLoading(false)
     }
+  }
+
+  const handleSwitchAccount = async (accountID: string) => {
+    await api.switchAccount(accountID)
+    setActiveAccountId(accountID)
+    setCookie("lv_account_id", accountID)
+    await refreshAccounts(accountID)
+    api.metrics().then(m => setMetrics(m)).catch(() => { })
+    api.orders().then(o => setOpenOrders(o || [])).catch(() => { })
+  }
+
+  const handleCreateAccount = async (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => {
+    const created = await api.createAccount(payload)
+    const nextID = created?.id || activeAccountId
+    if (nextID) {
+      setActiveAccountId(nextID)
+      setCookie("lv_account_id", nextID)
+    }
+    await refreshAccounts(nextID)
+    api.metrics().then(m => setMetrics(m)).catch(() => { })
+    api.orders().then(o => setOpenOrders(o || [])).catch(() => { })
+  }
+
+  const handleTopUpDemo = async (amount: string) => {
+    await api.faucet({ asset: "USD", amount, reference: "accounts_topup" })
+    await refreshAccounts(activeAccountId)
+    api.metrics().then(m => setMetrics(m)).catch(() => { })
   }
 
   // Show login form if not authenticated
@@ -544,6 +637,16 @@ export default function App() {
 
           {view === "balance" && (
             <BalancePage metrics={metrics} lang={lang} />
+          )}
+
+          {view === "accounts" && (
+            <AccountsPage
+              accounts={accounts}
+              activeAccountId={activeAccountId}
+              onSwitch={handleSwitchAccount}
+              onCreate={handleCreateAccount}
+              onTopUpDemo={handleTopUpDemo}
+            />
           )}
 
           {view === "api" && <ApiPage />}

@@ -1,5 +1,6 @@
 export { default as TradingPage } from "./TradingPage"
 export { default as PositionsPage } from "./PositionsPage"
 export { default as BalancePage } from "./BalancePage"
+export { default as AccountsPage } from "./AccountsPage"
 export { default as ApiPage } from "./ApiPage"
 export { default as FaucetPage } from "./FaucetPage"

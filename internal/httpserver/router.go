@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"lv-tradepl/internal/accounts"
 	"lv-tradepl/internal/admin"
 	"lv-tradepl/internal/auth"
 	"lv-tradepl/internal/httputil"
@@ -19,6 +20,7 @@ import (
 
 type RouterDeps struct {
 	AuthHandler       *auth.Handler
+	AccountsHandler   *accounts.Handler
 	LedgerHandler     *ledger.Handler
 	OrderHandler      *orders.Handler
 	MarketHandler     *marketdata.Handler
@@ -45,7 +47,7 @@ func NewRouter(d RouterDeps) http.Handler {
 			}
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Account-ID")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
@@ -100,6 +102,30 @@ func NewRouter(d RouterDeps) http.Handler {
 					return
 				}
 				d.LedgerHandler.Balances(w, r, userID)
+			})
+			r.Get("/accounts", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.AccountsHandler.List(w, r, userID)
+			})
+			r.Post("/accounts", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.AccountsHandler.Create(w, r, userID)
+			})
+			r.Post("/accounts/switch", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.AccountsHandler.Switch(w, r, userID)
 			})
 			r.Post("/orders", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)

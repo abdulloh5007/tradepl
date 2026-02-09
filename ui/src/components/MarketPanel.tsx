@@ -11,6 +11,9 @@ interface MarketPanelProps {
 }
 
 export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSell, lang }: MarketPanelProps) {
+  const bid = quote?.bid || "—"
+  const ask = quote?.ask || "—"
+
   return (
     <div style={{
       display: "grid",
@@ -20,42 +23,8 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
       background: "var(--card-bg)",
       borderRadius: 8
     }}>
-      {/* Market Stats */}
-      <div style={{
-        gridColumn: "1 / -1",
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 8,
-        marginBottom: 8
-      }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("price", lang)}</div>
-          <div style={{ fontSize: 16, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-            {quote?.last || "—"}
-          </div>
-        </div>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("bid", lang)}</div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: "#16a34a", fontVariantNumeric: "tabular-nums" }}>
-            {quote?.bid || "—"}
-          </div>
-        </div>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("ask", lang)}</div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: "#ef4444", fontVariantNumeric: "tabular-nums" }}>
-            {quote?.ask || "—"}
-          </div>
-        </div>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("spread", lang)}</div>
-          <div style={{ fontSize: 16, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-            {quote?.spread || "—"}
-          </div>
-        </div>
-      </div>
-
       {/* Quantity Input */}
-      <div style={{ gridColumn: "1 / -1", marginBottom: 8 }}>
+      <div style={{ gridColumn: "1 / -1" }}>
         <input
           type="number"
           value={quickQty}
@@ -87,7 +56,10 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
           cursor: "pointer"
         }}
       >
-        {t("sell", lang)}
+        <div style={{ display: "grid", gap: 2 }}>
+          <span>{t("sell", lang)}</span>
+          <span style={{ fontSize: 12, opacity: 0.9 }}>{t("bid", lang)} {bid}</span>
+        </div>
       </button>
       <button
         onClick={onBuy}
@@ -102,7 +74,10 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
           cursor: "pointer"
         }}
       >
-        {t("buy", lang)}
+        <div style={{ display: "grid", gap: 2 }}>
+          <span>{t("buy", lang)}</span>
+          <span style={{ fontSize: 12, opacity: 0.9 }}>{t("ask", lang)} {ask}</span>
+        </div>
       </button>
     </div>
   )

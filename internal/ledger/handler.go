@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+	"lv-tradepl/internal/accounts"
 	"lv-tradepl/internal/httputil"
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/types"
@@ -14,12 +15,13 @@ import (
 type Handler struct {
 	svc           *Service
 	store         *marketdata.Store
+	accountSvc    *accounts.Service
 	faucetEnabled bool
 	faucetMax     decimal.Decimal
 }
 
-func NewHandler(svc *Service, store *marketdata.Store, faucetEnabled bool, faucetMax decimal.Decimal) *Handler {
-	return &Handler{svc: svc, store: store, faucetEnabled: faucetEnabled, faucetMax: faucetMax}
+func NewHandler(svc *Service, store *marketdata.Store, accountSvc *accounts.Service, faucetEnabled bool, faucetMax decimal.Decimal) *Handler {
+	return &Handler{svc: svc, store: store, accountSvc: accountSvc, faucetEnabled: faucetEnabled, faucetMax: faucetMax}
 }
 
 type movementRequest struct {
@@ -139,6 +141,16 @@ func (h *Handler) Faucet(w http.ResponseWriter, r *http.Request, userID string) 
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "faucet disabled"})
 		return
 	}
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if account.Mode != "demo" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "faucet is allowed only for demo accounts"})
+		return
+	}
+
 	var req faucetRequest
 	if err := httputil.ReadJSON(r, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
@@ -182,7 +194,7 @@ func (h *Handler) Faucet(w http.ResponseWriter, r *http.Request, userID string) 
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
-	userAccount, err := h.svc.EnsureAccount(r.Context(), tx, userID, asset.ID, types.AccountKindAvailable)
+	userAccount, err := h.svc.EnsureAccountForTradingAccount(r.Context(), tx, userID, account.ID, asset.ID, types.AccountKindAvailable)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
@@ -204,7 +216,12 @@ func (h *Handler) Faucet(w http.ResponseWriter, r *http.Request, userID string) 
 }
 
 func (h *Handler) Balances(w http.ResponseWriter, r *http.Request, userID string) {
-	balances, err := h.svc.BalancesByUser(r.Context(), userID)
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	balances, err := h.svc.BalancesByUserAndAccount(r.Context(), userID, account.ID)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return

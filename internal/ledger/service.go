@@ -37,8 +37,12 @@ func (s *Service) CheckUserExists(ctx context.Context, tx pgx.Tx, userID string)
 }
 
 func (s *Service) EnsureAccount(ctx context.Context, tx pgx.Tx, userID, assetID string, kind types.AccountKind) (string, error) {
+	return s.EnsureAccountForTradingAccount(ctx, tx, userID, "", assetID, kind)
+}
+
+func (s *Service) EnsureAccountForTradingAccount(ctx context.Context, tx pgx.Tx, userID, tradingAccountID, assetID string, kind types.AccountKind) (string, error) {
 	var id string
-	err := tx.QueryRow(ctx, "select id from accounts where owner_type = 'user' and owner_user_id = $1 and asset_id = $2 and kind = $3", userID, assetID, string(kind)).Scan(&id)
+	err := tx.QueryRow(ctx, "select id from accounts where owner_type = 'user' and owner_user_id = $1 and coalesce(trading_account_id::text,'') = $2 and asset_id = $3 and kind = $4", userID, tradingAccountID, assetID, string(kind)).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
@@ -49,7 +53,7 @@ func (s *Service) EnsureAccount(ctx context.Context, tx pgx.Tx, userID, assetID 
 	if err := s.CheckUserExists(ctx, tx, userID); err != nil {
 		return "", err
 	}
-	err = tx.QueryRow(ctx, "insert into accounts (owner_type, owner_user_id, asset_id, kind) values ('user', $1, $2, $3) returning id", userID, assetID, string(kind)).Scan(&id)
+	err = tx.QueryRow(ctx, "insert into accounts (owner_type, owner_user_id, trading_account_id, asset_id, kind) values ('user', $1, nullif($2,'')::uuid, $3, $4) returning id", userID, tradingAccountID, assetID, string(kind)).Scan(&id)
 	if err != nil {
 		return "", err
 	}
@@ -86,7 +90,11 @@ type Balance struct {
 }
 
 func (s *Service) BalancesByUser(ctx context.Context, userID string) ([]Balance, error) {
-	rows, err := s.pool.Query(ctx, "select a.asset_id, asst.symbol, a.kind, coalesce(sum(le.amount), 0) from accounts a join assets asst on asst.id = a.asset_id left join ledger_entries le on le.account_id = a.id where a.owner_type = 'user' and a.owner_user_id = $1 group by a.asset_id, asst.symbol, a.kind order by asst.symbol, a.kind", userID)
+	return s.BalancesByUserAndAccount(ctx, userID, "")
+}
+
+func (s *Service) BalancesByUserAndAccount(ctx context.Context, userID, tradingAccountID string) ([]Balance, error) {
+	rows, err := s.pool.Query(ctx, "select a.asset_id, asst.symbol, a.kind, coalesce(sum(le.amount), 0) from accounts a join assets asst on asst.id = a.asset_id left join ledger_entries le on le.account_id = a.id where a.owner_type = 'user' and a.owner_user_id = $1 and ($2 = '' or coalesce(a.trading_account_id::text,'') = $2) group by a.asset_id, asst.symbol, a.kind order by asst.symbol, a.kind", userID, tradingAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +196,10 @@ func computeHash(entryID, txID, accountID string, amount decimal.Decimal, entryT
 }
 
 func (s *Service) GetNetDeposits(ctx context.Context, userID string) (decimal.Decimal, error) {
+	return s.GetNetDepositsByAccount(ctx, userID, "")
+}
+
+func (s *Service) GetNetDepositsByAccount(ctx context.Context, userID, tradingAccountID string) (decimal.Decimal, error) {
 	// Simple calculation: Total sum of Deposits and Withdrawals for the user
 	// We'll trust the ledger integrity
 	// Actually, we need to filter by base currency (USD)?
@@ -215,8 +227,9 @@ func (s *Service) GetNetDeposits(ctx context.Context, userID string) (decimal.De
 		from ledger_entries le
 		join accounts a on a.id = le.account_id
 		where a.owner_type = 'user' and a.owner_user_id = $1
+		and ($2 = '' or coalesce(a.trading_account_id::text,'') = $2)
 		and le.entry_type in ('deposit', 'withdraw', 'faucet')
-	`, userID).Scan(&deposits)
+	`, userID, tradingAccountID).Scan(&deposits)
 
 	return deposits, err
 }

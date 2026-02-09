@@ -60,12 +60,23 @@ INSERT INTO session_configs (id, name, update_rate_ms, volatility, spread, trend
     ('calm', 'Calm', 1000, 0.0003, 12.0, 'sideways', 0.5, FALSE)
 ON CONFLICT (id) DO NOTHING;
 
--- Insert default schedule (for auto mode example)
-INSERT INTO session_schedule (session_id, start_hour, end_hour, days) VALUES 
-    ('calm', 0, 8, ARRAY['mon','tue','wed','thu','fri','sat','sun']),
-    ('normal', 8, 16, ARRAY['mon','tue','wed','thu','fri','sat','sun']),
-    ('turbo', 16, 24, ARRAY['mon','tue','wed','thu','fri','sat','sun'])
-ON CONFLICT DO NOTHING;
+-- Insert default schedule (idempotent)
+INSERT INTO session_schedule (session_id, start_hour, end_hour, days)
+SELECT v.session_id, v.start_hour, v.end_hour, v.days
+FROM (
+    VALUES
+        ('calm', 0, 8, ARRAY['mon','tue','wed','thu','fri','sat','sun']::TEXT[]),
+        ('normal', 8, 16, ARRAY['mon','tue','wed','thu','fri','sat','sun']::TEXT[]),
+        ('turbo', 16, 23, ARRAY['mon','tue','wed','thu','fri','sat','sun']::TEXT[])
+) AS v(session_id, start_hour, end_hour, days)
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM session_schedule s
+    WHERE s.session_id = v.session_id
+      AND s.start_hour = v.start_hour
+      AND s.end_hour = v.end_hour
+      AND s.days = v.days
+);
 
 -- Index for faster event queries
 CREATE INDEX IF NOT EXISTS idx_price_events_scheduled ON price_events(scheduled_at) WHERE status = 'pending';

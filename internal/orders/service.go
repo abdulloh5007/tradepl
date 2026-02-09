@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"lv-tradepl/internal/accounts"
 	"lv-tradepl/internal/ledger"
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/matching"
@@ -18,19 +19,21 @@ import (
 )
 
 type Service struct {
-	pool   *pgxpool.Pool
-	store  *Store
-	ledger *ledger.Service
-	market *marketdata.Store
-	match  *matching.Engine
+	pool       *pgxpool.Pool
+	store      *Store
+	ledger     *ledger.Service
+	market     *marketdata.Store
+	match      *matching.Engine
+	accountSvc *accounts.Service
 }
 
-func NewService(pool *pgxpool.Pool, store *Store, ledgerSvc *ledger.Service, market *marketdata.Store, match *matching.Engine) *Service {
-	return &Service{pool: pool, store: store, ledger: ledgerSvc, market: market, match: match}
+func NewService(pool *pgxpool.Pool, store *Store, ledgerSvc *ledger.Service, market *marketdata.Store, match *matching.Engine, accountSvc *accounts.Service) *Service {
+	return &Service{pool: pool, store: store, ledger: ledgerSvc, market: market, match: match, accountSvc: accountSvc}
 }
 
 type PlaceOrderRequest struct {
 	UserID      string
+	AccountID   string
 	PairSymbol  string
 	Side        types.OrderSide
 	Type        types.OrderType
@@ -47,7 +50,7 @@ type PlaceOrderResult struct {
 }
 
 func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceOrderResult, error) {
-	if req.UserID == "" || req.PairSymbol == "" {
+	if req.UserID == "" || req.PairSymbol == "" || req.AccountID == "" {
 		return PlaceOrderResult{}, errors.New("missing user or pair")
 	}
 	if req.TimeInForce == types.TimeInForceFOK {
@@ -74,6 +77,22 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 	}
 	if pair.Status != "active" {
 		return PlaceOrderResult{}, errors.New("pair not active")
+	}
+	spreadMultiplier := 1.0
+	commissionRate := 0.0
+	if s.accountSvc != nil {
+		acc, accErr := s.accountSvc.Resolve(ctx, req.UserID, req.AccountID)
+		if accErr != nil {
+			return PlaceOrderResult{}, accErr
+		}
+		if acc != nil {
+			if acc.Plan.SpreadMultiplier > 0 {
+				spreadMultiplier = acc.Plan.SpreadMultiplier
+			}
+			if acc.Plan.CommissionRate > 0 {
+				commissionRate = acc.Plan.CommissionRate
+			}
+		}
 	}
 	minQty, _ := decimal.NewFromString(pair.MinQty)
 	minNotional, _ := decimal.NewFromString(pair.MinNotional)
@@ -111,12 +130,15 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 
 	var marketBid float64
 	var marketAsk float64
+	var invertedDisplayPair bool
 	if req.Type == types.OrderTypeMarket {
 		var quoteErr error
 		marketBid, marketAsk, quoteErr = marketdata.GetCurrentQuote(pair.Symbol)
 		if quoteErr != nil {
 			return PlaceOrderResult{}, fmt.Errorf("failed to get market quote: %w", quoteErr)
 		}
+		marketBid, marketAsk = applySpreadMultiplier(marketBid, marketAsk, spreadMultiplier)
+		invertedDisplayPair = marketdata.IsDisplayInverted(pair.Symbol)
 	}
 
 	// Transaction
@@ -134,9 +156,18 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		if req.Type == types.OrderTypeMarket {
 			if req.Qty != nil {
 				// Broker Style Buy: Qty specified. Need to estimate cost.
-				askPrice := decimal.NewFromFloat(marketAsk)
+				entryPrice := marketAsk
+				if invertedDisplayPair {
+					// For inverted display pairs, preserve visual spread direction:
+					// BUY opens at upper side in displayed prices.
+					entryPrice = marketBid
+				}
+				askPrice := decimal.NewFromFloat(entryPrice)
 				// Reserve cost = Qty * Ask
 				reservedAmount = req.Qty.Mul(askPrice)
+				if commissionRate > 0 {
+					reservedAmount = reservedAmount.Add(reservedAmount.Mul(decimal.NewFromFloat(commissionRate)))
+				}
 			} else {
 				// Exchange Style Buy: Spend fixed amount
 				reservedAmount = *req.QuoteAmount
@@ -149,11 +180,11 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		reservedAssetID = pair.BaseAssetID
 		reservedAmount = *req.Qty
 	}
-	availableAccount, err := s.ledger.EnsureAccount(ctx, tx, req.UserID, reservedAssetID, types.AccountKindAvailable)
+	availableAccount, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, reservedAssetID, types.AccountKindAvailable)
 	if err != nil {
 		return PlaceOrderResult{}, err
 	}
-	reservedAccount, err := s.ledger.EnsureAccount(ctx, tx, req.UserID, reservedAssetID, types.AccountKindReserved)
+	reservedAccount, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, reservedAssetID, types.AccountKindReserved)
 	if err != nil {
 		return PlaceOrderResult{}, err
 	}
@@ -169,20 +200,21 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		return PlaceOrderResult{}, err
 	}
 	order := model.Order{
-		UserID:         req.UserID,
-		PairID:         pair.ID,
-		Side:           req.Side,
-		Type:           req.Type,
-		Status:         types.OrderStatusOpen,
-		Price:          req.Price,
-		Qty:            decimal.Zero,
-		RemainingQty:   decimal.Zero,
-		QuoteAmount:    req.QuoteAmount,
-		RemainingQuote: req.QuoteAmount,
-		ReservedAmount: reservedAmount,
-		SpentAmount:    decimal.Zero,
-		TimeInForce:    req.TimeInForce,
-		CreatedAt:      time.Now().UTC(),
+		UserID:           req.UserID,
+		TradingAccountID: req.AccountID,
+		PairID:           pair.ID,
+		Side:             req.Side,
+		Type:             req.Type,
+		Status:           types.OrderStatusOpen,
+		Price:            req.Price,
+		Qty:              decimal.Zero,
+		RemainingQty:     decimal.Zero,
+		QuoteAmount:      req.QuoteAmount,
+		RemainingQuote:   req.QuoteAmount,
+		ReservedAmount:   reservedAmount,
+		SpentAmount:      decimal.Zero,
+		TimeInForce:      req.TimeInForce,
+		CreatedAt:        time.Now().UTC(),
 	}
 	if req.Type == types.OrderTypeMarket && req.Side == types.OrderSideBuy {
 		order.Qty = decimal.Zero
@@ -205,8 +237,12 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		var execQty decimal.Decimal
 
 		if req.Side == types.OrderSideBuy {
-			// Buy at Ask price
-			execPrice = decimal.NewFromFloat(marketAsk)
+			// Buy at Ask price (or Bid for inverted display pairs)
+			entryPrice := marketAsk
+			if invertedDisplayPair {
+				entryPrice = marketBid
+			}
+			execPrice = decimal.NewFromFloat(entryPrice)
 			if req.Qty != nil {
 				execQty = *req.Qty
 			} else if req.QuoteAmount != nil {
@@ -214,21 +250,29 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 				execQty = req.QuoteAmount.Div(execPrice)
 			}
 		} else {
-			// Sell at Bid price
-			execPrice = decimal.NewFromFloat(marketBid)
+			// Sell at Bid price (or Ask for inverted display pairs)
+			entryPrice := marketBid
+			if invertedDisplayPair {
+				entryPrice = marketAsk
+			}
+			execPrice = decimal.NewFromFloat(entryPrice)
 			execQty = *req.Qty
 		}
 
 		quoteAmount := execPrice.Mul(execQty)
+		commissionAmount := decimal.Zero
+		if commissionRate > 0 {
+			commissionAmount = quoteAmount.Mul(decimal.NewFromFloat(commissionRate))
+		}
 
 		// Execute the trade: Transfer funds
 		if req.Side == types.OrderSideBuy {
 			// Buyer: Reserved USD -> "Market" (burn), Receive Base Asset
-			reservedQuote, _ := s.ledger.EnsureAccount(ctx, tx, req.UserID, pair.QuoteAssetID, types.AccountKindReserved)
-			availableBase, _ := s.ledger.EnsureAccount(ctx, tx, req.UserID, pair.BaseAssetID, types.AccountKindAvailable)
+			reservedQuote, _ := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, pair.QuoteAssetID, types.AccountKindReserved)
+			availableBase, _ := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, pair.BaseAssetID, types.AccountKindAvailable)
 
 			// Deduct USD from Reserved
-			_, err := s.ledger.DebitAccount(ctx, tx, reservedQuote, quoteAmount, types.LedgerEntryTypeTrade, "market_buy")
+			_, err := s.ledger.DebitAccount(ctx, tx, reservedQuote, quoteAmount.Add(commissionAmount), types.LedgerEntryTypeTrade, "market_buy")
 			if err != nil {
 				return PlaceOrderResult{}, fmt.Errorf("failed to debit quote: %w", err)
 			}
@@ -239,8 +283,8 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 			}
 		} else {
 			// Seller: Reserved Base -> "Market" (burn), Receive USD
-			reservedBase, _ := s.ledger.EnsureAccount(ctx, tx, req.UserID, pair.BaseAssetID, types.AccountKindReserved)
-			availableQuote, _ := s.ledger.EnsureAccount(ctx, tx, req.UserID, pair.QuoteAssetID, types.AccountKindAvailable)
+			reservedBase, _ := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, pair.BaseAssetID, types.AccountKindReserved)
+			availableQuote, _ := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, pair.QuoteAssetID, types.AccountKindAvailable)
 
 			// Deduct Base from Reserved
 			_, err := s.ledger.DebitAccount(ctx, tx, reservedBase, execQty, types.LedgerEntryTypeTrade, "market_sell")
@@ -248,7 +292,11 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 				return PlaceOrderResult{}, fmt.Errorf("failed to debit base: %w", err)
 			}
 			// Credit USD to Available (Mint from Market)
-			_, err = s.ledger.CreditAccount(ctx, tx, availableQuote, quoteAmount, types.LedgerEntryTypeTrade, "market_sell")
+			creditAmount := quoteAmount.Sub(commissionAmount)
+			if creditAmount.LessThan(decimal.Zero) {
+				creditAmount = decimal.Zero
+			}
+			_, err = s.ledger.CreditAccount(ctx, tx, availableQuote, creditAmount, types.LedgerEntryTypeTrade, "market_sell")
 			if err != nil {
 				return PlaceOrderResult{}, fmt.Errorf("failed to credit quote: %w", err)
 			}
@@ -327,11 +375,11 @@ func (s *Service) finalizeOrder(ctx context.Context, tx pgx.Tx, order model.Orde
 	if status == types.OrderStatusFilled || status == types.OrderStatusCanceled {
 		remainder := order.ReservedAmount.Sub(order.SpentAmount)
 		if remainder.GreaterThan(decimal.Zero) {
-			reservedAccount, err := s.ledger.EnsureAccount(ctx, tx, order.UserID, reservedAssetID, types.AccountKindReserved)
+			reservedAccount, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, order.UserID, order.TradingAccountID, reservedAssetID, types.AccountKindReserved)
 			if err != nil {
 				return status, err
 			}
-			availableAccount, err := s.ledger.EnsureAccount(ctx, tx, order.UserID, reservedAssetID, types.AccountKindAvailable)
+			availableAccount, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, order.UserID, order.TradingAccountID, reservedAssetID, types.AccountKindAvailable)
 			if err != nil {
 				return status, err
 			}
@@ -355,7 +403,12 @@ type AccountMetrics struct {
 
 func (s *Service) GetAccountMetrics(ctx context.Context, userID string) (AccountMetrics, error) {
 	// 1. Get all balances
-	balances, err := s.ledger.BalancesByUser(ctx, userID)
+	return s.GetAccountMetricsByAccount(ctx, userID, "")
+}
+
+func (s *Service) GetAccountMetricsByAccount(ctx context.Context, userID, accountID string) (AccountMetrics, error) {
+	// 1. Get all balances
+	balances, err := s.ledger.BalancesByUserAndAccount(ctx, userID, accountID)
 	if err != nil {
 		return AccountMetrics{}, err
 	}
@@ -398,18 +451,7 @@ func (s *Service) GetAccountMetrics(ctx context.Context, userID string) (Account
 			if err == nil {
 				price = decimal.NewFromFloat(bid)
 			} else {
-				// Fallback
-				candle, err := marketdata.LiveCandle(marketdata.CandleParams{
-					Pair:     pairSymbol,
-					Interval: time.Minute,
-					Limit:    1,
-					Now:      time.Now().UTC(),
-				})
-				if err == nil {
-					price, _ = decimal.NewFromString(candle.Close)
-				} else {
-					price = decimal.Zero
-				}
+				price = decimal.Zero
 			}
 
 			// Value = Amount * Bid Price (Liquidation Value)
@@ -444,7 +486,7 @@ func (s *Service) GetAccountMetrics(ctx context.Context, userID string) (Account
 	}
 
 	// 3. Get Net Deposits (Initial Investment)
-	netDep, err := s.ledger.GetNetDeposits(ctx, userID)
+	netDep, err := s.ledger.GetNetDepositsByAccount(ctx, userID, accountID)
 	if err != nil {
 		netDep = decimal.Zero // Should not happen but fallback
 	}
@@ -482,6 +524,10 @@ func (s *Service) GetAccountMetrics(ctx context.Context, userID string) (Account
 }
 
 func (s *Service) ListOpenOrders(ctx context.Context, userID string) ([]model.Order, error) {
+	return s.ListOpenOrdersByAccount(ctx, userID, "")
+}
+
+func (s *Service) ListOpenOrdersByAccount(ctx context.Context, userID, accountID string) ([]model.Order, error) {
 	// Broker Style: We need the ENTRY PRICE ("Open Price").
 	// For a Market Order (filled/partially filled), Entry Price = SpentQuote / FilledQty.
 	// We will calculate this on the fly or return it.
@@ -490,9 +536,11 @@ func (s *Service) ListOpenOrders(ctx context.Context, userID string) ([]model.Or
 	// If filled_qty > 0, avg_price = spent_amount / filled_qty.
 
 	query := `
-		SELECT id, user_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at
+		SELECT id, user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at
 		FROM orders
-		WHERE user_id = $1 AND status IN ('new', 'partially_filled', 'filled') -- Include filled if they are "open positions" in broker model?
+		WHERE user_id = $1
+		  AND ($2 = '' OR trading_account_id = $2)
+		  AND status IN ('new', 'partially_filled', 'filled') -- Include filled if they are "open positions" in broker model?
 		-- Actually in Broker model, a "Filled Order" IS an "Open Position" until explicitly closed.
 		-- But our matching engine treats "Filled" as done.
 		-- ADAPTATION: We will treat "Filled" buy orders as "Open Positions" IF the user still holds the asset.
@@ -517,7 +565,7 @@ func (s *Service) ListOpenOrders(ctx context.Context, userID string) ([]model.Or
 		AND status != 'cancelled'
 		ORDER BY created_at DESC
 	`
-	rows, err := s.pool.Query(ctx, query, userID)
+	rows, err := s.pool.Query(ctx, query, userID, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -527,7 +575,7 @@ func (s *Service) ListOpenOrders(ctx context.Context, userID string) ([]model.Or
 	for rows.Next() {
 		var o model.Order
 		err := rows.Scan(
-			&o.ID, &o.UserID, &o.PairID, &o.Side, &o.Type, &o.Status,
+			&o.ID, &o.UserID, &o.TradingAccountID, &o.PairID, &o.Side, &o.Type, &o.Status,
 			&o.Price, &o.Qty, &o.RemainingQty, &o.QuoteAmount, &o.RemainingQuote,
 			&o.ReservedAmount, &o.SpentAmount, &o.TimeInForce, &o.CreatedAt,
 		)
@@ -549,7 +597,7 @@ func (s *Service) ListOpenOrders(ctx context.Context, userID string) ([]model.Or
 
 // ClosePosition closes an open position at current market price
 // This is used for "closing" a trade (not canceling an unfilled order)
-func (s *Service) CancelOrder(ctx context.Context, userID, orderID string) error {
+func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID string) error {
 	// Start transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
@@ -566,6 +614,9 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID string) error
 	// 2. Verify ownership
 	if order.UserID != userID {
 		return errors.New("not your order")
+	}
+	if accountID != "" && order.TradingAccountID != accountID {
+		return errors.New("order does not belong to selected account")
 	}
 
 	// 3. Only filled orders can be "closed" as positions
@@ -584,6 +635,20 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID string) error
 	if err != nil {
 		return fmt.Errorf("failed to get market price: %w", err)
 	}
+	spreadMultiplier := 1.0
+	commissionRate := 0.0
+	if s.accountSvc != nil {
+		acc, accErr := s.accountSvc.Resolve(ctx, userID, accountID)
+		if accErr == nil && acc != nil {
+			if acc.Plan.SpreadMultiplier > 0 {
+				spreadMultiplier = acc.Plan.SpreadMultiplier
+			}
+			if acc.Plan.CommissionRate > 0 {
+				commissionRate = acc.Plan.CommissionRate
+			}
+		}
+	}
+	bid, ask = applySpreadMultiplier(bid, ask, spreadMultiplier)
 
 	// 6. Calculate exit price and P/L
 	var exitPrice decimal.Decimal
@@ -605,7 +670,7 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID string) error
 
 	// 7. Update user's USD balance
 	// Get the user's available USD account
-	usdAvailable, err := s.ledger.EnsureAccount(ctx, tx, userID, pair.QuoteAssetID, types.AccountKindAvailable)
+	usdAvailable, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, pair.QuoteAssetID, types.AccountKindAvailable)
 	if err != nil {
 		return fmt.Errorf("failed to get USD account: %w", err)
 	}
@@ -613,6 +678,12 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID string) error
 	// Calculate total return: original investment + P/L
 	// For a buy: we spent order.SpentAmount (USD), now we get it back + P/L
 	closeAmount := order.SpentAmount.Add(pnl)
+	if commissionRate > 0 {
+		closeNotional := exitPrice.Mul(qty)
+		if closeNotional.GreaterThan(decimal.Zero) {
+			closeAmount = closeAmount.Sub(closeNotional.Mul(decimal.NewFromFloat(commissionRate)))
+		}
+	}
 
 	if closeAmount.GreaterThan(decimal.Zero) {
 		// Credit the return to available balance
@@ -631,7 +702,7 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID string) error
 
 	// 8. If it was a buy order, we also need to remove the base asset
 	if order.Side == types.OrderSideBuy {
-		baseAvailable, err := s.ledger.EnsureAccount(ctx, tx, userID, pair.BaseAssetID, types.AccountKindAvailable)
+		baseAvailable, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, pair.BaseAssetID, types.AccountKindAvailable)
 		if err != nil {
 			return fmt.Errorf("failed to get base account: %w", err)
 		}
@@ -649,4 +720,20 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID string) error
 
 	// 10. Commit transaction
 	return tx.Commit(ctx)
+}
+
+func applySpreadMultiplier(bid, ask, multiplier float64) (float64, float64) {
+	if bid <= 0 || ask <= 0 {
+		return bid, ask
+	}
+	if multiplier <= 0 {
+		multiplier = 1.0
+	}
+	mid := (bid + ask) / 2.0
+	spread := (ask - bid) * multiplier
+	if spread < 0 {
+		spread = 0
+	}
+	half := spread / 2.0
+	return mid - half, mid + half
 }
