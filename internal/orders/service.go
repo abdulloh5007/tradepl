@@ -734,11 +734,11 @@ func (s *Service) ListOpenOrdersByAccount(ctx context.Context, userID, accountID
 		-- No, user wants "Open Orders".
 		-- Let's stick to: Open Orders = Active Limit Orders OR "Positions" (Filled Buys that are not sold?).
 		-- This is getting complex for a simple "Spot Exchange" backend.
-		-- ALTERNATIVE: Just list everything from orders table that is NOT cancelled.
+		-- ALTERNATIVE: Just list everything from orders table that is NOT cancelled/closed.
 		-- And for P/L:
 		-- If Status=Filled, EntryPrice = Spent / Qty.
 		-- If Status=New, EntryPrice = Price (Limit).
-			AND status != 'canceled'
+			AND status NOT IN ('canceled', 'closed')
 		ORDER BY created_at DESC
 	`
 	rows, err := s.pool.Query(ctx, query, userID, accountID)
@@ -837,7 +837,7 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		WHERE user_id = $1
 		  AND ($2 = '' OR coalesce(trading_account_id::text, '') = $2)
 		  AND ($3::timestamptz IS NULL OR created_at < $3)
-		  AND status = 'canceled'
+		  AND status IN ('closed', 'canceled')
 		ORDER BY created_at DESC
 		LIMIT $4
 	`
@@ -1044,8 +1044,8 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 		}
 	}
 
-	// 9. Mark order as closed (we use 'cancelled' status for closed positions)
-	if err := s.store.UpdateOrderStatus(ctx, tx, orderID, types.OrderStatusCanceled); err != nil {
+	// 9. Mark order as closed position.
+	if err := s.store.UpdateOrderStatus(ctx, tx, orderID, types.OrderStatusClosed); err != nil {
 		return fmt.Errorf("failed to update order status: %w", err)
 	}
 

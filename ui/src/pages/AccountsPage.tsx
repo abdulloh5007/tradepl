@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import type { TradingAccount } from "../types"
+import { formatNumber } from "../utils/format"
 
 interface AccountsPageProps {
     accounts: TradingAccount[]
@@ -22,7 +23,7 @@ const leverageOptions = [0, 2, 5, 10, 20, 30, 40, 50, 100, 200, 500, 1000, 2000,
 
 const leverageLabel = (value: number) => {
     if (value === 0) return "Unlimited"
-    return `1:${value.toLocaleString("en-US")}`
+    return `1:${formatNumber(value, 0, 0)}`
 }
 
 const marginCallLevel = 60
@@ -65,7 +66,7 @@ export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCr
     const formatUsd = (value: string) => {
         const num = Number(value || 0)
         if (Number.isNaN(num)) return "0.00"
-        return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        return formatNumber(num, 2, 2)
     }
 
     const applyLeverage = async (account: TradingAccount, next: number) => {

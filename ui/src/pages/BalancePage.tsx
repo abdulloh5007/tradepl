@@ -1,5 +1,6 @@
 import AccountMetrics from "../components/AccountMetrics"
 import type { Metrics, Lang } from "../types"
+import { formatNumber } from "../utils/format"
 
 interface BalancePageProps {
     metrics: Metrics
@@ -9,7 +10,7 @@ interface BalancePageProps {
 export default function BalancePage({ metrics, lang }: BalancePageProps) {
     const formatValue = (v: string) => {
         const num = parseFloat(v)
-        return isNaN(num) ? "0.00" : num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        return isNaN(num) ? "0.00" : formatNumber(num, 2, 2)
     }
 
     return (

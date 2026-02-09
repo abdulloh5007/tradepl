@@ -1,5 +1,6 @@
 import { toast } from "sonner"
 import type { Lang } from "../types"
+import { formatNumber } from "../utils/format"
 
 interface FaucetPageProps {
     api: {
@@ -71,7 +72,7 @@ export default function FaucetPage({ api, onMetricsUpdate, token, onLoginRequire
                             opacity: token ? 1 : 0.6
                         }}
                     >
-                        +${parseInt(amount).toLocaleString()}
+                        +${formatNumber(parseInt(amount, 10), 0, 0)}
                     </button>
                 ))}
             </div>

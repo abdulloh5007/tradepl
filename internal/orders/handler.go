@@ -183,7 +183,7 @@ func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request, userID string, 
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "closed"})
 }
 
 func (h *Handler) CloseMany(w http.ResponseWriter, r *http.Request, userID string) {

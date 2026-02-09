@@ -8,6 +8,7 @@ import type { Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Met
 import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId } from "./utils/cookies"
 import { normalizeBaseUrl, apiPriceFromDisplay, toDisplayCandle } from "./utils/format"
 import { t } from "./utils/i18n"
+import { calcOrderProfit } from "./utils/trading"
 
 // API
 import { createApiClient, createWsUrl } from "./api"
@@ -164,15 +165,35 @@ export default function App() {
       return Number.isFinite(n) ? n : 0
     }
 
-    return {
-      balance: String(toSafe(metrics.balance)),
-      equity: String(toSafe(metrics.equity)),
-      margin: String(toSafe(metrics.margin)),
-      free_margin: String(toSafe(metrics.free_margin)),
-      margin_level: String(toSafe(metrics.margin_level)),
-      pl: String(toSafe(metrics.pl))
+    const baseBalance = toSafe(metrics.balance)
+    const baseMargin = Math.max(0, toSafe(metrics.margin))
+
+    let livePl = 0
+    for (const order of openOrders) {
+      if (order.status !== "filled") continue
+      livePl += calcOrderProfit(order, bidDisplay, askDisplay, marketPair, marketConfig)
     }
-  }, [metrics.balance, metrics.equity, metrics.margin, metrics.free_margin, metrics.margin_level, metrics.pl])
+    if (!Number.isFinite(livePl)) livePl = toSafe(metrics.pl)
+    if (Math.abs(livePl) < 0.000000000001) livePl = 0
+
+    const equity = baseBalance + livePl
+    const freeMargin = equity - baseMargin
+    let marginLevel = 0
+    if (baseMargin > 0) {
+      marginLevel = (equity / baseMargin) * 100
+    } else if (equity > 0) {
+      marginLevel = 1_000_000
+    }
+
+    return {
+      balance: String(baseBalance),
+      equity: String(equity),
+      margin: String(baseMargin),
+      free_margin: String(freeMargin),
+      margin_level: String(marginLevel),
+      pl: String(livePl)
+    }
+  }, [metrics.balance, metrics.margin, metrics.pl, openOrders, bidDisplay, askDisplay, marketPair, marketConfig])
 
   const isLiveTradingView = view === "chart" || view === "positions"
 

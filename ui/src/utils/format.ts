@@ -1,7 +1,19 @@
 import type { MarketConfig, RawCandle, Candle } from "../types"
 
+const tinyEpsilon = 0.000000000001
+
+export function formatNumber(value: number, minimumFractionDigits = 2, maximumFractionDigits = 2): string {
+    if (!Number.isFinite(value)) return formatNumber(0, minimumFractionDigits, maximumFractionDigits)
+    const safe = Math.abs(value) < tinyEpsilon ? 0 : value
+    const min = Math.max(0, minimumFractionDigits)
+    const max = Math.max(min, maximumFractionDigits)
+    return safe
+        .toLocaleString("en-US", { minimumFractionDigits: min, maximumFractionDigits: max })
+        .replace(/,/g, " ")
+}
+
 export function formatAmount(value: number): string {
-    return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return formatNumber(value, 2, 2)
 }
 
 export function formatPrice(pair: string, value: number, config: Record<string, MarketConfig>): string {

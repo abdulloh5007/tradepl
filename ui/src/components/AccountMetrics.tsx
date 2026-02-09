@@ -1,5 +1,6 @@
 import type { Metrics, Lang } from "../types"
 import { t } from "../utils/i18n"
+import { formatNumber } from "../utils/format"
 
 interface AccountMetricsProps {
   metrics: Metrics
@@ -10,22 +11,14 @@ export default function AccountMetrics({ metrics, lang }: AccountMetricsProps) {
   const formatValue = (v: string) => {
     const num = parseFloat(v)
     if (isNaN(num)) return "0.00"
-    const safe = Math.abs(num) < 0.000000000001 ? 0 : num
-    const abs = Math.abs(safe)
-    if (abs >= 1) {
-      return safe.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    }
-    if (abs >= 0.01) {
-      return safe.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })
-    }
-    return safe.toLocaleString("en-US", { minimumFractionDigits: 8, maximumFractionDigits: 8 })
+    return formatNumber(num, 2, 2)
   }
 
   const formatMarginLevel = (v: string) => {
     const num = parseFloat(v || "0")
     if (!Number.isFinite(num) || num <= 0) return "—"
     if (num >= 1_000_000) return "∞"
-    return `${num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+    return `${formatNumber(num, 2, 2)}%`
   }
 
   const pl = parseFloat(metrics.pl || "0")

@@ -29,6 +29,7 @@ const (
 	OrderStatusPartiallyFilled OrderStatus = "partially_filled"
 	OrderStatusFilled          OrderStatus = "filled"
 	OrderStatusCanceled        OrderStatus = "canceled"
+	OrderStatusClosed          OrderStatus = "closed"
 	OrderStatusRejected        OrderStatus = "rejected"
 )
 

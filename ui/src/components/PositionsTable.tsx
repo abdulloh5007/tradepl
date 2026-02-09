@@ -1,6 +1,7 @@
 import type { Order, Quote, Lang, MarketConfig } from "../types"
 import { t } from "../utils/i18n"
 import { calcOrderProfit } from "../utils/trading"
+import { formatNumber } from "../utils/format"
 
 interface PositionsTableProps {
     orders: Order[]
@@ -23,10 +24,7 @@ export default function PositionsTable({ orders, quote, marketPair, marketConfig
     }
 
     const formatProfit = (v: number) => {
-        const abs = Math.abs(v)
-        if (abs >= 1) return v.toFixed(2)
-        if (abs >= 0.01) return v.toFixed(4)
-        return v.toFixed(8)
+        return formatNumber(v, 2, 2)
     }
 
     return (
@@ -70,8 +68,8 @@ export default function PositionsTable({ orders, quote, marketPair, marketConfig
                                             {isBuy ? "BUY" : "SELL"}
                                         </td>
                                         <td style={{ padding: 8 }}>{marketPair}</td>
-                                        <td style={{ padding: 8 }}>{Number.isFinite(qty) ? qty.toFixed(2) : "0.00"}</td>
-                                        <td style={{ padding: 8 }}>{Number.isFinite(entryDisplay) ? entryDisplay.toFixed(cfg?.displayDecimals || 5) : "—"}</td>
+                                        <td style={{ padding: 8 }}>{Number.isFinite(qty) ? formatNumber(qty, 2, 2) : "0.00"}</td>
+                                        <td style={{ padding: 8 }}>{Number.isFinite(entryDisplay) ? formatNumber(entryDisplay, cfg?.displayDecimals || 5, cfg?.displayDecimals || 5) : "—"}</td>
                                         <td style={{ padding: 8, color: shownProfit >= 0 ? "#16a34a" : "#ef4444", fontWeight: 600 }}>
                                             {isPending ? "—" : formatProfit(shownProfit)}
                                         </td>

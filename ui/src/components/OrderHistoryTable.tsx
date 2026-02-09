@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { Order, Lang } from "../types"
 import { t } from "../utils/i18n"
+import { formatNumber } from "../utils/format"
 
 interface OrderHistoryTableProps {
     orders: Order[]
@@ -10,19 +11,19 @@ interface OrderHistoryTableProps {
 const money = (v?: string) => {
     const n = Number(v || "0")
     if (!Number.isFinite(n)) return "0.00"
-    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return formatNumber(n, 2, 2)
 }
 
 const qtyFmt = (v?: string) => {
     const n = Number(v || "0")
     if (!Number.isFinite(n)) return "0.00"
-    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return formatNumber(n, 2, 2)
 }
 
 const priceFmt = (v?: string) => {
     const n = Number(v || "0")
     if (!Number.isFinite(n) || n <= 0) return "—"
-    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })
+    return formatNumber(n, 2, 2)
 }
 
 const localTime = (v?: string) => {
