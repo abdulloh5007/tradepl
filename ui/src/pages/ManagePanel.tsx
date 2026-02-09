@@ -1,52 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSearchParams, useNavigate } from "react-router-dom"
-import {
-    LogOut, Activity, TrendingUp, TrendingDown, Minus, Shuffle,
-    Zap, Timer, Gauge, Target, Plus, X, Calendar, Clock,
-    Sun, Moon, Settings, CheckCircle, AlertCircle, User, Trash2, Shield,
-    Filter, ChevronLeft, ChevronRight, Loader2, StopCircle, Edit2, RefreshCw
-} from "lucide-react"
+import { LogOut, Sun, Moon, Settings, AlertCircle, X } from "lucide-react"
 import Skeleton from "../components/Skeleton"
 
-type SessionConfig = {
-    id: string
-    name: string
-    update_rate_ms: number
-    volatility: number
-    spread: number
-    trend_bias: string
-    is_active: boolean
-}
+// Components
+import SessionsCard from "../components/admin/SessionsCard"
+import VolatilityCard from "../components/admin/VolatilityCard"
+import TrendCard from "../components/admin/TrendCard"
+import PriceEventsCard from "../components/admin/PriceEventsCard"
+import PanelAdmins from "../components/admin/PanelAdmins"
 
-type VolatilityConfig = {
-    id: string
-    name: string
-    value: number
-    spread: number
-    schedule_start: string
-    schedule_end: string
-    is_active: boolean
-}
-
-type PriceEvent = {
-    id: number
-    target_price: number
-    direction: string
-    duration_seconds: number
-    scheduled_at: string
-    status: string
-    created_at: string
-}
-
-type PanelAdmin = {
-    id: number
-    telegram_id: number
-    name: string
-    rights: string[]
-    created_at: string
-}
-
-type FilterType = "1d" | "3d" | "1w" | "1m" | "custom"
+// Types
+import { SessionConfig, VolatilityConfig, PriceEvent, FilterType } from "../components/admin/types"
 
 interface ManagePanelProps {
     baseUrl: string
@@ -71,14 +36,6 @@ const getDateRange = (type: FilterType, customFrom?: Date, customTo?: Date) => {
         case "custom":
             return { from: customFrom || today, to: customTo || now }
     }
-}
-
-const filterLabels: Record<FilterType, string> = {
-    "1d": "1 день",
-    "3d": "3 дня",
-    "1w": "1 неделя",
-    "1m": "1 месяц",
-    "custom": "Выбрать"
 }
 
 export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePanelProps) {
@@ -114,17 +71,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [eventsTotal, setEventsTotal] = useState(0)
     const [eventsLoading, setEventsLoading] = useState(false)
     const EVENTS_LIMIT = 20
-    const hasMoreEvents = events.length < eventsTotal
 
     // Events filter state
     const [filterType, setFilterType] = useState<FilterType>("1d")
     const [customDateFrom, setCustomDateFrom] = useState<Date | null>(null)
     const [customDateTo, setCustomDateTo] = useState<Date | null>(null)
-    const [showFilterModal, setShowFilterModal] = useState(false)
-
-    // New event form
-    const [newDirection, setNewDirection] = useState<"up" | "down">("up")
-    const [newDuration, setNewDuration] = useState("60")
 
     // Active event state
     const [activeEventState, setActiveEventState] = useState<{
@@ -136,26 +87,8 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     } | null>(null)
     const [eventLoading, setEventLoading] = useState(true)
 
-    // Panel admins (for owner)
-    const [panelAdmins, setPanelAdmins] = useState<PanelAdmin[]>([])
-    const [newAdminTgId, setNewAdminTgId] = useState("")
-    const [newAdminName, setNewAdminName] = useState("")
-
-    const [newAdminRights, setNewAdminRights] = useState<string[]>([])
-    const [editingAdmin, setEditingAdmin] = useState<any>(null)
-    const [editAdminName, setEditAdminName] = useState("")
-    const [editAdminRights, setEditAdminRights] = useState<string[]>([])
-
-    const allRights = ["sessions", "volatility", "trend", "events"]
-
-    // Error logging flags - prevent repeated console spam
-    const errorLogged = useRef({ fetchData: false, fetchEvents: false, fetchAdmins: false })
-
-    // Check if mobile
-    const isMobile = useMemo(() => {
-        if (typeof window === "undefined") return false
-        return window.innerWidth <= 768
-    }, [])
+    // Error logging flags
+    const errorLogged = useRef({ fetchData: false, fetchEvents: false })
 
     // Validate token on mount
     useEffect(() => {
@@ -352,29 +285,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         return () => clearInterval(timer)
     }, [activeEventState?.endTime])
 
-    // Fetch panel admins
-    const fetchAdmins = useCallback(async () => {
-        if (!adminToken || userRole !== "owner") return
-        try {
-            const res = await fetch(`${baseUrl}/v1/admin/panel-admins`, { headers })
-            if (res.ok) {
-                const data = await res.json()
-                setPanelAdmins(data || [])
-            }
-        } catch (e) {
-            if (!errorLogged.current.fetchAdmins) {
-                console.error("[ManagePanel] Fetch admins error:", e)
-                errorLogged.current.fetchAdmins = true
-            }
-        }
-    }, [baseUrl, adminToken, userRole, headers])
-
     // Initial data load
     useEffect(() => {
         if (isAuthorized && adminToken) {
             fetchData()
             fetchEvents(true)
-            fetchAdmins()
         }
     }, [isAuthorized, adminToken])
 
@@ -385,16 +300,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         }
     }, [filterType, customDateFrom, customDateTo])
 
-    // Auto refresh data (exclude events - those are paginated)
+    // Auto refresh data (every 5s)
     useEffect(() => {
         if (isAuthorized && adminToken) {
-            const interval = setInterval(() => {
-                fetchData()
-                fetchAdmins()
-            }, 5000)
+            const interval = setInterval(fetchData, 5000)
             return () => clearInterval(interval)
         }
-    }, [isAuthorized, adminToken, fetchData, fetchAdmins])
+    }, [isAuthorized, adminToken, fetchData])
 
     // Auto Session Switching
     useEffect(() => {
@@ -482,13 +394,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(false)
     }
 
-    const createEvent = async () => {
+    const createEvent = async (direction: string, duration: number) => {
         if (!canAccess("events")) return
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/events`, {
                 method: "POST", headers,
-                body: JSON.stringify({ direction: newDirection, duration_seconds: parseInt(newDuration) })
+                body: JSON.stringify({ direction, duration_seconds: duration })
             })
             fetchEvents(true)
         } catch (e) { setError(String(e)) }
@@ -505,117 +417,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(false)
     }
 
-    const createAdmin = async () => {
-        if (userRole !== "owner" || !newAdminTgId || !newAdminName) return
-        setLoading(true)
-        try {
-            // Convert rights array to map[string]bool for backend
-            const rightsMap: Record<string, boolean> = {}
-            newAdminRights.forEach(r => { rightsMap[r] = true })
-
-            await fetch(`${baseUrl}/v1/admin/panel-admins`, {
-                method: "POST", headers,
-                body: JSON.stringify({ telegram_id: parseInt(newAdminTgId), name: newAdminName, rights: rightsMap })
-            })
-            setNewAdminTgId("")
-            setNewAdminName("")
-            setNewAdminRights([])
-            fetchAdmins()
-        } catch (e) { setError(String(e)) }
-        setLoading(false)
-    }
-
-    const deleteAdmin = async (id: number) => {
-        if (userRole !== "owner") return
-        setLoading(true)
-        try {
-            await fetch(`${baseUrl}/v1/admin/panel-admins/${id}`, { method: "DELETE", headers })
-            fetchAdmins()
-        } catch (e) { setError(String(e)) }
-        setLoading(false)
-    }
-
-    const startEditing = (admin: any) => {
-        setEditingAdmin(admin)
-        setEditAdminName(admin.name)
-        setEditAdminRights(Array.isArray(admin.rights) ? admin.rights : [])
-    }
-
-    const updateAdmin = async () => {
-        if (!editingAdmin) return
-        setLoading(true)
-        try {
-            const rightsMap: Record<string, boolean> = {}
-            editAdminRights.forEach(r => rightsMap[r] = true)
-
-            const res = await fetch(`${baseUrl}/v1/admin/panel-admins/${editingAdmin.id}`, {
-                method: "PUT",
-                headers: {
-                    ...headers,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    name: editAdminName,
-                    rights: rightsMap
-                })
-            })
-            if (!res.ok) throw new Error("Failed to update admin")
-
-            // Convert rights map back to array for UI
-            const rightsArr = []
-            if (editAdminRights) {
-                // We use local state updating, but better fetch fresh list
-                fetchAdmins()
-            }
-            setEditingAdmin(null)
-        } catch (e) {
-            setError("Failed to update admin")
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    const toggleAdminRight = (right: string) => {
-        if (newAdminRights.includes(right)) {
-            setNewAdminRights(newAdminRights.filter(r => r !== right))
-        } else {
-            setNewAdminRights([...newAdminRights, right])
-        }
-    }
-
-    const handleFilterSelect = (type: FilterType) => {
-        if (type === "custom") {
-            // Don't close modal, show date picker
-            return
-        }
+    const handleFilterChange = (type: FilterType, from?: Date, to?: Date) => {
         setFilterType(type)
-        setCustomDateFrom(null)
-        setCustomDateTo(null)
-        setShowFilterModal(false)
+        if (from !== undefined) setCustomDateFrom(from || null)
+        if (to !== undefined) setCustomDateTo(to || null)
     }
-
-    const applyCustomFilter = () => {
-        if (customDateFrom) {
-            // If To is missing, set to today end of day
-            if (!customDateTo) {
-                const today = new Date()
-                today.setHours(23, 59, 59, 999)
-                setCustomDateTo(today)
-            }
-            setFilterType("custom")
-            setShowFilterModal(false)
-        }
-    }
-
-    const sessionIcons: Record<string, any> = { turbo: Zap, normal: Timer, calm: Gauge }
-    const sessionSchedule: Record<string, string> = { turbo: "09:00 - 13:00", normal: "13:00 - 19:00", calm: "19:00 - 09:00" }
-
-    const trendConfig = [
-        { id: "bullish", icon: TrendingUp, label: "Bullish", color: "#16a34a" },
-        { id: "bearish", icon: TrendingDown, label: "Bearish", color: "#ef4444" },
-        { id: "sideways", icon: Minus, label: "Sideways", color: "#eab308" },
-        { id: "random", icon: Shuffle, label: "Random", color: "var(--accent-2)" }
-    ]
 
     if (isValidating) {
         return (
@@ -662,369 +468,59 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             )}
 
             <div className="admin-grid">
-                {/* Sessions Card */}
-                {canAccess("sessions") && (
-                    <div className="admin-card">
-                        <div className="admin-card-header">
-                            <Activity size={20} />
-                            <h2>Trading Sessions</h2>
-                            <div className="mode-toggle">
-                                {initialLoad ? <Skeleton width={120} height={24} radius={12} /> : (
-                                    <>
-                                        <span className={mode === "manual" ? "active" : ""}>Manual</span>
-                                        <button className={`toggle-switch ${mode === "auto" ? "checked" : ""}`} onClick={toggleMode} disabled={loading}>
-                                            <span className="toggle-thumb" />
-                                        </button>
-                                        <span className={mode === "auto" ? "active" : ""}>Auto</span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                        <div className="sessions-grid">
-                            {initialLoad ? Array(3).fill(0).map((_, i) => (
-                                <div key={i} className="session-card" style={{ pointerEvents: "none", opacity: 0.7 }}>
-                                    <Skeleton width={24} height={24} radius="50%" />
-                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                                        <Skeleton width="60%" height={16} />
-                                        <Skeleton width="40%" height={12} />
-                                    </div>
-                                </div>
-                            )) : sessions.map(s => {
-                                const Icon = sessionIcons[s.id] || Timer
-                                const isActive = activeSession === s.id
-                                return (
-                                    <button key={s.id} className={`session-card ${isActive ? "active" : ""} ${mode === "auto" ? "auto-disabled" : ""}`}
-                                        onClick={() => switchSession(s.id)} disabled={loading || mode === "auto"}
-                                        style={{ opacity: mode === "auto" && !isActive ? 0.6 : 1 }}>
-                                        <Icon size={24} />
-                                        <span className="session-name">{s.name}</span>
-                                        {mode === "auto" ? <span className="session-rate" style={{ fontSize: 11 }}>{sessionSchedule[s.id] || "All Day"}</span>
-                                            : <span className="session-rate">{s.update_rate_ms}ms</span>}
-                                        {isActive && <CheckCircle size={16} className="session-check" />}
-                                    </button>
-                                )
-                            })}
-                        </div>
-                    </div>
-                )}
+                <SessionsCard
+                    sessions={sessions}
+                    activeSession={activeSession}
+                    mode={mode}
+                    loading={loading}
+                    initialLoad={initialLoad}
+                    canAccess={canAccess("sessions")}
+                    onSwitchSession={switchSession}
+                    onToggleMode={toggleMode}
+                />
 
-                {/* Volatility Card */}
-                {canAccess("volatility") && (
-                    <div className="admin-card">
-                        <div className="admin-card-header">
-                            <Activity size={20} />
-                            <h2>Market Volatility</h2>
-                            <div className="mode-toggle">
-                                {initialLoad ? <Skeleton width={120} height={24} radius={12} /> : (
-                                    <>
-                                        <span className={volMode === "manual" ? "active" : ""}>Manual</span>
-                                        <button className={`toggle-switch ${volMode === "auto" ? "checked" : ""}`} onClick={toggleVolMode} disabled={loading}>
-                                            <span className="toggle-thumb" />
-                                        </button>
-                                        <span className={volMode === "auto" ? "active" : ""}>Auto</span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                        <div className="sessions-grid">
-                            {initialLoad ? Array(3).fill(0).map((_, i) => (
-                                <div key={i} className="session-card" style={{ pointerEvents: "none", opacity: 0.7 }}>
-                                    <Skeleton width={24} height={24} radius="50%" />
-                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                                        <Skeleton width="60%" height={16} />
-                                        <Skeleton width="40%" height={12} />
-                                    </div>
-                                </div>
-                            )) : [...volConfigs].sort((a, b) => {
-                                const order: Record<string, number> = { high: 0, medium: 1, low: 2 }
-                                return (order[a.id] ?? 9) - (order[b.id] ?? 9)
-                            }).map(v => {
-                                let Icon = Activity
-                                if (v.id === "low") Icon = Moon
-                                if (v.id === "medium") Icon = Sun
-                                if (v.id === "high") Icon = Zap
-                                const isActive = activeVol === v.id
-                                return (
-                                    <button key={v.id} className={`session-card ${isActive ? "active" : ""} ${volMode === "auto" ? "auto-disabled" : ""}`}
-                                        onClick={() => switchVolatility(v.id)} disabled={loading || volMode === "auto"}
-                                        style={{ opacity: volMode === "auto" && !isActive ? 0.6 : 1 }}>
-                                        <Icon size={24} />
-                                        <span className="session-name">{v.name}</span>
-                                        {volMode === "auto" ? <span className="session-rate" style={{ fontSize: 11 }}>{v.schedule_start} - {v.schedule_end}</span>
-                                            : <span className="session-rate">Spread: {v.spread.toExponential(0)}</span>}
-                                        {isActive && <CheckCircle size={16} className="session-check" />}
-                                    </button>
-                                )
-                            })}
-                        </div>
-                    </div>
-                )}
+                <VolatilityCard
+                    configs={volConfigs}
+                    activeId={activeVol}
+                    mode={volMode}
+                    loading={loading}
+                    initialLoad={initialLoad}
+                    canAccess={canAccess("volatility")}
+                    onActivate={switchVolatility}
+                    onToggleMode={toggleVolMode}
+                />
 
-                {/* Trend Card */}
-                {canAccess("trend") && (
-                    <div className="admin-card">
-                        <div className="admin-card-header">
-                            <TrendingUp size={20} />
-                            <h2>Market Trend</h2>
-                        </div>
-                        <div className={`trend-grid ${activeEventState?.active ? "event-running" : ""}`}>
-                            {(initialLoad || eventLoading) ? Array(4).fill(0).map((_, i) => (
-                                <div key={i} className="trend-btn" style={{ pointerEvents: "none", border: "1px solid var(--border-subtle)" }}>
-                                    <Skeleton width={22} height={22} radius="50%" />
-                                    <Skeleton width={60} height={14} />
-                                </div>
-                            )) : trendConfig.map(t => {
-                                const isEventRunning = activeEventState?.active
-                                const isManualActive = isEventRunning ? activeEventState.manualTrend === t.id : currentTrend === t.id
-                                const isEventTrend = isEventRunning && activeEventState.trend === t.id
-                                return (
-                                    <button key={t.id}
-                                        className={`trend-btn ${isManualActive ? "active" : ""} ${isEventTrend ? "event-active" : ""} ${isEventRunning ? "event-disabled" : ""}`}
-                                        onClick={() => setTrend(t.id)} disabled={loading || isEventRunning}
-                                        style={{ "--trend-color": t.color } as React.CSSProperties}>
-                                        <t.icon size={22} />
-                                        <span>{t.label}</span>
-                                        {isEventTrend && activeEventState && <span className="event-timer">{activeEventState.countdown}s</span>}
-                                    </button>
-                                )
-                            })}
-                        </div>
-                    </div>
-                )}
+                <TrendCard
+                    currentTrend={currentTrend}
+                    activeEventState={activeEventState}
+                    loading={loading}
+                    initialLoad={initialLoad}
+                    eventLoading={eventLoading}
+                    canAccess={canAccess("trend")}
+                    onSetTrend={setTrend}
+                />
 
-                {/* Price Events Card */}
-                {canAccess("events") && (
-                    <div className="admin-card full-width">
-                        <div className="admin-card-header">
-                            <Target size={20} />
-                            <h2>Scheduled Price Events</h2>
-                            <button className="filter-btn" onClick={() => setShowFilterModal(true)}>
-                                <Filter size={16} />
-                                <span>{filterLabels[filterType]}</span>
-                            </button>
-                        </div>
+                <PriceEventsCard
+                    events={events}
+                    total={eventsTotal}
+                    loading={eventsLoading}
+                    initialLoad={initialLoad}
+                    canAccess={canAccess("events")}
+                    filterType={filterType}
+                    customDateFrom={customDateFrom}
+                    customDateTo={customDateTo}
+                    onCreate={createEvent}
+                    onCancel={cancelEvent}
+                    onLoadMore={() => fetchEvents(false)}
+                    onFilterChange={handleFilterChange}
+                />
 
-                        {/* New Event Form */}
-                        <div className="event-form">
-                            <div className="event-form-row">
-                                <div className="event-field">
-                                    <label>Direction</label>
-                                    <div className="direction-btns">
-                                        <button className={newDirection === "up" ? "active up" : ""} onClick={() => setNewDirection("up")}>
-                                            <TrendingUp size={16} /> Bullish
-                                        </button>
-                                        <button className={newDirection === "down" ? "active down" : ""} onClick={() => setNewDirection("down")}>
-                                            <TrendingDown size={16} /> Bearish
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="event-field">
-                                    <label>Duration</label>
-                                    <div className="duration-input">
-                                        <input type="number" value={newDuration} onChange={e => setNewDuration(e.target.value)} placeholder="60" min="5" />
-                                        <span>sec</span>
-                                    </div>
-                                </div>
-                                <button className="add-event-btn" onClick={createEvent} disabled={loading}>
-                                    <Plus size={18} />
-                                    <span>Start Event</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Events List */}
-                        <div className="events-list">
-                            {initialLoad ? Array(2).fill(0).map((_, i) => (
-                                <div key={i} className="event-item" style={{ pointerEvents: "none", opacity: 0.7 }}>
-                                    <div className="event-info">
-                                        <Skeleton width={60} height={20} />
-                                        <Skeleton width={40} height={16} />
-                                        <Skeleton width={50} height={16} />
-                                    </div>
-                                    <Skeleton width={24} height={24} radius={4} />
-                                </div>
-                            )) : events.length === 0 ? (
-                                <div className="no-events">
-                                    <Calendar size={24} />
-                                    <span>No events for {filterLabels[filterType]}</span>
-                                </div>
-                            ) : events.map(evt => (
-                                <div key={evt.id} className={`event-item ${evt.status}`}>
-                                    <div className="event-info">
-                                        <span className={`event-direction ${evt.direction}`}>
-                                            {evt.direction === "up" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                            {evt.direction === "up" ? "Bullish" : "Bearish"}
-                                        </span>
-                                        <span className="event-duration">
-                                            <Clock size={14} />
-                                            {evt.duration_seconds}s
-                                        </span>
-                                        <span className={`event-status ${evt.status}`}>{evt.status}</span>
-                                    </div>
-                                    {evt.status === "pending" && (
-                                        <button className="cancel-event-btn" onClick={() => cancelEvent(evt.id)}>
-                                            <X size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Load More Button */}
-                        {hasMoreEvents && (
-                            <button className="load-more-btn" onClick={() => fetchEvents(false)} disabled={eventsLoading}>
-                                {eventsLoading ? <Loader2 size={18} className="spin" /> : <Plus size={18} />}
-                                <span>{eventsLoading ? "Загрузка..." : `Загрузить ещё (${events.length}/${eventsTotal})`}</span>
-                            </button>
-                        )}
-                    </div>
-                )}
-
-                {/* Panel Admins Card */}
-                {userRole === "owner" && (
-                    <div className="admin-card full-width">
-                        <div className="admin-card-header">
-                            <Shield size={20} />
-                            <h2>Panel Administrators</h2>
-                        </div>
-                        <div className="admin-form">
-                            <div className="admin-form-row">
-                                <input type="number" value={newAdminTgId} onChange={e => setNewAdminTgId(e.target.value)} placeholder="Telegram ID" />
-                                <input type="text" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} placeholder="Admin Name" />
-                            </div>
-                            <div className="rights-chips">
-                                {allRights.map(right => (
-                                    <button key={right}
-                                        className={`right-chip ${newAdminRights.includes(right) ? 'active' : ''}`}
-                                        onClick={() => toggleAdminRight(right)}>
-                                        {right.charAt(0).toUpperCase() + right.slice(1)}
-                                    </button>
-                                ))}
-                            </div>
-                            <button className="add-event-btn" onClick={createAdmin} disabled={loading || !newAdminTgId || !newAdminName}>
-                                <Plus size={18} />
-                                <span>Add Admin</span>
-                            </button>
-                        </div>
-                        <div className="admins-list">
-                            {panelAdmins.length === 0 ? (
-                                <div className="no-events">
-                                    <User size={24} />
-                                    <span>No admins yet</span>
-                                </div>
-                            ) : panelAdmins.map(admin => (
-                                <div key={admin.id} className="admin-item">
-                                    <div className="admin-info">
-                                        <User size={20} />
-                                        <div>
-                                            <span className="admin-name">{admin.name}</span>
-                                            <span className="admin-tg">ID: {admin.telegram_id}</span>
-                                        </div>
-                                    </div>
-                                    <div className="admin-rights">
-                                        {Array.isArray(admin.rights) && admin.rights.map(r => <span key={r} className="right-badge">{r}</span>)}
-                                    </div>
-                                    <div className="admin-actions">
-                                        <button className="edit-admin-btn" onClick={() => startEditing(admin)} style={{ marginRight: 8 }}>
-                                            <Edit2 size={16} />
-                                        </button>
-                                        <button className="delete-admin-btn" onClick={() => deleteAdmin(admin.id)}>
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                <PanelAdmins
+                    baseUrl={baseUrl}
+                    headers={headers}
+                    userRole={userRole}
+                />
             </div>
-
-            {/* Filter Modal / Swiper */}
-            {showFilterModal && (
-                <>
-                    <div className="filter-overlay" onClick={() => setShowFilterModal(false)} />
-                    <div className={`filter-modal ${isMobile ? "swiper" : ""}`}>
-                        <div className="filter-header">
-                            <h3>Фильтр событий</h3>
-                            <button onClick={() => setShowFilterModal(false)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="filter-presets">
-                            {(["1d", "3d", "1w", "1m"] as FilterType[]).map(type => (
-                                <button key={type} className={`filter-preset-btn ${filterType === type ? "active" : ""}`}
-                                    onClick={() => handleFilterSelect(type)}>
-                                    {filterLabels[type]}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="filter-custom">
-                            <h4>Выбрать диапазон</h4>
-                            <div className="date-range-inputs">
-                                <div className="date-input-group">
-                                    <label>From</label>
-                                    <input type="date" value={customDateFrom ? customDateFrom.toISOString().split('T')[0] : ''}
-                                        onChange={e => setCustomDateFrom(e.target.value ? new Date(e.target.value) : null)} />
-                                </div>
-                                <div className="date-input-group">
-                                    <label>To (Optional)</label>
-                                    <input type="date" value={customDateTo ? customDateTo.toISOString().split('T')[0] : ''}
-                                        onChange={e => setCustomDateTo(e.target.value ? new Date(e.target.value + 'T23:59:59') : null)}
-                                        placeholder="Today" />
-                                </div>
-                            </div>
-                            <button className="apply-filter-btn" onClick={applyCustomFilter} disabled={!customDateFrom}>
-                                Apply Filter
-                            </button>
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {/* Edit Admin Modal */}
-            {editingAdmin && (
-                <>
-                    <div className="filter-overlay" onClick={() => setEditingAdmin(null)} />
-                    <div className={`filter-modal ${isMobile ? "swiper" : ""}`}>
-                        <div className="filter-header">
-                            <h3>Edit Admin</h3>
-                            <button onClick={() => setEditingAdmin(null)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="filter-custom">
-                            <div className="date-range-inputs">
-                                <div className="date-input-group" style={{ gridColumn: "1 / -1" }}>
-                                    <label>Name</label>
-                                    <input type="text" value={editAdminName} onChange={e => setEditAdminName(e.target.value)} />
-                                </div>
-                            </div>
-
-                            <label style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8, display: "block" }}>Rights</label>
-                            <div className="rights-chips" style={{ marginBottom: 20 }}>
-                                {allRights.map(right => (
-                                    <button key={right}
-                                        className={`right-chip ${editAdminRights.includes(right) ? 'active' : ''}`}
-                                        onClick={() => {
-                                            if (editAdminRights.includes(right)) {
-                                                setEditAdminRights(prev => prev.filter(r => r !== right))
-                                            } else {
-                                                setEditAdminRights(prev => [...prev, right])
-                                            }
-                                        }}>
-                                        {right.charAt(0).toUpperCase() + right.slice(1)}
-                                    </button>
-                                ))}
-                            </div>
-
-                            <button className="apply-filter-btn" onClick={updateAdmin} disabled={loading || !editAdminName}>
-                                {loading ? <Loader2 className="spin" /> : "Save Changes"}
-                            </button>
-                        </div>
-                    </div>
-                </>
-            )}
         </div>
     )
 }
