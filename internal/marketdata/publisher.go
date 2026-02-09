@@ -200,6 +200,7 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 			halfSpread := spread / 2
 			bid := currentPrice - halfSpread
 			ask := currentPrice + halfSpread
+			setLiveQuote(pair, bid, ask)
 
 			// Publish quote
 			quoteEvt := Quote{

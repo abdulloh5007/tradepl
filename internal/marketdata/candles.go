@@ -45,6 +45,10 @@ func GetProfile(pair string) (pairProfile, bool) {
 
 // Helper to get current Bid/Ask
 func GetCurrentQuote(pair string) (bid, ask float64, err error) {
+	if liveBid, liveAsk, ok := getLiveQuote(pair); ok {
+		return liveBid, liveAsk, nil
+	}
+
 	p, ok := pairProfiles[pair]
 	if !ok {
 		return 0, 0, errors.New("pair not found")

@@ -109,6 +109,16 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		return PlaceOrderResult{}, errors.New("market orders must be ioc")
 	}
 
+	var marketBid float64
+	var marketAsk float64
+	if req.Type == types.OrderTypeMarket {
+		var quoteErr error
+		marketBid, marketAsk, quoteErr = marketdata.GetCurrentQuote(pair.Symbol)
+		if quoteErr != nil {
+			return PlaceOrderResult{}, fmt.Errorf("failed to get market quote: %w", quoteErr)
+		}
+	}
+
 	// Transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
@@ -124,12 +134,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		if req.Type == types.OrderTypeMarket {
 			if req.Qty != nil {
 				// Broker Style Buy: Qty specified. Need to estimate cost.
-				// Fetch current Ask price
-				_, ask, err := marketdata.GetCurrentQuote(pair.Symbol)
-				if err != nil {
-					return PlaceOrderResult{}, fmt.Errorf("failed to get quote: %w", err)
-				}
-				askPrice := decimal.NewFromFloat(ask)
+				askPrice := decimal.NewFromFloat(marketAsk)
 				// Reserve cost = Qty * Ask
 				reservedAmount = req.Qty.Mul(askPrice)
 			} else {
@@ -196,18 +201,12 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 
 	// Broker-Style Execution: Market orders fill instantly against "the market"
 	if req.Type == types.OrderTypeMarket {
-		// Get current market price
-		bid, ask, err := marketdata.GetCurrentQuote(pair.Symbol)
-		if err != nil {
-			return PlaceOrderResult{}, fmt.Errorf("failed to get market price: %w", err)
-		}
-
 		var execPrice decimal.Decimal
 		var execQty decimal.Decimal
 
 		if req.Side == types.OrderSideBuy {
 			// Buy at Ask price
-			execPrice = decimal.NewFromFloat(ask)
+			execPrice = decimal.NewFromFloat(marketAsk)
 			if req.Qty != nil {
 				execQty = *req.Qty
 			} else if req.QuoteAmount != nil {
@@ -216,7 +215,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 			}
 		} else {
 			// Sell at Bid price
-			execPrice = decimal.NewFromFloat(bid)
+			execPrice = decimal.NewFromFloat(marketBid)
 			execQty = *req.Qty
 		}
 

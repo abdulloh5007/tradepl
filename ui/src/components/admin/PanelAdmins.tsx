@@ -1,11 +1,28 @@
 import { useState, useEffect } from "react"
 import { Shield, Plus, User, Trash2, Edit2, X, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { PanelAdmin } from "./types"
 
 interface PanelAdminsProps {
     baseUrl: string
     headers: any
     userRole: string | null
+}
+
+const allRights = ["sessions", "volatility", "trend", "events"]
+
+const normalizeRights = (rights: unknown): string[] => {
+    if (Array.isArray(rights)) {
+        return rights.filter((r): r is string => typeof r === "string")
+    }
+
+    if (rights && typeof rights === "object") {
+        return Object.entries(rights as Record<string, unknown>)
+            .filter(([, enabled]) => enabled === true)
+            .map(([right]) => right)
+    }
+
+    return []
 }
 
 export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsProps) {
@@ -23,8 +40,6 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
     const [editAdminName, setEditAdminName] = useState("")
     const [editAdminRights, setEditAdminRights] = useState<string[]>([])
 
-    const allRights = ["sessions", "volatility", "trend", "events"]
-
     useEffect(() => {
         if (userRole === "owner") {
             fetchAdmins()
@@ -34,7 +49,13 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
     const fetchAdmins = async () => {
         try {
             const res = await fetch(`${baseUrl}/v1/admin/panel-admins`, { headers })
-            if (res.ok) setPanelAdmins(await res.json())
+            if (res.ok) {
+                const data = await res.json()
+                const normalized = Array.isArray(data)
+                    ? data.map((admin: any) => ({ ...admin, rights: normalizeRights(admin.rights) }))
+                    : []
+                setPanelAdmins(normalized)
+            }
         } catch (e) {
             console.error(e)
         }
@@ -78,7 +99,7 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
     const startEditing = (admin: any) => {
         setEditingAdmin(admin)
         setEditAdminName(admin.name)
-        setEditAdminRights(Array.isArray(admin.rights) ? admin.rights : [])
+        setEditAdminRights(normalizeRights(admin.rights))
     }
 
     const updateAdmin = async () => {
@@ -101,10 +122,13 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
             })
             if (!res.ok) throw new Error("Failed to update admin")
 
+            setError(null)
             setEditingAdmin(null)
-            fetchAdmins()
+            await fetchAdmins()
+            toast.success("Admin rights updated")
         } catch (e) {
             setError("Failed to update admin")
+            toast.error("Failed to update admin rights")
         } finally {
             setLoading(false)
         }
