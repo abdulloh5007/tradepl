@@ -133,10 +133,14 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const canAccess = (right: string) => {
         return userRole === "owner" || (Array.isArray(userRights) && userRights.includes(right))
     }
+    const canSessions = canAccess("sessions")
+    const canTrend = canAccess("trend")
+    const canEvents = canAccess("events")
+    const canVolatility = canAccess("volatility")
 
     // Fetch events with pagination
     const fetchEvents = useCallback(async (reset = false) => {
-        if (!adminToken) return
+        if (!adminToken || !canEvents) return
         setEventsLoading(true)
 
         const dateRange = getDateRange(filterType, customDateFrom || undefined, customDateTo || undefined)
@@ -169,43 +173,66 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             }
         }
         setEventsLoading(false)
-    }, [adminToken, baseUrl, headers, filterType, customDateFrom, customDateTo, eventsOffset])
+    }, [adminToken, canEvents, baseUrl, headers, filterType, customDateFrom, customDateTo, eventsOffset])
 
     // Fetch other data
     const fetchData = useCallback(async () => {
         if (!adminToken) return
         try {
-            const [sessRes, trendRes, modeRes, volRes] = await Promise.all([
-                fetch(`${baseUrl}/v1/admin/sessions`, { headers }),
-                fetch(`${baseUrl}/v1/admin/trend`, { headers }),
-                fetch(`${baseUrl}/v1/admin/sessions/mode`, { headers }),
-                fetch(`${baseUrl}/v1/admin/volatility`, { headers })
-            ])
+            const jobs: Array<Promise<void>> = []
 
-            if (sessRes.ok) {
-                const sessData = await sessRes.json()
-                setSessions(sessData || [])
-                const active = (sessData || []).find((s: SessionConfig) => s.is_active)
-                if (active) setActiveSession(active.id)
+            if (canSessions) {
+                jobs.push((async () => {
+                    const [sessRes, modeRes] = await Promise.all([
+                        fetch(`${baseUrl}/v1/admin/sessions`, { headers }),
+                        fetch(`${baseUrl}/v1/admin/sessions/mode`, { headers })
+                    ])
+                    if (sessRes.ok) {
+                        const sessData = await sessRes.json()
+                        setSessions(sessData || [])
+                        const active = (sessData || []).find((s: SessionConfig) => s.is_active)
+                        if (active) setActiveSession(active.id)
+                    }
+                    if (modeRes.ok) {
+                        const modeData = await modeRes.json()
+                        setMode(modeData.mode || "manual")
+                    }
+                })())
+            } else {
+                setSessions([])
+                setActiveSession("")
             }
 
-            if (trendRes.ok) {
-                const trendData = await trendRes.json()
-                setCurrentTrend(trendData.trend || "random")
+            if (canTrend) {
+                jobs.push((async () => {
+                    const trendRes = await fetch(`${baseUrl}/v1/admin/trend`, { headers })
+                    if (trendRes.ok) {
+                        const trendData = await trendRes.json()
+                        setCurrentTrend(trendData.trend || "random")
+                    }
+                })())
+            } else {
+                setCurrentTrend("random")
+                setActiveEventState(null)
             }
 
-            if (modeRes.ok) {
-                const modeData = await modeRes.json()
-                setMode(modeData.mode || "manual")
+            if (canVolatility) {
+                jobs.push((async () => {
+                    const volRes = await fetch(`${baseUrl}/v1/admin/volatility`, { headers })
+                    if (volRes.ok) {
+                        const volData = await volRes.json()
+                        setVolConfigs(volData.settings || [])
+                        setVolMode(volData.mode || "auto")
+                        const activeV = (volData.settings || []).find((v: VolatilityConfig) => v.is_active)
+                        if (activeV) setActiveVol(activeV.id)
+                    }
+                })())
+            } else {
+                setVolConfigs([])
+                setActiveVol("")
             }
 
-            if (volRes.ok) {
-                const volData = await volRes.json()
-                setVolConfigs(volData.settings || [])
-                setVolMode(volData.mode || "auto")
-                const activeV = (volData.settings || []).find((v: VolatilityConfig) => v.is_active)
-                if (activeV) setActiveVol(activeV.id)
-            }
+            await Promise.all(jobs)
 
             if (error === "Network Error") setError(null)
         } catch (e) {
@@ -216,7 +243,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         } finally {
             setInitialLoad(false)
         }
-    }, [baseUrl, adminToken, headers, error])
+    }, [baseUrl, adminToken, headers, error, canSessions, canTrend, canVolatility])
 
     // Fetch active event
     useEffect(() => {
@@ -240,13 +267,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             } catch { }
             setEventLoading(false)
         }
-        if (isAuthorized && adminToken) fetchActiveEvent()
+        if (isAuthorized && adminToken && canTrend) fetchActiveEvent()
         else setEventLoading(false)
-    }, [isAuthorized, adminToken, baseUrl, headers, currentTrend])
+    }, [isAuthorized, adminToken, canTrend, baseUrl, headers, currentTrend])
 
     // WebSocket for event_state updates
     useEffect(() => {
-        if (!isAuthorized) return
+        if (!isAuthorized || !canTrend) return
         const wsUrl = "ws://localhost:8080/v1/events/ws"
         const ws = new WebSocket(wsUrl)
 
@@ -272,7 +299,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         }
 
         return () => ws.close()
-    }, [isAuthorized, currentTrend, fetchEvents])
+    }, [isAuthorized, canTrend, currentTrend, fetchEvents])
 
     // Countdown timer
     useEffect(() => {
@@ -289,16 +316,16 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     useEffect(() => {
         if (isAuthorized && adminToken) {
             fetchData()
-            fetchEvents(true)
+            if (canEvents) fetchEvents(true)
         }
-    }, [isAuthorized, adminToken])
+    }, [isAuthorized, adminToken, canEvents, fetchData, fetchEvents])
 
     // Reset events when filter changes
     useEffect(() => {
-        if (isAuthorized && adminToken && !initialLoad) {
+        if (isAuthorized && adminToken && canEvents && !initialLoad) {
             fetchEvents(true)
         }
-    }, [filterType, customDateFrom, customDateTo])
+    }, [isAuthorized, adminToken, canEvents, initialLoad, filterType, customDateFrom, customDateTo, fetchEvents])
 
     // Auto refresh data (every 5s)
     useEffect(() => {
@@ -310,19 +337,17 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
     // Auto Session Switching
     useEffect(() => {
-        if (mode === "auto" && isAuthorized && activeSession) {
+        if (canSessions && mode === "auto" && isAuthorized && activeSession) {
             const checkAndSwitch = () => {
-                const hour = new Date().getHours()
-                let targetId = "calm"
-                if (hour >= 9 && hour < 13) targetId = "turbo"
-                else if (hour >= 13 && hour < 19) targetId = "normal"
+                const hour = new Date().getUTCHours()
+                const targetId = (hour >= 13 && hour < 22) ? "newyork" : "london"
                 if (activeSession !== targetId) switchSession(targetId)
             }
             checkAndSwitch()
             const timer = setInterval(checkAndSwitch, 10000)
             return () => clearInterval(timer)
         }
-    }, [mode, activeSession, isAuthorized])
+    }, [canSessions, mode, activeSession, isAuthorized])
 
     // Actions
     const switchSession = async (sessionId: string) => {
@@ -474,7 +499,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     mode={mode}
                     loading={loading}
                     initialLoad={initialLoad}
-                    canAccess={canAccess("sessions")}
+                    canAccess={canSessions}
                     onSwitchSession={switchSession}
                     onToggleMode={toggleMode}
                 />
@@ -485,7 +510,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     mode={volMode}
                     loading={loading}
                     initialLoad={initialLoad}
-                    canAccess={canAccess("volatility")}
+                    canAccess={canVolatility}
                     onActivate={switchVolatility}
                     onToggleMode={toggleVolMode}
                 />
@@ -496,7 +521,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     loading={loading}
                     initialLoad={initialLoad}
                     eventLoading={eventLoading}
-                    canAccess={canAccess("trend")}
+                    canAccess={canTrend}
                     onSetTrend={setTrend}
                 />
 
@@ -505,7 +530,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     total={eventsTotal}
                     loading={eventsLoading}
                     initialLoad={initialLoad}
-                    canAccess={canAccess("events")}
+                    canAccess={canEvents}
                     filterType={filterType}
                     customDateFrom={customDateFrom}
                     customDateTo={customDateTo}

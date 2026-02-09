@@ -94,6 +94,10 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+
 	_, err := h.pool.Exec(r.Context(), `
 		INSERT INTO trading_risk_config (
 			id, max_open_positions, max_order_lots, max_order_notional_usd,
@@ -131,6 +135,10 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+
 	var req struct {
 		MaxOpenPositions        int    `json:"max_open_positions"`
 		MaxOrderLots            string `json:"max_order_lots"`
@@ -177,6 +185,10 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetTradingPairs(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+
 	rows, err := h.pool.Query(r.Context(), `
 		SELECT symbol, contract_size, lot_step, min_lot, max_lot, status
 		FROM trading_pairs
@@ -210,6 +222,10 @@ func (h *Handler) GetTradingPairs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateTradingPair(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+
 	symbol := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "symbol")))
 	if symbol == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "symbol is required"})
@@ -390,14 +406,15 @@ func (h *Handler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Owner has all rights
-		rightsArr = []string{"sessions", "trend", "events", "volatility"}
+		rightsArr = append([]string{}, allAdminRights...)
 	}
 
 	// Generate admin JWT token for API requests
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  accessToken.TelegramID,
-		"role": accessToken.TokenType,
-		"exp":  accessToken.ExpiresAt.Unix(),
+		"sub":    accessToken.TelegramID,
+		"role":   accessToken.TokenType,
+		"rights": rightsArr,
+		"exp":    accessToken.ExpiresAt.Unix(),
 	})
 	adminToken, err := jwtToken.SignedString(h.jwtSecret)
 	if err != nil {
@@ -554,8 +571,30 @@ func AdminAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 				// For Telegram tokens, use role as identifier
 				username = role
 			}
+			rightsMap := map[string]bool{}
+			if rightsRaw, ok := claims["rights"].([]interface{}); ok {
+				for _, raw := range rightsRaw {
+					if right, ok := raw.(string); ok && right != "" {
+						rightsMap[right] = true
+					}
+				}
+			}
+			// Backward compatibility for legacy /admin/login tokens without rights claim.
+			if role == "admin" && len(rightsMap) == 0 {
+				if usernameClaim, ok := claims["username"].(string); ok && strings.TrimSpace(usernameClaim) != "" {
+					for _, right := range allAdminRights {
+						rightsMap[right] = true
+					}
+				}
+			}
+			if role == "owner" {
+				for _, right := range allAdminRights {
+					rightsMap[right] = true
+				}
+			}
 			ctx := context.WithValue(r.Context(), adminUsernameKey, username)
 			ctx = context.WithValue(ctx, adminRoleKey, role)
+			ctx = context.WithValue(ctx, adminRightsKey, rightsMap)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -570,6 +609,9 @@ type contextKey string
 
 const adminUsernameKey contextKey = "admin_username"
 const adminRoleKey contextKey = "admin_role"
+const adminRightsKey contextKey = "admin_rights"
+
+var allAdminRights = []string{"sessions", "trend", "events", "volatility"}
 
 func requireOwner(w http.ResponseWriter, r *http.Request) bool {
 	role, _ := r.Context().Value(adminRoleKey).(string)
@@ -578,4 +620,22 @@ func requireOwner(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+func RequireRight(right string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role, _ := r.Context().Value(adminRoleKey).(string)
+			if role == "owner" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			rights, _ := r.Context().Value(adminRightsKey).(map[string]bool)
+			if rights == nil || !rights[right] {
+				httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "insufficient rights"})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

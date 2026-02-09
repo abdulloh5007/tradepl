@@ -13,7 +13,6 @@ type SessionConfig struct {
 	Name         string    `json:"name"`
 	UpdateRateMs int       `json:"update_rate_ms"`
 	Volatility   float64   `json:"volatility"`
-	Spread       float64   `json:"spread"`
 	TrendBias    string    `json:"trend_bias"`
 	VolumeFactor float64   `json:"volume_factor"`
 	IsActive     bool      `json:"is_active"`
@@ -54,7 +53,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 // GetAllSessions returns all session configurations
 func (s *Store) GetAllSessions(ctx context.Context) ([]SessionConfig, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, update_rate_ms, volatility, spread, trend_bias, volume_factor, is_active, created_at, updated_at
+		SELECT id, name, update_rate_ms, volatility, trend_bias, volume_factor, is_active, created_at, updated_at
 		FROM session_configs ORDER BY update_rate_ms ASC
 	`)
 	if err != nil {
@@ -65,7 +64,7 @@ func (s *Store) GetAllSessions(ctx context.Context) ([]SessionConfig, error) {
 	var sessions []SessionConfig
 	for rows.Next() {
 		var sc SessionConfig
-		if err := rows.Scan(&sc.ID, &sc.Name, &sc.UpdateRateMs, &sc.Volatility, &sc.Spread, &sc.TrendBias, &sc.VolumeFactor, &sc.IsActive, &sc.CreatedAt, &sc.UpdatedAt); err != nil {
+		if err := rows.Scan(&sc.ID, &sc.Name, &sc.UpdateRateMs, &sc.Volatility, &sc.TrendBias, &sc.VolumeFactor, &sc.IsActive, &sc.CreatedAt, &sc.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, sc)
@@ -77,9 +76,9 @@ func (s *Store) GetAllSessions(ctx context.Context) ([]SessionConfig, error) {
 func (s *Store) GetActiveSession(ctx context.Context) (*SessionConfig, error) {
 	var sc SessionConfig
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, update_rate_ms, volatility, spread, trend_bias, volume_factor, is_active, created_at, updated_at
+		SELECT id, name, update_rate_ms, volatility, trend_bias, volume_factor, is_active, created_at, updated_at
 		FROM session_configs WHERE is_active = TRUE LIMIT 1
-	`).Scan(&sc.ID, &sc.Name, &sc.UpdateRateMs, &sc.Volatility, &sc.Spread, &sc.TrendBias, &sc.VolumeFactor, &sc.IsActive, &sc.CreatedAt, &sc.UpdatedAt)
+	`).Scan(&sc.ID, &sc.Name, &sc.UpdateRateMs, &sc.Volatility, &sc.TrendBias, &sc.VolumeFactor, &sc.IsActive, &sc.CreatedAt, &sc.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}

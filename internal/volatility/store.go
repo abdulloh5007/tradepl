@@ -17,7 +17,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 }
 
 func (s *Store) GetSettings(ctx context.Context) ([]Setting, error) {
-	rows, err := s.pool.Query(ctx, "SELECT id, name, value, spread, schedule_start, schedule_end, is_active FROM volatility_settings ORDER BY value DESC")
+	rows, err := s.pool.Query(ctx, "SELECT id, name, value, schedule_start, schedule_end, is_active FROM volatility_settings ORDER BY value DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +26,7 @@ func (s *Store) GetSettings(ctx context.Context) ([]Setting, error) {
 	var settings []Setting
 	for rows.Next() {
 		var st Setting
-		err := rows.Scan(&st.ID, &st.Name, &st.Value, &st.Spread, &st.ScheduleStart, &st.ScheduleEnd, &st.IsActive)
+		err := rows.Scan(&st.ID, &st.Name, &st.Value, &st.ScheduleStart, &st.ScheduleEnd, &st.IsActive)
 		if err != nil {
 			return nil, err
 		}
@@ -37,11 +37,11 @@ func (s *Store) GetSettings(ctx context.Context) ([]Setting, error) {
 
 func (s *Store) GetActiveConfig(ctx context.Context) (Config, error) {
 	var c Config
-	err := s.pool.QueryRow(ctx, "SELECT id, value, spread FROM volatility_settings WHERE is_active = true").Scan(&c.ID, &c.Volatility, &c.Spread)
+	err := s.pool.QueryRow(ctx, "SELECT id, value FROM volatility_settings WHERE is_active = true").Scan(&c.ID, &c.Volatility)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			// Fallback default
-			return Config{ID: "medium", Volatility: 0.0003, Spread: 0.5e-7}, nil
+			return Config{ID: "london", Volatility: 0.00008}, nil
 		}
 		return Config{}, err
 	}

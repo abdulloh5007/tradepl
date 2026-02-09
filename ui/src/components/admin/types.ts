@@ -3,7 +3,6 @@ export type SessionConfig = {
     name: string
     update_rate_ms: number
     volatility: number
-    spread: number
     trend_bias: string
     is_active: boolean
 }
@@ -12,7 +11,6 @@ export type VolatilityConfig = {
     id: string
     name: string
     value: number
-    spread: number
     schedule_start: string
     schedule_end: string
     is_active: boolean

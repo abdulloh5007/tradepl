@@ -22,6 +22,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const priceLineRef = useRef<IPriceLine | null>(null)
     const askLineRef = useRef<IPriceLine | null>(null)
     const orderLinesRef = useRef<IPriceLine[]>([])
+    const orderLabelsLayerRef = useRef<HTMLDivElement | null>(null)
+    const orderLabelItemsRef = useRef<Array<{ price: number; node: HTMLDivElement }>>([])
     const lastCandleCountRef = useRef(0)
     const resizeObserverRef = useRef<ResizeObserver | null>(null)
     // Track timeframe to detect changes
@@ -40,6 +42,21 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     isLoadingMoreRef.current = isLoadingMore
     hasMoreDataRef.current = hasMoreData
     candlesRef.current = candles
+
+    const updateOrderLabelPositions = useCallback(() => {
+        const series = seriesRef.current
+        if (!series || orderLabelItemsRef.current.length === 0) return
+
+        orderLabelItemsRef.current.forEach((item) => {
+            const y = series.priceToCoordinate(item.price)
+            if (typeof y !== "number" || !Number.isFinite(y)) {
+                item.node.style.display = "none"
+                return
+            }
+            item.node.style.display = "inline-flex"
+            item.node.style.top = `${y}px`
+        })
+    }, [])
 
     // Initialize chart
     useEffect(() => {
@@ -95,6 +112,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             if (chartRef.current && entries[0]) {
                 const { width, height } = entries[0].contentRect
                 chartRef.current.applyOptions({ width, height })
+                updateOrderLabelPositions()
             }
         })
         resizeObserverRef.current.observe(containerRef.current)
@@ -145,9 +163,11 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
         return () => {
             resizeObserverRef.current?.disconnect()
             chart.timeScale().unsubscribeVisibleLogicalRangeChange(rangeHandler)
+            orderLabelItemsRef.current.forEach((item) => item.node.remove())
+            orderLabelItemsRef.current = []
             chart.remove()
         }
-    }, [theme]) // Only recreate on theme change
+    }, [theme, updateOrderLabelPositions]) // Only recreate on theme change
 
     // Update candles - optimized to use update() for last candle
     useEffect(() => {
@@ -192,7 +212,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             }
             lastCandleCountRef.current = candles.length
         }
-    }, [candles, timeframe])
+        updateOrderLabelPositions()
+    }, [candles, timeframe, updateOrderLabelPositions])
 
     // Update price lines - throttled
     const updatePriceLines = useCallback(() => {
@@ -239,7 +260,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             }
         }
 
-    }, [quote])
+    }, [quote, theme])
 
     useEffect(() => {
         updatePriceLines()
@@ -255,6 +276,13 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             try { series.removePriceLine(line) } catch { /* ignore */ }
         })
         orderLinesRef.current = []
+        orderLabelItemsRef.current.forEach((item) => item.node.remove())
+        orderLabelItemsRef.current = []
+
+        const labelsLayer = orderLabelsLayerRef.current
+        if (labelsLayer) {
+            labelsLayer.replaceChildren()
+        }
 
         const cfg = marketConfig[marketPair]
         openOrders.forEach(o => {
@@ -272,24 +300,44 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
                 price,
                 color: o.side === "buy" ? "rgba(59,130,246,0.75)" : "rgba(239,68,68,0.75)",
                 lineWidth: 1,
-                lineStyle: 0,
+                lineStyle: 2,
                 axisLabelVisible: false,
                 title: lotTitle
             })
             orderLinesRef.current.push(line)
+
+            if (labelsLayer && lotTitle) {
+                const labelNode = document.createElement("div")
+                labelNode.className = `order-lot-label ${o.side === "buy" ? "buy" : "sell"}`
+                labelNode.textContent = lotTitle
+                labelsLayer.appendChild(labelNode)
+                orderLabelItemsRef.current.push({ price, node: labelNode })
+            }
         })
-    }, [openOrders, marketPair, marketConfig])
+        updateOrderLabelPositions()
+    }, [openOrders, marketPair, marketConfig, theme, updateOrderLabelPositions])
+
+    // Keep left-side lot labels synced with price scale/viewport changes
+    useEffect(() => {
+        const id = window.setInterval(() => {
+            updateOrderLabelPositions()
+        }, 120)
+        return () => window.clearInterval(id)
+    }, [updateOrderLabelPositions])
 
     return (
         <div
             ref={containerRef}
             className="trading-chart-container"
             style={{
+                position: "relative",
                 width: "100%",
                 height: "100%",
                 minHeight: "300px",
                 maxHeight: "calc(100vh - 200px)"
             }}
-        />
+        >
+            <div ref={orderLabelsLayerRef} className="order-labels-layer" />
+        </div>
     )
 }
