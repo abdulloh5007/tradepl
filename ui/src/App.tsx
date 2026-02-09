@@ -72,7 +72,7 @@ export default function App() {
   const [timeframe, setTimeframe] = useState("1m")
   const [candles, setCandles] = useState<Array<{ time: number; open: number; high: number; low: number; close: number }>>([])
   const [quote, setQuote] = useState<Quote | null>(null)
-  const [quickQty, setQuickQty] = useState("1")
+  const [quickQty, setQuickQty] = useState("0.01")
 
   // Trading state
   const [openOrders, setOpenOrders] = useState<Order[]>([])

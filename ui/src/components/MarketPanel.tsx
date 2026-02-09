@@ -27,6 +27,8 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
       <div style={{ gridColumn: "1 / -1" }}>
         <input
           type="number"
+          min="0.01"
+          step="0.01"
           value={quickQty}
           onChange={e => setQuickQty(e.target.value)}
           placeholder={t("qty", lang)}
