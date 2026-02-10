@@ -164,6 +164,32 @@ html[data-theme="dark"] .admin-login-card {
   font-size: 20px;
 }
 
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.role-pill.owner {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.12);
+  border-color: rgba(22, 163, 74, 0.22);
+}
+
+.role-pill.admin {
+  color: var(--accent-2);
+  background: rgba(78, 140, 255, 0.14);
+  border-color: rgba(78, 140, 255, 0.24);
+}
+
 .admin-header-right {
   display: flex;
   align-items: center;
@@ -700,6 +726,11 @@ input[type=number] {
 }
 
 /* Not Found Page */
+.not-found-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text);
 }
 
@@ -757,6 +788,84 @@ input[type=number] {
 /* Admin Forms */
 .admin-form {
   margin-bottom: 20px;
+}
+
+/* Trading Risk + Pairs */
+.risk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.risk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.risk-field span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.risk-field input,
+.risk-field select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.risk-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pairs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pair-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-alt);
+  padding: 14px;
+}
+
+.pair-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pair-status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.pair-status.active {
+  background: rgba(22, 163, 74, 0.15);
+  color: #16a34a;
+}
+
+.pair-status.disabled {
+  background: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+}
+
+.pair-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .admin-form-row {
@@ -1065,6 +1174,11 @@ input[type=number] {
   .session-grid,
   .volatility-grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .risk-grid,
+  .pair-grid {
+    grid-template-columns: 1fr;
   }
 }
 

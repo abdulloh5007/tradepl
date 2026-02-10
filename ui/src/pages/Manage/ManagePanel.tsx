@@ -9,9 +9,18 @@ import VolatilityCard from "../../components/admin/VolatilityCard"
 import TrendCard from "../../components/admin/TrendCard"
 import PriceEventsCard from "../../components/admin/PriceEventsCard"
 import PanelAdmins from "../../components/admin/PanelAdmins"
+import TradingRiskCard from "../../components/admin/TradingRiskCard"
+import TradingPairsCard from "../../components/admin/TradingPairsCard"
 
 // Types
-import { SessionConfig, VolatilityConfig, PriceEvent, FilterType } from "../../components/admin/types"
+import {
+    SessionConfig,
+    VolatilityConfig,
+    PriceEvent,
+    FilterType,
+    TradingRiskConfig,
+    TradingPairSpec
+} from "../../components/admin/types"
 import "./ManagePanel.css"
 
 interface ManagePanelProps {
@@ -71,6 +80,9 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [volConfigs, setVolConfigs] = useState<VolatilityConfig[]>([])
     const [activeVol, setActiveVol] = useState<string>("")
     const [volMode, setVolMode] = useState<string>("auto")
+    const [tradingRisk, setTradingRisk] = useState<TradingRiskConfig | null>(null)
+    const [tradingPairs, setTradingPairs] = useState<TradingPairSpec[]>([])
+    const [tradingConfigLoading, setTradingConfigLoading] = useState(false)
 
     const [error, setError] = useState<string | null>(null)
 
@@ -120,9 +132,12 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     return
                 }
 
+                const normalizedRole = typeof data.role === "string" && data.role.trim().toLowerCase() === "owner"
+                    ? "owner"
+                    : "admin"
                 setIsAuthorized(true)
-                setUserRole(data.role)
-                setUserRights(data.rights || [])
+                setUserRole(normalizedRole)
+                setUserRights(Array.isArray(data.rights) ? data.rights : [])
                 setAdminToken(data.admin_token)
             } catch {
                 navigate("/404", { replace: true })
@@ -146,6 +161,31 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const canTrend = canAccess("trend")
     const canEvents = canAccess("events")
     const canVolatility = canAccess("volatility")
+    const canTradingConfig = userRole === "owner"
+
+    const fetchTradingConfig = useCallback(async () => {
+        if (!adminToken || !canTradingConfig) return
+        setTradingConfigLoading(true)
+        try {
+            const [riskRes, pairsRes] = await Promise.all([
+                fetch(`${baseUrl}/v1/admin/trading/risk`, { headers }),
+                fetch(`${baseUrl}/v1/admin/trading/pairs`, { headers })
+            ])
+
+            if (riskRes.ok) {
+                const riskData = await riskRes.json()
+                setTradingRisk(riskData || null)
+            }
+            if (pairsRes.ok) {
+                const pairsData = await pairsRes.json()
+                setTradingPairs(Array.isArray(pairsData) ? pairsData : [])
+            }
+        } catch (e) {
+            console.error("[ManagePanel] Fetch trading config error:", e)
+        } finally {
+            setTradingConfigLoading(false)
+        }
+    }, [adminToken, canTradingConfig, baseUrl, headers])
 
     // Fetch events with pagination
     const fetchEvents = useCallback(async (reset = false) => {
@@ -342,8 +382,9 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         if (isAuthorized && adminToken) {
             fetchData()
             if (canEvents) fetchEvents(true)
+            if (canTradingConfig) fetchTradingConfig()
         }
-    }, [isAuthorized, adminToken, canEvents, fetchData, fetchEvents])
+    }, [isAuthorized, adminToken, canEvents, canTradingConfig, fetchData, fetchEvents, fetchTradingConfig])
 
     // Reset events when filter changes
     useEffect(() => {
@@ -488,6 +529,51 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(false)
     }
 
+    const saveTradingRisk = async (next: TradingRiskConfig) => {
+        if (!canTradingConfig) return
+        setTradingConfigLoading(true)
+        try {
+            const res = await fetch(`${baseUrl}/v1/admin/trading/risk`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(next)
+            })
+            if (!res.ok) {
+                const err = await res.json().catch(() => null)
+                throw new Error(err?.error || "Failed to save trading risk")
+            }
+            const data = await res.json()
+            setTradingRisk(data || null)
+            setError(null)
+        } catch (e: any) {
+            setError(e?.message || "Failed to save trading risk")
+        } finally {
+            setTradingConfigLoading(false)
+        }
+    }
+
+    const saveTradingPair = async (symbol: string, payload: Partial<TradingPairSpec>) => {
+        if (!canTradingConfig) return
+        setTradingConfigLoading(true)
+        try {
+            const res = await fetch(`${baseUrl}/v1/admin/trading/pairs/${encodeURIComponent(symbol)}`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(payload)
+            })
+            if (!res.ok) {
+                const err = await res.json().catch(() => null)
+                throw new Error(err?.error || `Failed to save ${symbol}`)
+            }
+            setError(null)
+            await fetchTradingConfig()
+        } catch (e: any) {
+            setError(e?.message || `Failed to save ${symbol}`)
+        } finally {
+            setTradingConfigLoading(false)
+        }
+    }
+
     const handleFilterChange = (type: FilterType, from?: Date, to?: Date) => {
         setFilterType(type)
         if (from !== undefined) setCustomDateFrom(from || null)
@@ -518,6 +604,9 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                 <div className="admin-header-left">
                     <Settings size={28} />
                     <h1>{userRole === "owner" ? "Owner Panel" : "Admin Panel"}</h1>
+                    <span className={`role-pill ${userRole === "owner" ? "owner" : "admin"}`}>
+                        {userRole === "owner" ? "OWNER" : "ADMIN"}
+                    </span>
                 </div>
                 <div className="admin-header-right">
                     <button onClick={onThemeToggle} className="icon-btn">
@@ -561,6 +650,14 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     onToggleMode={toggleVolMode}
                 />
 
+                <TradingRiskCard
+                    value={tradingRisk}
+                    loading={tradingConfigLoading}
+                    initialLoad={initialLoad}
+                    canAccess={canTradingConfig}
+                    onSave={saveTradingRisk}
+                />
+
                 <TrendCard
                     currentTrend={currentTrend}
                     mode={trendMode}
@@ -587,6 +684,14 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     onCancel={cancelEvent}
                     onLoadMore={() => fetchEvents(false)}
                     onFilterChange={handleFilterChange}
+                />
+
+                <TradingPairsCard
+                    pairs={tradingPairs}
+                    loading={tradingConfigLoading}
+                    initialLoad={initialLoad}
+                    canAccess={canTradingConfig}
+                    onSave={saveTradingPair}
                 />
 
                 <PanelAdmins

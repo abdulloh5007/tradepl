@@ -35,3 +35,21 @@ export type PanelAdmin = {
 }
 
 export type FilterType = "1d" | "3d" | "1w" | "1m" | "custom"
+
+export type TradingRiskConfig = {
+    max_open_positions: number
+    max_order_lots: string
+    max_order_notional_usd: string
+    margin_call_level_pct: string
+    stop_out_level_pct: string
+    unlimited_effective_leverage: number
+}
+
+export type TradingPairSpec = {
+    symbol: string
+    contract_size: string
+    lot_step: string
+    min_lot: string
+    max_lot: string
+    status: string
+}
