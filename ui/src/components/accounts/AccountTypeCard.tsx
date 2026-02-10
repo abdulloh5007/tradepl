@@ -1,5 +1,6 @@
 
 import { AnimationPlayer } from "../ui/AnimationPlayer"
+import "./AccountTypeCard.css"
 
 interface AccountTypeProps {
     plan: {

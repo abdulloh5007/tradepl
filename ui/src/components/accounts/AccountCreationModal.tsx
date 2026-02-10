@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react"
 import { X } from "lucide-react"
 import AccountTypeCard from "./AccountTypeCard"
 import { toast } from "sonner"
-import "./AccountCreationModal.css"
+import "./SharedAccountSheet.css"
 
 interface AccountCreationModalProps {
     open: boolean

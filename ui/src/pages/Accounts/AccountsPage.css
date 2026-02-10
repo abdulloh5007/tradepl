@@ -48,19 +48,3 @@
   color: var(--muted);
   font-size: 13px;
 }
-/* Extracted from styles.css */
-.acc-create-card {
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  border-radius: 16px;
-  padding: 14px;
-  background: linear-gradient(140deg, rgba(15, 20, 33, 0.72), rgba(25, 33, 51, 0.56));
-}
-
-.acc-create-card h3 {
-  margin: 0 0 10px;
-}
-
-.acc-create-grid {
-  display: grid;
-  gap: 8px;
-}

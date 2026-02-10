@@ -119,12 +119,10 @@
 .acc-action-btn {
   border: none;
   background: rgba(30, 41, 59, 0.5);
-  /* Dark greyish */
   color: #e2e8f0;
   border-radius: 50%;
-  width: 64px;
-  /* Big buttons */
-  height: 64px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   display: flex;
   align-items: center;

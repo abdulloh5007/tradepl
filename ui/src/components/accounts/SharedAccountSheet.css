@@ -1,0 +1,306 @@
+/* Shared Account Sheet Styles (acm-*) */
+
+/* Modal Overlay */
+.acm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.acm-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 1;
+}
+
+/* Modal Container (The Sheet) */
+.acm-sheet {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 420px;
+    background-color: #13141b;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    color: #ffffff;
+    font-family: 'Space Grotesk', sans-serif;
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* Header */
+.acm-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: #13141b;
+}
+
+.acm-close-btn {
+    padding: 8px;
+    margin-left: -8px;
+    color: #9ca3af;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.acm-close-btn:hover {
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.acm-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.acm-spacer {
+    width: 32px;
+}
+
+/* Scrollable Content Area */
+.acm-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Tabs */
+.acm-tabs-container {
+    padding: 16px 16px 8px;
+    flex-shrink: 0;
+}
+
+.acm-tabs {
+    display: flex;
+    padding: 4px;
+    background-color: #1c1e26;
+    border-radius: 12px;
+}
+
+.acm-tab {
+    flex: 1;
+    padding: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.acm-tab:hover {
+    color: #d1d5db;
+}
+
+.acm-tab.active {
+    background-color: #2a2d3a;
+    color: #ffffff;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Scroll Container for Cards/Content */
+.acm-scroll-container {
+    flex-shrink: 0;
+    width: 100%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding: 16px 0;
+    scroll-behavior: smooth;
+}
+
+.acm-scroll-container::-webkit-scrollbar {
+    display: none;
+}
+
+/* Dots */
+.acm-dots {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 0 24px;
+}
+
+.acm-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.2);
+    transition: all 0.3s;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.acm-dot.active {
+    background-color: #ffffff;
+    transform: scale(1.25);
+}
+
+/* Footer */
+.acm-footer {
+    flex-shrink: 0;
+    padding: 24px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: #13141b;
+}
+
+.acm-submit-btn {
+    width: 100%;
+    padding: 14px;
+    background-color: #fbbf24;
+    color: #000000;
+    font-weight: 700;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-size: 16px;
+}
+
+.acm-submit-btn:hover {
+    background-color: #f59e0b;
+}
+
+.acm-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.acm-submit-btn.ghost {
+    background-color: transparent;
+    color: #9ca3af;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.acm-submit-btn.ghost:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+
+/* Generic form elements for shared usage */
+.acm-form {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.acm-label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 14px;
+    color: #9ca3af;
+}
+
+.acm-input,
+.acm-select {
+    padding: 12px;
+    background-color: #1c1e26;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 16px;
+    outline: none;
+}
+
+.acm-input:focus,
+.acm-select:focus {
+    border-color: #fbbf24;
+}
+
+.acm-note {
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.4;
+    text-align: center;
+}
+
+.acm-list {
+    display: flex;
+    flex-direction: column;
+    padding: 0 16px;
+}
+
+.acm-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: #1c1e26;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.acm-list-item:hover {
+    background-color: #2a2d3a;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.acm-list-item.active {
+    background-color: rgba(251, 191, 36, 0.1);
+    border-color: #fbbf24;
+}
+
+.acm-danger-btn {
+    margin-top: 16px;
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    padding: 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 600;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+}
+
+.acm-danger-btn:hover {
+    background-color: rgba(239, 68, 68, 0.2);
+}
