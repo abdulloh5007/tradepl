@@ -1,5 +1,5 @@
 
-import { Check } from "lucide-react"
+import { AnimationPlayer } from "../ui/AnimationPlayer"
 
 interface AccountTypeProps {
     plan: {
@@ -15,15 +15,26 @@ interface AccountTypeProps {
     }
 }
 
+const TGS_PATHS: Record<string, string> = {
+    standard: "/assets/tgs/standart.tgs", // Note: filename typo in assets "standart.tgs"
+    pro: "/assets/tgs/pro.tgs",
+    raw: "/assets/tgs/rawspread.tgs",
+    swapfree: "/assets/tgs/swapfree.tgs"
+}
+
 export default function AccountTypeCard({ plan }: AccountTypeProps): JSX.Element {
+    const tgsSrc = TGS_PATHS[plan.id] || TGS_PATHS.standard
+
     return (
         <div className="atc-card">
 
-            {/* 3D Object / Image Placeholder */}
+            {/* TGS Animation */}
             <div className="atc-image-container">
-                {/* Dynamic Logo based on plan ID */}
-                <div className={`atc-logo atc-logo-${plan.id}`}>
-                    <div className="atc-logo-inner" />
+                <div style={{ width: 100, height: 100 }}>
+                    <AnimationPlayer
+                        src={tgsSrc}
+                        style={{ width: '100%', height: '100%' }}
+                    />
                 </div>
             </div>
 
