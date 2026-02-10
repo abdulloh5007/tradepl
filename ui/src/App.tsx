@@ -19,7 +19,7 @@ import ConnectionBanner from "./components/ConnectionBanner"
 import type { AccountSnapshot } from "./components/accounts/types"
 
 // Pages
-import { TradingPage, PositionsPage, AccountsPage, ApiPage, FaucetPage, HistoryPage, SettingsPage } from "./pages"
+import { TradingPage, PositionsPage, AccountsPage, ApiPage, FaucetPage, HistoryPage, ProfilePage } from "./pages"
 
 // Config
 const marketPairs = ["UZS-USD"]
@@ -54,7 +54,7 @@ function spreadDecimals(ask: number, bid: number, baseDecimals: number): number 
 
 function resolveView(): View {
   const hash = typeof window !== "undefined" ? window.location.hash.replace("#", "") : ""
-  if (hash === "positions" || hash === "history" || hash === "accounts" || hash === "settings" || hash === "api" || hash === "faucet") return hash
+  if (hash === "positions" || hash === "history" || hash === "accounts" || hash === "profile" || hash === "api" || hash === "faucet") return hash
   if (hash === "balance") return "positions"
   return "chart"
 }
@@ -488,7 +488,7 @@ export default function App() {
           let a = parseFloat(quoteData.ask)
           let l = parseFloat(quoteData.last) // New field
 
-          ;[b, a] = applySpreadMultiplier(b, a, spreadMultiplierRef.current)
+            ;[b, a] = applySpreadMultiplier(b, a, spreadMultiplierRef.current)
 
           if (cfg?.invertForApi) {
             const rawBid = b

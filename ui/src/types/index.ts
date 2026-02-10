@@ -100,4 +100,4 @@ export interface TradingAccount {
 
 export type Theme = "dark" | "light"
 export type Lang = "en" | "uz" | "ru"
-export type View = "chart" | "positions" | "history" | "balance" | "accounts" | "settings" | "api" | "faucet" | "admin"
+export type View = "chart" | "positions" | "history" | "accounts" | "profile" | "api" | "faucet" | "admin"

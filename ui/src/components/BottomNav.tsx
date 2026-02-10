@@ -1,4 +1,4 @@
-import { BarChart2, History, List, Settings2, Wallet } from "lucide-react"
+import { BarChart2, History, List, User, Wallet } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Lang, View } from "../types"
 import { t } from "../utils/i18n"
@@ -15,7 +15,7 @@ const navTabs: Array<{ key: View; labelKey: string; icon: LucideIcon }> = [
     { key: "chart", labelKey: "chart", icon: BarChart2 },
     { key: "positions", labelKey: "positions", icon: List },
     { key: "history", labelKey: "history", icon: History },
-    { key: "settings", labelKey: "settings", icon: Settings2 }
+    { key: "profile", labelKey: "profile", icon: User }
 ]
 
 export default function BottomNav({ view, setView, lang }: BottomNavProps) {
