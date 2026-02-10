@@ -1,361 +1,201 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import type { TradingAccount } from "../types"
-import { formatNumber } from "../utils/format"
+import type { Metrics, TradingAccount } from "../types"
+import ActiveAccountCard from "../components/accounts/ActiveAccountCard"
+import AccountsSwitcherSheet from "../components/accounts/AccountsSwitcherSheet"
+import AccountFundingModal from "../components/accounts/AccountFundingModal"
+import AccountDetailsModal from "../components/accounts/AccountDetailsModal"
+import type { AccountSnapshot } from "../components/accounts/types"
 
 interface AccountsPageProps {
-    accounts: TradingAccount[]
-    activeAccountId: string
-    onSwitch: (accountId: string) => Promise<void>
-    onCreate: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => Promise<void>
-    onUpdateLeverage: (accountId: string, leverage: number) => Promise<void>
-    onTopUpDemo: (amount: string) => Promise<void>
+  accounts: TradingAccount[]
+  activeAccountId: string
+  metrics: Metrics
+  activeOpenOrdersCount: number
+  snapshots: Record<string, AccountSnapshot>
+  onSwitch: (accountId: string) => Promise<void>
+  onCreate: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => Promise<void>
+  onUpdateLeverage: (accountId: string, leverage: number) => Promise<void>
+  onRenameAccount: (accountId: string, name: string) => Promise<void>
+  onTopUpDemo: (amount: string) => Promise<void>
+  onWithdrawDemo: (amount: string) => Promise<void>
+  onCloseAll: () => Promise<void>
+  onGoTrade: () => void
 }
 
 const planOptions = [
-    { id: "standard", label: "Standard" },
-    { id: "pro", label: "Pro" },
-    { id: "raw", label: "Raw Spread" },
-    { id: "swapfree", label: "Swap Free" }
+  { id: "standard", label: "Standard" },
+  { id: "pro", label: "Pro" },
+  { id: "raw", label: "Raw Spread" },
+  { id: "swapfree", label: "Swap Free" }
 ]
 
-const leverageOptions = [0, 2, 5, 10, 20, 30, 40, 50, 100, 200, 500, 1000, 2000, 3000]
+type FundingType = "deposit" | "withdraw" | null
 
-const leverageLabel = (value: number) => {
-    if (value === 0) return "Unlimited"
-    return `1:${formatNumber(value, 0, 0)}`
-}
+export default function AccountsPage({
+  accounts,
+  activeAccountId,
+  metrics,
+  activeOpenOrdersCount,
+  snapshots,
+  onSwitch,
+  onCreate,
+  onUpdateLeverage,
+  onRenameAccount,
+  onTopUpDemo,
+  onWithdrawDemo,
+  onCloseAll,
+  onGoTrade
+}: AccountsPageProps) {
+  const activeAccount = useMemo(() => {
+    return accounts.find(a => a.id === activeAccountId) || accounts.find(a => a.is_active) || null
+  }, [accounts, activeAccountId])
 
-const marginCallLevel = 60
-const stopOutLevel = 20
-
-const getLeverage = (account: TradingAccount) => {
-    if (Number.isFinite(account.leverage)) return account.leverage
-    if (Number.isFinite(account.plan?.leverage)) return account.plan.leverage
-    return 100
-}
-
-const modePillStyle = (mode: string) => ({
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: 0.4,
-    border: "1px solid var(--border-subtle)",
-    color: mode === "demo" ? "#16a34a" : "#f59e0b",
-    background: mode === "demo" ? "rgba(22, 163, 74, 0.12)" : "rgba(245, 158, 11, 0.12)"
-})
-
-export default function AccountsPage({ accounts, activeAccountId, onSwitch, onCreate, onUpdateLeverage, onTopUpDemo }: AccountsPageProps) {
-    const [creating, setCreating] = useState(false)
-    const [switchingId, setSwitchingId] = useState<string | null>(null)
-    const [funding, setFunding] = useState(false)
-    const [updatingLeverageId, setUpdatingLeverageId] = useState<string | null>(null)
-    const [leverageDraft, setLeverageDraft] = useState<Record<string, number>>({})
-    const [actionError, setActionError] = useState("")
-
-    const [mode, setMode] = useState<"demo" | "real">("demo")
-    const [planID, setPlanID] = useState("standard")
-    const [name, setName] = useState("")
-    const [topUpAmount, setTopUpAmount] = useState("10000")
-
-    const activeAccount = useMemo(() => {
-        return accounts.find(a => a.id === activeAccountId) || accounts.find(a => a.is_active) || null
-    }, [accounts, activeAccountId])
-
-    const formatUsd = (value: string) => {
-        const num = Number(value || 0)
-        if (Number.isNaN(num)) return "0.00"
-        return formatNumber(num, 2, 2)
+  const activeSnapshot = useMemo<AccountSnapshot | null>(() => {
+    if (!activeAccount) return null
+    const fromMap = snapshots[activeAccount.id]
+    if (fromMap) return fromMap
+    return {
+      pl: Number(metrics.pl || 0),
+      openCount: activeOpenOrdersCount,
+      metrics
     }
+  }, [activeAccount, snapshots, metrics, activeOpenOrdersCount])
 
-    const applyLeverage = async (account: TradingAccount, next: number) => {
-        const current = getLeverage(account)
-        if (next === current) return
-        setUpdatingLeverageId(account.id)
-        setActionError("")
-        try {
-            await onUpdateLeverage(account.id, next)
-            toast.success(`Leverage updated: ${leverageLabel(next)}`)
-        } catch (err: any) {
-            const msg = err?.message || "Failed to update leverage"
-            setActionError(msg)
-            toast.error(msg)
-        } finally {
-            setUpdatingLeverageId(null)
-        }
-    }
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [fundingOpen, setFundingOpen] = useState<FundingType>(null)
+  const [fundingAmount, setFundingAmount] = useState("1000")
+  const [fundingBusy, setFundingBusy] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createMode, setCreateMode] = useState<"demo" | "real">("demo")
+  const [createPlan, setCreatePlan] = useState("standard")
+  const [createName, setCreateName] = useState("")
 
+  if (!activeAccount) {
     return (
-        <div style={{ maxWidth: 1200 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 16, flexWrap: "wrap" }}>
-                <div>
-                    <h2 style={{ margin: 0 }}>Trading Accounts</h2>
-                    <p style={{ margin: "6px 0 0 0", color: "var(--text-muted)", fontSize: 13 }}>
-                        Create multiple demo/real accounts and switch instantly.
-                    </p>
-                </div>
-                {activeAccount && (
-                    <div style={{
-                        padding: "12px 14px",
-                        borderRadius: 12,
-                        border: "1px solid var(--border-subtle)",
-                        background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(59, 130, 246, 0.12))",
-                        minWidth: 260
-                    }}>
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Active Account</div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                            <div>
-                                <div style={{ fontWeight: 700 }}>{activeAccount.name}</div>
-                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                    {activeAccount.plan?.name || activeAccount.plan_id} • {leverageLabel(getLeverage(activeAccount))}
-                                </div>
-                            </div>
-                            <div style={modePillStyle(activeAccount.mode)}>{activeAccount.mode.toUpperCase()}</div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {actionError && (
-                <div style={{
-                    marginBottom: 12,
-                    background: "rgba(239, 68, 68, 0.12)",
-                    border: "1px solid rgba(239, 68, 68, 0.25)",
-                    color: "#ef4444",
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                    fontSize: 13
-                }}>
-                    {actionError}
-                </div>
-            )}
-
-            <div style={{
-                marginBottom: 12,
-                background: "rgba(59,130,246,0.08)",
-                border: "1px solid rgba(59,130,246,0.22)",
-                borderRadius: 10,
-                padding: "10px 12px",
-                fontSize: 13,
-                color: "var(--text-muted)"
-            }}>
-                Risk rules: Margin Call {marginCallLevel}% • Stop Out {stopOutLevel}%.
-                Leverage changes are blocked while positions are open.
-            </div>
-
-            <div style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(320px, 1fr) 2fr",
-                gap: 16
-            }}>
-                <div style={{ background: "var(--card-bg)", borderRadius: 12, border: "1px solid var(--border-subtle)", padding: 16 }}>
-                    <h3 style={{ marginTop: 0, marginBottom: 14 }}>Open New Account</h3>
-
-                    <div style={{ display: "grid", gap: 10 }}>
-                        <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            Mode
-                            <select value={mode} onChange={e => setMode(e.target.value as "demo" | "real")} style={{ width: "100%", marginTop: 6 }}>
-                                <option value="demo">Demo</option>
-                                <option value="real">Real</option>
-                            </select>
-                        </label>
-
-                        <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            Plan
-                            <select value={planID} onChange={e => setPlanID(e.target.value)} style={{ width: "100%", marginTop: 6 }}>
-                                {planOptions.map(p => (
-                                    <option key={p.id} value={p.id}>{p.label}</option>
-                                ))}
-                            </select>
-                        </label>
-
-                        <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            Account Name (optional)
-                            <input
-                                value={name}
-                                onChange={e => setName(e.target.value)}
-                                placeholder="My Pro Demo"
-                                style={{ width: "100%", marginTop: 6 }}
-                            />
-                        </label>
-
-                        <button
-                            onClick={async () => {
-                                setCreating(true)
-                                try {
-                                    await onCreate({ plan_id: planID, mode, name: name.trim() || undefined, is_active: true })
-                                    setName("")
-                                } finally {
-                                    setCreating(false)
-                                }
-                            }}
-                            disabled={creating}
-                            style={{
-                                marginTop: 4,
-                                border: "none",
-                                borderRadius: 10,
-                                padding: "10px 12px",
-                                fontWeight: 700,
-                                color: "#fff",
-                                background: "linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%)",
-                                cursor: creating ? "wait" : "pointer"
-                            }}
-                        >
-                            {creating ? "Creating..." : "Create & Activate"}
-                        </button>
-                    </div>
-
-                    <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border-subtle)" }}>
-                        <h4 style={{ marginTop: 0, marginBottom: 10 }}>Quick Demo Top-Up</h4>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-                            <input
-                                type="number"
-                                min="1"
-                                value={topUpAmount}
-                                onChange={e => setTopUpAmount(e.target.value)}
-                                placeholder="10000"
-                            />
-                            <button
-                                onClick={async () => {
-                                    setFunding(true)
-                                    try {
-                                        await onTopUpDemo(topUpAmount)
-                                    } finally {
-                                        setFunding(false)
-                                    }
-                                }}
-                                disabled={funding}
-                                style={{
-                                    border: "none",
-                                    borderRadius: 10,
-                                    padding: "0 14px",
-                                    fontWeight: 700,
-                                    color: "#fff",
-                                    background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)",
-                                    cursor: funding ? "wait" : "pointer"
-                                }}
-                            >
-                                {funding ? "..." : "Top Up"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div style={{ display: "grid", gap: 12 }}>
-                    {accounts.length === 0 ? (
-                        <div style={{ background: "var(--card-bg)", borderRadius: 12, border: "1px solid var(--border-subtle)", padding: 20, color: "var(--text-muted)" }}>
-                            No accounts yet
-                        </div>
-                    ) : accounts.map(account => (
-                        <div
-                            key={account.id}
-                            style={{
-                                background: "var(--card-bg)",
-                                borderRadius: 12,
-                                border: account.id === activeAccountId
-                                    ? "1px solid rgba(59, 130, 246, 0.6)"
-                                    : "1px solid var(--border-subtle)",
-                                padding: 16
-                            }}
-                        >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                                <div>
-                                    <div style={{ fontSize: 17, fontWeight: 700 }}>{account.name}</div>
-                                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                                        {account.plan?.name || account.plan_id} • Leverage {leverageLabel(getLeverage(account))}
-                                    </div>
-                                </div>
-                                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                    <div style={modePillStyle(account.mode)}>{account.mode.toUpperCase()}</div>
-                                    {account.id === activeAccountId && (
-                                        <div style={{ ...modePillStyle("demo"), color: "#3b82f6", background: "rgba(59,130,246,0.12)" }}>ACTIVE</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                                <div style={{ background: "var(--bg-subtle)", borderRadius: 10, padding: 10 }}>
-                                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Balance</div>
-                                    <div style={{ fontWeight: 700 }}>${formatUsd(account.balance)}</div>
-                                </div>
-                                <div style={{ background: "var(--bg-subtle)", borderRadius: 10, padding: 10 }}>
-                                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Spread x</div>
-                                    <div style={{ fontWeight: 700 }}>{account.plan?.spread_multiplier ?? "1.00"}</div>
-                                </div>
-                                <div style={{ background: "var(--bg-subtle)", borderRadius: 10, padding: 10 }}>
-                                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Commission</div>
-                                    <div style={{ fontWeight: 700 }}>{((account.plan?.commission_rate || 0) * 100).toFixed(2)}%</div>
-                                </div>
-                            </div>
-
-                            <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                                <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                    Leverage
-                                    <select
-                                        value={String(leverageDraft[account.id] ?? getLeverage(account))}
-                                        onChange={e => {
-                                            setActionError("")
-                                            const next = Number(e.target.value)
-                                            setLeverageDraft(prev => ({ ...prev, [account.id]: next }))
-                                            applyLeverage(account, next).catch(() => { })
-                                        }}
-                                        disabled={updatingLeverageId === account.id}
-                                        style={{ marginLeft: 8 }}
-                                    >
-                                        {leverageOptions.map(value => (
-                                            <option key={value} value={value}>{leverageLabel(value)}</option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <button
-                                    disabled={updatingLeverageId === account.id}
-                                    onClick={async () => {
-                                        const next = leverageDraft[account.id] ?? getLeverage(account)
-                                        await applyLeverage(account, next)
-                                    }}
-                                    style={{
-                                        border: "1px solid var(--border-subtle)",
-                                        borderRadius: 10,
-                                        padding: "8px 12px",
-                                        fontWeight: 700,
-                                        background: "var(--card-bg)",
-                                        color: "var(--text-base)",
-                                        cursor: "pointer"
-                                    }}
-                                >
-                                    {updatingLeverageId === account.id ? "Saving..." : "Apply Leverage"}
-                                </button>
-                            </div>
-
-                            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-                                <button
-                                    disabled={account.id === activeAccountId || switchingId === account.id}
-                                    onClick={async () => {
-                                        setSwitchingId(account.id)
-                                        try {
-                                            await onSwitch(account.id)
-                                        } finally {
-                                            setSwitchingId(null)
-                                        }
-                                    }}
-                                    style={{
-                                        border: "1px solid var(--border-subtle)",
-                                        borderRadius: 10,
-                                        padding: "8px 12px",
-                                        fontWeight: 700,
-                                        background: account.id === activeAccountId ? "var(--bg-subtle)" : "var(--card-bg)",
-                                        color: account.id === activeAccountId ? "var(--text-muted)" : "var(--text-base)",
-                                        cursor: account.id === activeAccountId ? "default" : "pointer"
-                                    }}
-                                >
-                                    {account.id === activeAccountId ? "Current" : (switchingId === account.id ? "Switching..." : "Switch To This")}
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
+      <div className="accounts-page">
+        <section className="acc-active-card">
+          <h2>No accounts</h2>
+          <p className="acc-note">Create your first account to start trading.</p>
+        </section>
+      </div>
     )
+  }
+
+  return (
+    <div className="accounts-page">
+      <ActiveAccountCard
+        account={activeAccount}
+        snapshot={activeSnapshot || { pl: 0, openCount: 0, metrics: null }}
+        switcherOpen={switcherOpen}
+        onToggleSwitcher={() => setSwitcherOpen(v => !v)}
+        onTrade={onGoTrade}
+        onDeposit={() => setFundingOpen("deposit")}
+        onWithdraw={() => setFundingOpen("withdraw")}
+        onDetails={() => setDetailsOpen(true)}
+      />
+
+      <section className="acc-create-card">
+        <h3>Open New Account</h3>
+        <div className="acc-create-grid">
+          <label className="acc-modal-label">
+            Mode
+            <select value={createMode} onChange={e => setCreateMode(e.target.value as "demo" | "real")}>
+              <option value="demo">Demo</option>
+              <option value="real">Real</option>
+            </select>
+          </label>
+          <label className="acc-modal-label">
+            Account Type
+            <select value={createPlan} onChange={e => setCreatePlan(e.target.value)}>
+              {planOptions.map(p => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="acc-modal-label">
+            Name (optional)
+            <input
+              value={createName}
+              onChange={e => setCreateName(e.target.value)}
+              placeholder={createMode === "demo" ? "Demo Standard" : "Real Standard"}
+            />
+          </label>
+          <button
+            type="button"
+            className="acc-action-btn"
+            disabled={creating}
+            onClick={async () => {
+              setCreating(true)
+              try {
+                await onCreate({
+                  plan_id: createPlan,
+                  mode: createMode,
+                  name: createName.trim() || undefined,
+                  is_active: true
+                })
+                setCreateName("")
+              } finally {
+                setCreating(false)
+              }
+            }}
+          >
+            {creating ? "Creating..." : "Create & Activate"}
+          </button>
+        </div>
+      </section>
+
+      <AccountsSwitcherSheet
+        open={switcherOpen}
+        accounts={accounts}
+        activeAccountId={activeAccountId}
+        snapshots={snapshots}
+        onClose={() => setSwitcherOpen(false)}
+        onSwitch={onSwitch}
+      />
+
+      <AccountFundingModal
+        open={fundingOpen !== null}
+        mode={activeAccount.mode as "demo" | "real"}
+        type={fundingOpen || "deposit"}
+        amount={fundingAmount}
+        onAmountChange={setFundingAmount}
+        onClose={() => setFundingOpen(null)}
+        loading={fundingBusy}
+        onSubmit={async () => {
+          if (!fundingOpen) return
+          if (!fundingAmount || Number(fundingAmount) <= 0) {
+            toast.error("Enter valid amount")
+            return
+          }
+          setFundingBusy(true)
+          try {
+            if (fundingOpen === "deposit") {
+              await onTopUpDemo(fundingAmount)
+              toast.success("Deposit completed")
+            } else {
+              await onWithdrawDemo(fundingAmount)
+              toast.success("Withdraw completed")
+            }
+            setFundingOpen(null)
+          } catch (err: any) {
+            toast.error(err?.message || "Operation failed")
+          } finally {
+            setFundingBusy(false)
+          }
+        }}
+      />
+
+      <AccountDetailsModal
+        open={detailsOpen}
+        account={activeAccount}
+        snapshot={activeSnapshot}
+        onClose={() => setDetailsOpen(false)}
+        onCloseAll={onCloseAll}
+        onRename={onRenameAccount}
+        onUpdateLeverage={onUpdateLeverage}
+      />
+    </div>
+  )
 }

@@ -135,6 +135,14 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.AccountsHandler.UpdateLeverage(w, r, userID)
 			})
+			r.Post("/accounts/name", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.AccountsHandler.UpdateName(w, r, userID)
+			})
 			r.Post("/orders", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {
@@ -190,6 +198,14 @@ func NewRouter(d RouterDeps) http.Handler {
 					return
 				}
 				d.LedgerHandler.Faucet(w, r, userID)
+			})
+			r.Post("/withdraw", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.WithdrawDemo(w, r, userID)
 			})
 		})
 		r.Group(func(r chi.Router) {

@@ -402,3 +402,44 @@ func (s *Service) UpdateLeverage(ctx context.Context, userID, accountID string, 
 	}
 	return acc, nil
 }
+
+func (s *Service) UpdateName(ctx context.Context, userID, accountID, name string) (*TradingAccount, error) {
+	if userID == "" || accountID == "" {
+		return nil, errors.New("user_id and account_id are required")
+	}
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return nil, errors.New("account name is required")
+	}
+	if len([]rune(trimmed)) > 64 {
+		return nil, errors.New("account name is too long (max 64 chars)")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	acc, err := s.getByID(ctx, tx, userID, accountID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("account not found")
+		}
+		return nil, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE trading_accounts
+		SET name = $1, updated_at = NOW()
+		WHERE id = $2
+	`, trimmed, accountID); err != nil {
+		return nil, err
+	}
+
+	acc.Name = trimmed
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return acc, nil
+}

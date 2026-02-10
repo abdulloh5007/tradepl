@@ -14,11 +14,12 @@ import { calcOrderProfit } from "./utils/trading"
 import { createApiClient, createWsUrl } from "./api"
 
 // Components
-import { Header, Sidebar } from "./components"
+import BottomNav from "./components/BottomNav"
 import ConnectionBanner from "./components/ConnectionBanner"
+import type { AccountSnapshot } from "./components/accounts/types"
 
 // Pages
-import { TradingPage, PositionsPage, BalancePage, AccountsPage, ApiPage, FaucetPage, HistoryPage } from "./pages"
+import { TradingPage, PositionsPage, AccountsPage, ApiPage, FaucetPage, HistoryPage, SettingsPage } from "./pages"
 
 // Config
 const marketPairs = ["UZS-USD"]
@@ -53,7 +54,8 @@ function spreadDecimals(ask: number, bid: number, baseDecimals: number): number 
 
 function resolveView(): View {
   const hash = typeof window !== "undefined" ? window.location.hash.replace("#", "") : ""
-  if (hash === "positions" || hash === "history" || hash === "balance" || hash === "accounts" || hash === "api" || hash === "faucet") return hash
+  if (hash === "positions" || hash === "history" || hash === "accounts" || hash === "settings" || hash === "api" || hash === "faucet") return hash
+  if (hash === "balance") return "positions"
   return "chart"
 }
 
@@ -92,6 +94,7 @@ export default function App() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [hasMoreData, setHasMoreData] = useState(true)
   const [bulkClosing, setBulkClosing] = useState(false)
+  const [accountSnapshots, setAccountSnapshots] = useState<Record<string, AccountSnapshot>>({})
   const [pollBackoff, setPollBackoff] = useState<PollBackoffState>({
     metrics: { failures: 0, retryAt: 0 },
     orders: { failures: 0, retryAt: 0 }
@@ -99,6 +102,10 @@ export default function App() {
 
   // Error logging flags - prevent repeated console spam
   const errorLogged = useRef({ ws: false, fetch: false })
+  const historyLoadingRef = useRef(false)
+  const historyFailureRef = useRef(0)
+  const historyRetryAtRef = useRef(0)
+  const orderHistoryRef = useRef<Order[]>([])
 
   // Auth form state
   const [email, setEmail] = useState("")
@@ -112,6 +119,7 @@ export default function App() {
     setAccounts([])
     setOpenOrders([])
     setOrderHistory([])
+    setAccountSnapshots({})
     setHistoryHasMore(true)
     setPollBackoff({
       metrics: { failures: 0, retryAt: 0 },
@@ -216,12 +224,19 @@ export default function App() {
     return entries[0]
   }, [pollBackoff])
 
-  const fetchOrderHistory = useCallback(async (reset = true) => {
-    if (!token || historyLoading) return
+  useEffect(() => {
+    orderHistoryRef.current = orderHistory
+  }, [orderHistory])
 
+  const fetchOrderHistory = useCallback(async (reset = true) => {
+    if (!token) return
+    if (historyLoadingRef.current) return
+    if (Date.now() < historyRetryAtRef.current) return
+
+    historyLoadingRef.current = true
     setHistoryLoading(true)
     try {
-      const before = reset ? undefined : orderHistory[orderHistory.length - 1]?.created_at
+      const before = reset ? undefined : orderHistoryRef.current[orderHistoryRef.current.length - 1]?.created_at
       const page = (await api.orderHistory({ limit: historyPageLimit, before })) || []
 
       if (reset) {
@@ -238,10 +253,19 @@ export default function App() {
       }
 
       setHistoryHasMore(page.length === historyPageLimit)
+      historyFailureRef.current = 0
+      historyRetryAtRef.current = 0
+    } catch (err) {
+      historyFailureRef.current += 1
+      const failures = historyFailureRef.current
+      const delay = failures === 1 ? 3000 : failures === 2 ? 8000 : 15000
+      historyRetryAtRef.current = Date.now() + delay
+      throw err
     } finally {
+      historyLoadingRef.current = false
       setHistoryLoading(false)
     }
-  }, [api, token, historyLoading, orderHistory])
+  }, [api, token])
 
   const refreshOrders = useCallback(async () => {
     const orders = (await api.orders()) || []
@@ -276,14 +300,61 @@ export default function App() {
     }
   }, [api, token, activeAccountId])
 
+  const refreshAccountSnapshots = useCallback(async (sourceAccounts?: TradingAccount[]) => {
+    if (!token) return
+    const list = sourceAccounts || accounts
+    if (list.length === 0) {
+      setAccountSnapshots({})
+      return
+    }
+
+    const entries = await Promise.all(list.map(async (account) => {
+      const scopedApi = createApiClient(
+        { baseUrl: normalizedBaseUrl, token, activeAccountId: account.id },
+        logout
+      )
+      try {
+        const [scopedMetrics, scopedOrders] = await Promise.all([
+          scopedApi.metrics().catch(() => null),
+          scopedApi.orders().catch(() => null)
+        ])
+        const openCount = (scopedOrders || []).filter(o => o.status === "filled").length
+        const pl = Number(scopedMetrics?.pl || 0)
+        return [
+          account.id,
+          {
+            pl: Number.isFinite(pl) ? pl : 0,
+            openCount,
+            metrics: scopedMetrics
+          } satisfies AccountSnapshot
+        ] as const
+      } catch {
+        return [
+          account.id,
+          {
+            pl: 0,
+            openCount: 0,
+            metrics: null
+          } satisfies AccountSnapshot
+        ] as const
+      }
+    }))
+
+    setAccountSnapshots(Object.fromEntries(entries))
+  }, [token, accounts, normalizedBaseUrl, logout])
+
   useEffect(() => {
     if (!token) {
       setAccounts([])
       setActiveAccountId("")
       setOpenOrders([])
       setOrderHistory([])
+      setAccountSnapshots({})
       setHistoryHasMore(true)
       setHistoryLoading(false)
+      historyLoadingRef.current = false
+      historyFailureRef.current = 0
+      historyRetryAtRef.current = 0
       setPollBackoff({
         metrics: { failures: 0, retryAt: 0 },
         orders: { failures: 0, retryAt: 0 }
@@ -525,9 +596,30 @@ export default function App() {
 
   useEffect(() => {
     if (!token || view !== "history") return
-    if (orderHistory.length > 0) return
+    if (orderHistoryRef.current.length > 0) return
     fetchOrderHistory(true).catch(() => { })
-  }, [token, view, orderHistory.length, fetchOrderHistory])
+  }, [token, view, fetchOrderHistory])
+
+  useEffect(() => {
+    if (!token || view !== "accounts" || accounts.length === 0) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const run = async () => {
+      if (cancelled) return
+      try {
+        await refreshAccountSnapshots(accounts)
+      } finally {
+        if (!cancelled) timer = setTimeout(run, 8000)
+      }
+    }
+
+    run().catch(() => { })
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [token, view, accounts, refreshAccountSnapshots])
 
   // Fast polling for account metrics on live trading views.
   useEffect(() => {
@@ -646,6 +738,7 @@ export default function App() {
         fetchOrderHistory(true).catch(() => { }),
         refreshMetrics().catch(() => { })
       ])
+      refreshAccountSnapshots().catch(() => { })
     } catch (err: any) {
       toast.error(err?.message || "Error")
     }
@@ -660,6 +753,7 @@ export default function App() {
         fetchOrderHistory(true).catch(() => { }),
         refreshMetrics().catch(() => { })
       ])
+      refreshAccountSnapshots().catch(() => { })
     } catch (err: any) {
       toast.error(err?.message || "Error")
     }
@@ -692,6 +786,7 @@ export default function App() {
       fetchOrderHistory(true).catch(() => { }),
       refreshMetrics().catch(() => { })
     ])
+    refreshAccountSnapshots().catch(() => { })
 
     setBulkClosing(false)
     if (total === 0) {
@@ -750,6 +845,7 @@ export default function App() {
       refreshOrders().catch(() => { }),
       fetchOrderHistory(true).catch(() => { })
     ])
+    refreshAccountSnapshots().catch(() => { })
   }
 
   const handleUpdateAccountLeverage = async (accountID: string, leverage: number) => {
@@ -760,6 +856,13 @@ export default function App() {
       refreshOrders().catch(() => { }),
       fetchOrderHistory(true).catch(() => { })
     ])
+    refreshAccountSnapshots().catch(() => { })
+  }
+
+  const handleRenameAccount = async (accountID: string, name: string) => {
+    await api.updateAccountName({ account_id: accountID, name })
+    await refreshAccounts(accountID)
+    refreshAccountSnapshots().catch(() => { })
   }
 
   const handleCreateAccount = async (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => {
@@ -775,12 +878,25 @@ export default function App() {
       refreshOrders().catch(() => { }),
       fetchOrderHistory(true).catch(() => { })
     ])
+    refreshAccountSnapshots().catch(() => { })
   }
 
   const handleTopUpDemo = async (amount: string) => {
     await api.faucet({ asset: "USD", amount, reference: "accounts_topup" })
     await refreshAccounts(activeAccountId)
     await refreshMetrics().catch(() => { })
+    refreshAccountSnapshots().catch(() => { })
+  }
+
+  const handleWithdrawDemo = async (amount: string) => {
+    await api.withdraw({ asset: "USD", amount, reference: "accounts_withdraw" })
+    await refreshAccounts(activeAccountId)
+    await Promise.all([
+      refreshMetrics().catch(() => { }),
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { })
+    ])
+    refreshAccountSnapshots().catch(() => { })
   }
 
   // Show login form if not authenticated
@@ -865,105 +981,107 @@ export default function App() {
 
 
 
+  const isChartView = view === "chart"
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)" }}>
+    <div className="app-shell">
       <ConnectionBanner apiBackoff={apiBackoff} />
       <Toaster position="top-right" />
 
-      <Header
-        theme={theme}
-        setTheme={setTheme}
-        lang={lang}
-        setLang={setLang}
-        token={token}
-        onLogout={logout}
-      />
+      <main className={`app-main ${isChartView ? "app-main-chart" : "app-main-default"}`}>
+        {view === "chart" && (
+          <TradingPage
+            candles={candles}
+            quote={quote}
+            openOrders={openOrders}
+            marketPair={marketPair}
+            marketConfig={marketConfig}
+            theme={theme}
+            timeframes={timeframes}
+            timeframe={timeframe}
+            setTimeframe={setTimeframe}
+            fetchCandles={fetchCandles}
+            quickQty={quickQty}
+            setQuickQty={setQuickQty}
+            onBuy={() => handleQuickOrder("buy")}
+            onSell={() => handleQuickOrder("sell")}
+            lang={lang}
+            onLoadMore={loadMoreCandles}
+            isLoadingMore={isLoadingMore}
+            hasMoreData={hasMoreData}
+          />
+        )}
 
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar view={view} setView={setView} lang={lang} />
+        {view === "positions" && (
+          <PositionsPage
+            metrics={liveMetrics}
+            orders={openOrders}
+            quote={quote}
+            marketPair={marketPair}
+            marketConfig={marketConfig}
+            marketPrice={marketPrice}
+            onClose={handleClosePosition}
+            onCloseAll={handleCloseAllPositions}
+            onCloseProfit={handleCloseProfitPositions}
+            onCloseLoss={handleCloseLossPositions}
+            bulkClosing={bulkClosing}
+            lang={lang}
+          />
+        )}
 
-        <main style={{ flex: 1, overflow: "auto", padding: 16 }}>
-          {view === "chart" && (
-            <TradingPage
-              candles={candles}
-              quote={quote}
-              openOrders={openOrders}
-              marketPair={marketPair}
-              marketConfig={marketConfig}
-              theme={theme}
-              timeframes={timeframes}
-              timeframe={timeframe}
-              setTimeframe={setTimeframe}
-              fetchCandles={fetchCandles}
-              quickQty={quickQty}
-              setQuickQty={setQuickQty}
-              onBuy={() => handleQuickOrder("buy")}
-              onSell={() => handleQuickOrder("sell")}
-              lang={lang}
-              onLoadMore={loadMoreCandles}
-              isLoadingMore={isLoadingMore}
-              hasMoreData={hasMoreData}
-            />
-          )}
+        {view === "history" && (
+          <HistoryPage
+            orders={orderHistory}
+            lang={lang}
+            loading={historyLoading}
+            hasMore={historyHasMore}
+            onRefresh={() => fetchOrderHistory(true)}
+            onLoadMore={() => fetchOrderHistory(false)}
+          />
+        )}
 
-          {view === "positions" && (
-            <PositionsPage
-              metrics={liveMetrics}
-              orders={openOrders}
-              quote={quote}
-              marketPair={marketPair}
-              marketConfig={marketConfig}
-              marketPrice={marketPrice}
-              onClose={handleClosePosition}
-              onCloseAll={handleCloseAllPositions}
-              onCloseProfit={handleCloseProfitPositions}
-              onCloseLoss={handleCloseLossPositions}
-              bulkClosing={bulkClosing}
-              lang={lang}
-            />
-          )}
+        {view === "accounts" && (
+          <AccountsPage
+            accounts={accounts}
+            activeAccountId={activeAccountId}
+            metrics={liveMetrics}
+            activeOpenOrdersCount={openOrders.filter(o => o.status === "filled").length}
+            snapshots={accountSnapshots}
+            onSwitch={handleSwitchAccount}
+            onCreate={handleCreateAccount}
+            onUpdateLeverage={handleUpdateAccountLeverage}
+            onRenameAccount={handleRenameAccount}
+            onTopUpDemo={handleTopUpDemo}
+            onWithdrawDemo={handleWithdrawDemo}
+            onCloseAll={handleCloseAllPositions}
+            onGoTrade={() => setView("chart")}
+          />
+        )}
 
-          {view === "history" && (
-            <HistoryPage
-              orders={orderHistory}
-              lang={lang}
-              loading={historyLoading}
-              hasMore={historyHasMore}
-              onRefresh={() => fetchOrderHistory(true)}
-              onLoadMore={() => fetchOrderHistory(false)}
-            />
-          )}
+        {view === "settings" && (
+          <SettingsPage
+            lang={lang}
+            setLang={setLang}
+            theme={theme}
+            setTheme={setTheme}
+            onLogout={logout}
+          />
+        )}
 
-          {view === "balance" && (
-            <BalancePage metrics={liveMetrics} lang={lang} />
-          )}
+        {view === "api" && <ApiPage />}
 
-          {view === "accounts" && (
-            <AccountsPage
-              accounts={accounts}
-              activeAccountId={activeAccountId}
-              onSwitch={handleSwitchAccount}
-              onCreate={handleCreateAccount}
-              onUpdateLeverage={handleUpdateAccountLeverage}
-              onTopUpDemo={handleTopUpDemo}
-            />
-          )}
+        {view === "faucet" && (
+          <FaucetPage
+            api={api}
+            onMetricsUpdate={setMetrics}
+            lang={lang}
+            token={token}
+            onLoginRequired={() => setView("api")}
+          />
+        )}
+      </main>
 
-          {view === "api" && <ApiPage />}
-
-          {view === "faucet" && (
-            <FaucetPage
-              api={api}
-              onMetricsUpdate={setMetrics}
-              lang={lang}
-              token={token}
-              onLoginRequired={() => setView("api")}
-            />
-          )}
-
-
-        </main>
-      </div>
+      <BottomNav view={view} setView={setView} lang={lang} />
     </div>
   )
 }

@@ -215,6 +215,91 @@ func (h *Handler) Faucet(w http.ResponseWriter, r *http.Request, userID string) 
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h *Handler) WithdrawDemo(w http.ResponseWriter, r *http.Request, userID string) {
+	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if account.Mode != "demo" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "withdraw is allowed only for demo accounts"})
+		return
+	}
+
+	var req faucetRequest
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	symbol := strings.ToUpper(strings.TrimSpace(req.AssetSymbol))
+	if symbol == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "asset is required"})
+		return
+	}
+	if symbol != "USD" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "only USD withdraw is supported"})
+		return
+	}
+	amount, err := decimal.NewFromString(req.Amount)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid amount"})
+		return
+	}
+	if amount.LessThanOrEqual(decimal.Zero) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "amount must be positive"})
+		return
+	}
+
+	asset, err := h.store.GetAssetBySymbol(r.Context(), symbol)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "asset not found"})
+		return
+	}
+
+	tx, err := h.svc.pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	userAccount, err := h.svc.EnsureAccountForTradingAccount(r.Context(), tx, userID, account.ID, asset.ID, types.AccountKindAvailable)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	balance, err := h.svc.GetBalance(r.Context(), tx, userAccount)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if balance.LessThan(amount) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "insufficient balance"})
+		return
+	}
+
+	systemAccount, err := h.svc.EnsureSystemAccount(r.Context(), tx, asset.ID, types.AccountKindAvailable)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	ref := req.Reference
+	if ref == "" {
+		ref = "demo_withdraw"
+	}
+	_, err = h.svc.Transfer(r.Context(), tx, userAccount, systemAccount, amount, types.LedgerEntryTypeWithdraw, ref)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handler) Balances(w http.ResponseWriter, r *http.Request, userID string) {
 	account, err := h.accountSvc.Resolve(r.Context(), userID, strings.TrimSpace(r.Header.Get("X-Account-ID")))
 	if err != nil {

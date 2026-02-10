@@ -106,12 +106,15 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     switchAccount: (accountID: string) => request<TradingAccount>("/v1/accounts/switch", "POST", { account_id: accountID }, true),
     updateAccountLeverage: (payload: { account_id: string; leverage: number }) =>
       request<TradingAccount>("/v1/accounts/leverage", "POST", payload, true),
+    updateAccountName: (payload: { account_id: string; name: string }) =>
+      request<TradingAccount>("/v1/accounts/name", "POST", payload, true),
     balances: async () => {
       const res = await request<Array<{ asset_id: string; symbol: string; kind: string; amount: string }> | null>("/v1/balances", "GET", undefined, true)
       return res || []
     },
     placeOrder: (payload: PlaceOrderPayload) => request<{ order_id: string; status: string }>("/v1/orders", "POST", payload, true),
     faucet: (payload: FaucetPayload) => request<{ status: string }>("/v1/faucet", "POST", payload, true),
+    withdraw: (payload: FaucetPayload) => request<{ status: string }>("/v1/withdraw", "POST", payload, true),
     config: () => request<Record<string, MarketConfig>>("/v1/market/config", "GET"),
     candles: (pair: string, timeframe: string, limit = 200, fresh = false, before?: number) => {
       let url = `/v1/market/candles?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&fresh=${fresh ? "1" : "0"}`

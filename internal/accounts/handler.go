@@ -78,3 +78,21 @@ func (h *Handler) UpdateLeverage(w http.ResponseWriter, r *http.Request, userID 
 	}
 	httputil.WriteJSON(w, http.StatusOK, acc)
 }
+
+func (h *Handler) UpdateName(w http.ResponseWriter, r *http.Request, userID string) {
+	var req struct {
+		AccountID string `json:"account_id"`
+		Name      string `json:"name"`
+	}
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	acc, err := h.svc.UpdateName(r.Context(), userID, req.AccountID, req.Name)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, acc)
+}
