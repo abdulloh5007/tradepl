@@ -13,6 +13,7 @@ interface AccountTypeProps {
         commission: string
         image: string
     }
+    mode: "real" | "demo"
 }
 
 const TGS_PATHS: Record<string, string> = {
@@ -22,11 +23,15 @@ const TGS_PATHS: Record<string, string> = {
     swapfree: "/assets/tgs/swapfree.tgs"
 }
 
-export default function AccountTypeCard({ plan }: AccountTypeProps): JSX.Element {
+export default function AccountTypeCard({ plan, mode }: AccountTypeProps): JSX.Element {
     const tgsSrc = TGS_PATHS[plan.id] || TGS_PATHS.standard
 
     return (
         <div className="atc-card">
+            {/* Ribbon */}
+            <div className={`atc-ribbon atc-ribbon-${mode}`}>
+                <span>{mode === "real" ? "REAL" : "DEMO"}</span>
+            </div>
 
             {/* TGS Animation */}
             <div className="atc-image-container">

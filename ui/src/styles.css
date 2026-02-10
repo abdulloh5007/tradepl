@@ -2540,21 +2540,43 @@ html[data-theme="light"] .settings-logout-btn {
 
 .acc-action-row {
   margin-top: 12px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  gap: 12px;
+  /* Increased gap for better spacing */
+  justify-content: flex-start;
+  /* Align start or center as preferred */
+  overflow-x: auto;
+  padding-bottom: 4px;
+  /* Space for scrollbar if needed */
 }
 
 .acc-action-btn {
   border: 1px solid rgba(148, 163, 184, 0.34);
   background: rgba(15, 20, 33, 0.66);
   color: #dbeafe;
-  border-radius: 999px;
-  height: 40px;
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 700;
+  border-radius: 50%;
+  /* Circle */
+  width: 44px;
+  /* Fixed width */
+  height: 44px;
+  /* Fixed height */
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0;
+  /* Hide any fallback text */
   cursor: pointer;
+  flex-shrink: 0;
+  /* Prevent shrinking */
+  transition: all 0.2s;
+}
+
+.acc-action-btn:hover {
+  background: rgba(15, 20, 33, 0.9);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #ffffff;
+  transform: translateY(-2px);
 }
 
 .acc-action-btn.ghost {
@@ -3215,6 +3237,7 @@ html[data-theme="light"] .chart-bottom-inner .market-panel {
     padding: 12px;
   }
 }
+
 /* Header styles for Accounts Page */
 .accounts-header {
   display: flex;

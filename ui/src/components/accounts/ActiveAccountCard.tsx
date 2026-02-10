@@ -1,4 +1,4 @@
-import { ChevronUp, ChevronDown } from "lucide-react"
+import { ChevronUp, ChevronDown, TrendingUp, ArrowDown, ArrowUp, Settings } from "lucide-react"
 import type { TradingAccount } from "../../types"
 import type { AccountSnapshot } from "./types"
 import { accountShortNumericId, formatUsd, openCountLabel } from "./utils"
@@ -51,24 +51,30 @@ export default function ActiveAccountCard({
       </div>
 
       <div className="acc-action-row">
-        <button type="button" className="acc-action-btn" onClick={onTrade}>Trade</button>
+        <button type="button" className="acc-action-btn" onClick={onTrade} aria-label="Trade">
+          <TrendingUp size={20} />
+        </button>
         <button
           type="button"
           className="acc-action-btn"
           onClick={onDeposit}
           disabled={account.mode !== "demo"}
+          aria-label="Deposit"
         >
-          {account.mode === "demo" ? "Deposit" : "Deposit Soon"}
+          <ArrowDown size={20} />
         </button>
         <button
           type="button"
           className="acc-action-btn"
           onClick={onWithdraw}
           disabled={account.mode !== "demo"}
+          aria-label="Withdraw"
         >
-          {account.mode === "demo" ? "Withdraw" : "Withdraw Soon"}
+          <ArrowUp size={20} />
         </button>
-        <button type="button" className="acc-action-btn" onClick={onDetails}>Details</button>
+        <button type="button" className="acc-action-btn" onClick={onDetails} aria-label="Account Details">
+          <Settings size={20} />
+        </button>
       </div>
     </section>
   )

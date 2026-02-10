@@ -157,7 +157,7 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
                         <div className="acm-cards-wrapper">
                             {PLANS.map((plan) => (
                                 <div key={plan.id} className="acm-card-slide">
-                                    <AccountTypeCard plan={plan} />
+                                    <AccountTypeCard plan={plan} mode={mode} />
                                 </div>
                             ))}
                         </div>
