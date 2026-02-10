@@ -3,6 +3,7 @@ import { X } from "lucide-react"
 import type { TradingAccount } from "../../types"
 import type { AccountSnapshot } from "./types"
 import { accountShortNumericId, formatPercent, formatUsd, getLeverage, leverageLabel, leverageOptions } from "./utils"
+import "./AccountDetailsModal.css"
 
 interface AccountDetailsModalProps {
   open: boolean

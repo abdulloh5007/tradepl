@@ -1,7 +1,8 @@
-import { ChevronUp, ChevronDown, TrendingUp, ArrowDown, ArrowUp, Settings } from "lucide-react"
+import { ChevronUp, ChevronDown, ArrowDown, ArrowUp, CandlestickChart, MoreHorizontal, ChevronRight } from "lucide-react"
 import type { TradingAccount } from "../../types"
 import type { AccountSnapshot } from "./types"
-import { accountShortNumericId, formatUsd, openCountLabel } from "./utils"
+import { accountShortNumericId, formatUsd } from "./utils"
+import "./ActiveAccountCard.css"
 
 interface ActiveAccountCardProps {
   account: TradingAccount
@@ -24,57 +25,72 @@ export default function ActiveAccountCard({
   onWithdraw,
   onDetails
 }: ActiveAccountCardProps) {
-  const plColor = snapshot.pl >= 0 ? "#22c55e" : "#ef4444"
-  const plPrefix = snapshot.pl >= 0 ? "+" : ""
+  // Always white for balance in this design
+  const plColor = "#ffffff"
 
   return (
     <section className="acc-active-card">
       <div className="acc-active-head">
         <div>
           <div className="acc-active-title-row">
-            <h2>{account.name}</h2>
+            <h2>{account.name.toUpperCase()}</h2>
             <span className="acc-mini-id">#{accountShortNumericId(account.id)}</span>
           </div>
           <div className="acc-active-sub">
-            <span className={`acc-mode-pill ${account.mode}`}>{account.mode.toUpperCase()}</span>
-            <span className="acc-plan-pill">{account.plan?.name || account.plan_id}</span>
-            <span className="acc-open-pill">{openCountLabel(snapshot.openCount)} open</span>
+            <span className={`acc-mode-pill ${account.mode}`}>{account.mode === 'real' ? 'Real' : 'Demo'}</span>
+            <span className="acc-platform-pill">MT5</span>
+            <span className="acc-plan-pill">{account.plan?.name || "Standard"}</span>
           </div>
         </div>
         <button type="button" className="acc-switch-toggle" onClick={onToggleSwitcher} aria-label="Open accounts list">
-          {switcherOpen ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+          <ChevronRight size={20} />
         </button>
       </div>
 
       <div className="acc-pl-block" style={{ color: plColor }}>
-        {plPrefix}{formatUsd(snapshot.pl)} USD
+        {formatUsd(snapshot.metrics?.balance || 0)} USD
       </div>
 
       <div className="acc-action-row">
-        <button type="button" className="acc-action-btn" onClick={onTrade} aria-label="Trade">
-          <TrendingUp size={20} />
-        </button>
-        <button
-          type="button"
-          className="acc-action-btn"
-          onClick={onDeposit}
-          disabled={account.mode !== "demo"}
-          aria-label="Deposit"
-        >
-          <ArrowDown size={20} />
-        </button>
-        <button
-          type="button"
-          className="acc-action-btn"
-          onClick={onWithdraw}
-          disabled={account.mode !== "demo"}
-          aria-label="Withdraw"
-        >
-          <ArrowUp size={20} />
-        </button>
-        <button type="button" className="acc-action-btn" onClick={onDetails} aria-label="Account Details">
-          <Settings size={20} />
-        </button>
+        <div className="acc-action-item">
+          <button type="button" className="acc-action-btn trade-btn" onClick={onTrade} aria-label="Trade">
+            <CandlestickChart size={24} strokeWidth={2.5} />
+          </button>
+          <span className="acc-action-label">Trade</span>
+        </div>
+
+        <div className="acc-action-item">
+          <button
+            type="button"
+            className="acc-action-btn"
+            onClick={onDeposit}
+            disabled={account.mode !== "demo"}
+            aria-label="Deposit"
+          >
+            <ArrowDown size={24} strokeWidth={2.5} />
+          </button>
+          <span className="acc-action-label">Deposit</span>
+        </div>
+
+        <div className="acc-action-item">
+          <button
+            type="button"
+            className="acc-action-btn"
+            onClick={onWithdraw}
+            disabled={account.mode !== "demo"}
+            aria-label="Withdraw"
+          >
+            <ArrowUp size={24} strokeWidth={2.5} />
+          </button>
+          <span className="acc-action-label">Withdraw</span>
+        </div>
+
+        <div className="acc-action-item">
+          <button type="button" className="acc-action-btn" onClick={onDetails} aria-label="Account Details">
+            <MoreHorizontal size={24} strokeWidth={2.5} />
+          </button>
+          <span className="acc-action-label">Details</span>
+        </div>
       </div>
     </section>
   )

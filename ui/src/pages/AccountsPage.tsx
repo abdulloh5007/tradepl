@@ -8,6 +8,7 @@ import AccountFundingModal from "../components/accounts/AccountFundingModal"
 import AccountDetailsModal from "../components/accounts/AccountDetailsModal"
 import AccountCreationModal from "../components/accounts/AccountCreationModal"
 import type { AccountSnapshot } from "../components/accounts/types"
+import "./AccountsPage.css"
 
 interface AccountsPageProps {
   accounts: TradingAccount[]

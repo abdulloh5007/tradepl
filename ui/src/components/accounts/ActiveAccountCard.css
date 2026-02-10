@@ -1,0 +1,164 @@
+.acc-active-card {
+  background: #0f1421;
+  /* Darker background from image */
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 20px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.acc-active-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.acc-active-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.acc-active-title-row h2 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+  color: #f8fafc;
+  letter-spacing: 0.02em;
+}
+
+.acc-mini-id {
+  font-size: 15px;
+  color: #64748b;
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.acc-active-sub {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.acc-mode-pill,
+.acc-platform-pill,
+.acc-plan-pill {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.acc-mode-pill {
+  background: rgba(16, 185, 129, 0.15);
+  /* Green tint */
+  color: #34d399;
+}
+
+.acc-platform-pill {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.acc-plan-pill {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+/* Switch toggle (Chevron right) */
+.acc-switch-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #e2e8f0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.acc-switch-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Balance */
+.acc-pl-block {
+  margin-top: 24px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+/* Actions Row */
+.acc-action-row {
+  margin-top: 28px;
+  display: flex;
+  justify-content: space-between;
+  /* Spread them out like in image */
+  align-items: flex-start;
+  padding: 0 4px;
+}
+
+.acc-action-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.acc-action-btn {
+  border: none;
+  background: rgba(30, 41, 59, 0.5);
+  /* Dark greyish */
+  color: #e2e8f0;
+  border-radius: 50%;
+  width: 64px;
+  /* Big buttons */
+  height: 64px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.acc-action-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(51, 65, 85, 0.7);
+}
+
+/* Yellow Trade Button */
+.acc-action-btn.trade-btn {
+  background: #facc15;
+  /* Yellow */
+  color: #0f172a;
+  /* Dark Icon */
+  box-shadow: 0 4px 12px rgba(250, 204, 21, 0.3);
+}
+
+.acc-action-btn.trade-btn:hover {
+  background: #fbbf24;
+}
+
+.acc-action-label {
+  font-size: 13px;
+  color: #f1f5f9;
+  font-weight: 500;
+}
+
+.acc-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
