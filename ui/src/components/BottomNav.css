@@ -89,25 +89,5 @@ html[data-theme="light"] .bottom-nav-btn.active {
         border-radius: 12px;
         padding: 8px 2px 6px;
     }
-}  .bottom-nav-wrap {
-    padding-top: 6px;
-  }
-
-  .bottom-nav {
-    width: min(620px, calc(100% - 14px));
-    border-radius: 18px;
-  }
-
-  .bottom-nav-btn-label {
-    font-size: 10px;
-  }
-
 }
 
-@media (max-width: 480px) {
-  .bottom-nav {
-    width: calc(100% - 10px);
-    border-radius: 16px;
-    gap: 2px;
-    padding: 5px;
-  }
