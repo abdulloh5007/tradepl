@@ -2440,7 +2440,8 @@ html[data-theme="light"] .settings-logout-btn {
 .accounts-page {
   width: min(760px, 100%);
   margin: 0 auto;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
@@ -2791,7 +2792,7 @@ html[data-theme="light"] .settings-logout-btn {
 @media (min-width: 768px) {
   .accounts-page {
     width: min(980px, 100%);
-    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+    /* grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); remove grid */
     align-items: start;
   }
 
@@ -3213,4 +3214,37 @@ html[data-theme="light"] .chart-bottom-inner .market-panel {
   .settings-card {
     padding: 12px;
   }
+}
+/* Header styles for Accounts Page */
+.accounts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 0 4px;
+}
+
+.accounts-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.add-account-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background-color: #fbbf24;
+  color: #000;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.2);
+}
+
+.add-account-btn:hover {
+  background-color: #f59e0b;
 }

@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
+import { Plus } from "lucide-react"
 import type { Metrics, TradingAccount } from "../types"
 import ActiveAccountCard from "../components/accounts/ActiveAccountCard"
 import AccountsSwitcherSheet from "../components/accounts/AccountsSwitcherSheet"
 import AccountFundingModal from "../components/accounts/AccountFundingModal"
 import AccountDetailsModal from "../components/accounts/AccountDetailsModal"
+import AccountCreationModal from "../components/accounts/AccountCreationModal"
 import type { AccountSnapshot } from "../components/accounts/types"
 
 interface AccountsPageProps {
@@ -22,13 +24,6 @@ interface AccountsPageProps {
   onCloseAll: () => Promise<void>
   onGoTrade: () => void
 }
-
-const planOptions = [
-  { id: "standard", label: "Standard" },
-  { id: "pro", label: "Pro" },
-  { id: "raw", label: "Raw Spread" },
-  { id: "swapfree", label: "Swap Free" }
-]
 
 type FundingType = "deposit" | "withdraw" | null
 
@@ -67,24 +62,47 @@ export default function AccountsPage({
   const [fundingOpen, setFundingOpen] = useState<FundingType>(null)
   const [fundingAmount, setFundingAmount] = useState("1000")
   const [fundingBusy, setFundingBusy] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [createMode, setCreateMode] = useState<"demo" | "real">("demo")
-  const [createPlan, setCreatePlan] = useState("standard")
-  const [createName, setCreateName] = useState("")
+  const [createModalOpen, setCreateModalOpen] = useState(false)
 
   if (!activeAccount) {
     return (
       <div className="accounts-page">
+        <div className="accounts-header">
+          <h1 className="accounts-title">Accounts</h1>
+          <button
+            onClick={() => setCreateModalOpen(true)}
+            className="add-account-btn"
+          >
+            <Plus size={24} />
+          </button>
+        </div>
+
         <section className="acc-active-card">
           <h2>No accounts</h2>
           <p className="acc-note">Create your first account to start trading.</p>
         </section>
+
+        <AccountCreationModal
+          open={createModalOpen}
+          onClose={() => setCreateModalOpen(false)}
+          onCreate={onCreate}
+        />
       </div>
     )
   }
 
   return (
-    <div className="accounts-page">
+    <div className="accounts-page pb-24">
+      <div className="accounts-header">
+        <h1 className="accounts-title">Accounts</h1>
+        <button
+          onClick={() => setCreateModalOpen(true)}
+          className="add-account-btn"
+        >
+          <Plus size={20} />
+        </button>
+      </div>
+
       <ActiveAccountCard
         account={activeAccount}
         snapshot={activeSnapshot || { pl: 0, openCount: 0, metrics: null }}
@@ -95,56 +113,6 @@ export default function AccountsPage({
         onWithdraw={() => setFundingOpen("withdraw")}
         onDetails={() => setDetailsOpen(true)}
       />
-
-      <section className="acc-create-card">
-        <h3>Open New Account</h3>
-        <div className="acc-create-grid">
-          <label className="acc-modal-label">
-            Mode
-            <select value={createMode} onChange={e => setCreateMode(e.target.value as "demo" | "real")}>
-              <option value="demo">Demo</option>
-              <option value="real">Real</option>
-            </select>
-          </label>
-          <label className="acc-modal-label">
-            Account Type
-            <select value={createPlan} onChange={e => setCreatePlan(e.target.value)}>
-              {planOptions.map(p => (
-                <option key={p.id} value={p.id}>{p.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="acc-modal-label">
-            Name (optional)
-            <input
-              value={createName}
-              onChange={e => setCreateName(e.target.value)}
-              placeholder={createMode === "demo" ? "Demo Standard" : "Real Standard"}
-            />
-          </label>
-          <button
-            type="button"
-            className="acc-action-btn"
-            disabled={creating}
-            onClick={async () => {
-              setCreating(true)
-              try {
-                await onCreate({
-                  plan_id: createPlan,
-                  mode: createMode,
-                  name: createName.trim() || undefined,
-                  is_active: true
-                })
-                setCreateName("")
-              } finally {
-                setCreating(false)
-              }
-            }}
-          >
-            {creating ? "Creating..." : "Create & Activate"}
-          </button>
-        </div>
-      </section>
 
       <AccountsSwitcherSheet
         open={switcherOpen}
@@ -195,6 +163,12 @@ export default function AccountsPage({
         onCloseAll={onCloseAll}
         onRename={onRenameAccount}
         onUpdateLeverage={onUpdateLeverage}
+      />
+
+      <AccountCreationModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreate={onCreate}
       />
     </div>
   )

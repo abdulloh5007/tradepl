@@ -47,5 +47,17 @@ class Database:
                 telegram_id
             )
             if row:
-                return dict(row['rights'])
+                rights = row['rights']
+                if isinstance(rights, list):
+                    return {r: True for r in rights}
+                if isinstance(rights, str):
+                    import json
+                    try:
+                        return json.loads(rights)
+                    except:
+                        return {}
+                try:
+                    return dict(rights)
+                except (ValueError, TypeError):
+                    return {}
             return None

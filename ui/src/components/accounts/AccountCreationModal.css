@@ -1,0 +1,427 @@
+/* Modal Overlay */
+.acm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  /* Anchor sheet to bottom */
+  align-items: center;
+  /* Center sheet horizontally on wide screens */
+}
+
+.acm-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1;
+}
+
+/* Modal Container (The Sheet) */
+.acm-sheet {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 420px;
+  /* Max width for desktop */
+  background-color: #13141b;
+  border-radius: 20px 20px 0 0;
+  /* Rounded top corners only */
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  /* Almost full height */
+  color: #ffffff;
+  font-family: 'Space Grotesk', sans-serif;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  /* Main sheet hides overflow, internal content scrolls */
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Header */
+.acm-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background-color: #13141b;
+  /* Ensure opaque background */
+}
+
+.acm-close-btn {
+  padding: 8px;
+  margin-left: -8px;
+  color: #9ca3af;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s;
+  border-radius: 50%;
+}
+
+.acm-close-btn:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.acm-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.acm-spacer {
+  width: 32px;
+}
+
+/* Scrollable Content Area */
+.acm-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tabs */
+.acm-tabs-container {
+  padding: 16px 16px 8px;
+  flex-shrink: 0;
+}
+
+.acm-tabs {
+  display: flex;
+  padding: 4px;
+  background-color: #1c1e26;
+  border-radius: 12px;
+}
+
+.acm-tab {
+  flex: 1;
+  padding: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.acm-tab:hover {
+  color: #d1d5db;
+}
+
+.acm-tab.active {
+  background-color: #2a2d3a;
+  color: #ffffff;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Scroll Container for Cards */
+.acm-scroll-container {
+  flex-shrink: 0;
+  /* Prevent shrinking */
+  width: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 16px 0;
+  scroll-behavior: smooth;
+}
+
+.acm-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.acm-cards-wrapper {
+  display: flex;
+  width: 400%;
+  /* 4 cards = 400% width */
+}
+
+.acm-card-slide {
+  width: 25%;
+  /* 25% of 400% = 100% of container */
+  position: relative;
+  padding: 0 24px;
+  scroll-snap-align: center;
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+  /* Ensure padding is included in width */
+}
+
+/* Dots */
+.acm-dots {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0 24px;
+}
+
+.acm-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.2);
+  transition: all 0.3s;
+}
+
+.acm-dot.active {
+  background-color: #ffffff;
+  transform: scale(1.25);
+}
+
+/* Footer */
+.acm-footer {
+  flex-shrink: 0;
+  padding: 24px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background-color: #13141b;
+}
+
+.acm-contract-specs {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.acm-contract-title {
+  font-size: 12px;
+  color: #fbbf24;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.acm-contract-desc {
+  font-size: 10px;
+  color: #6b7280;
+  line-height: 1.2;
+}
+
+.acm-submit-btn {
+  width: 100%;
+  padding: 14px;
+  background-color: #fbbf24;
+  color: #000000;
+  font-weight: 700;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 16px;
+}
+
+.acm-submit-btn:hover {
+  background-color: #f59e0b;
+}
+
+.acm-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Account Type Card Styles --- */
+
+.atc-card {
+  width: 100%;
+  background-color: #1c1e26;
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  /* Important for width calculation with padding */
+}
+
+/* Image/Cube Container */
+.atc-image-container {
+  width: 128px;
+  height: 128px;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+
+.atc-title {
+  font-size: 30px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0 0 8px;
+}
+
+.atc-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d1d5db;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.atc-description {
+  font-size: 14px;
+  color: #9ca3af;
+  margin: 0 0 32px;
+  max-width: 260px;
+  /* Slightly winder max width */
+  line-height: 1.5;
+}
+
+/* Details Rows */
+.atc-details {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.atc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.atc-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.atc-label {
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+.atc-dots {
+  flex: 1;
+  border-bottom: 1px dotted #374151;
+  margin: 0 8px;
+  position: relative;
+  top: 4px;
+  opacity: 0.5;
+}
+
+.atc-value {
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.acm-dot {
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* --- Dynamic Account Logos --- */
+
+.atc-logo {
+  width: 80px;
+  height: 80px;
+  position: relative;
+  transition: transform 0.3s ease;
+}
+
+.atc-card:hover .atc-logo {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.atc-logo-inner {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(4px);
+  border-top: 1px solid rgba(255, 255, 255, 0.4);
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+/* Standard: Blue Cube */
+.atc-logo-standard {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  /* Indigo to Violet */
+  border-radius: 16px;
+  transform: rotate(45deg);
+  box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.4), 0 10px 10px -5px rgba(79, 70, 229, 0.2);
+}
+
+.atc-logo-standard .atc-logo-inner {
+  border-radius: 16px;
+}
+
+/* Pro: Gold Octagon/Gem */
+.atc-logo-pro {
+  background: linear-gradient(135deg, #d97706, #fbbf24, #f59e0b);
+  /* Amber/Gold */
+  border-radius: 24px;
+  transform: rotate(45deg);
+  box-shadow: 0 20px 25px -5px rgba(245, 158, 11, 0.4), 0 10px 10px -5px rgba(245, 158, 11, 0.2);
+  clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+}
+
+.atc-logo-pro .atc-logo-inner {
+  clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+}
+
+/* Raw Spread: Cyan Diamond/Crystal */
+.atc-logo-raw {
+  background: linear-gradient(135deg, #06b6d4, #22d3ee);
+  /* Cyan */
+  border-radius: 4px;
+  transform: rotate(45deg) skew(10deg);
+  box-shadow: 0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.2);
+}
+
+.atc-logo-raw .atc-logo-inner {
+  border-radius: 4px;
+}
+
+/* Swap Free: Emerald Sphere/Orb */
+.atc-logo-swapfree {
+  background: linear-gradient(135deg, #059669, #10b981, #34d399);
+  /* Emerald */
+  border-radius: 50%;
+  transform: rotate(0deg);
+  box-shadow: 0 20px 25px -5px rgba(16, 185, 129, 0.4), 0 10px 10px -5px rgba(16, 185, 129, 0.2);
+}
+
+.atc-logo-swapfree .atc-logo-inner {
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.4), transparent 60%);
+}
