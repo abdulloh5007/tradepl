@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import PositionsTable from "../components/PositionsTable"
-import AccountMetrics from "../components/AccountMetrics"
-import type { Order, Quote, Lang, MarketConfig, Metrics } from "../types"
+import PositionsTable from "../../components/PositionsTable"
+import AccountMetrics from "../../components/AccountMetrics"
+import type { Order, Quote, Lang, MarketConfig, Metrics } from "../../types"
+import "./PositionsPage.css"
 
 interface PositionsPageProps {
     metrics: Metrics

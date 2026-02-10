@@ -1,6 +1,7 @@
 import { toast } from "sonner"
-import type { Lang } from "../types"
-import { formatNumber } from "../utils/format"
+import type { Lang } from "../../types"
+import { formatNumber } from "../../utils/format"
+import "./FaucetPage.css"
 
 interface FaucetPageProps {
     api: {

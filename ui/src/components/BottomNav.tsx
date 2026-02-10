@@ -2,6 +2,7 @@ import { BarChart2, History, List, Settings2, Wallet } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Lang, View } from "../types"
 import { t } from "../utils/i18n"
+import "./BottomNav.css"
 
 interface BottomNavProps {
     view: View

@@ -1,5 +1,6 @@
-import OrderHistoryTable from "../components/OrderHistoryTable"
-import type { Lang, Order } from "../types"
+import OrderHistoryTable from "../../components/OrderHistoryTable"
+import type { Lang, Order } from "../../types"
+import "./HistoryPage.css"
 
 interface HistoryPageProps {
     orders: Order[]

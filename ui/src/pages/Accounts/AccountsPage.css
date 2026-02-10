@@ -1,0 +1,66 @@
+.accounts-page {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.accounts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.accounts-title {
+  font-size: 24px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.add-account-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background-color: #fbbf24;
+  color: #000;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.2);
+}
+
+.add-account-btn:hover {
+  background-color: #f59e0b;
+  transform: translateY(-2px);
+}
+
+.add-account-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  transform: translateY(-2px);
+}
+
+.acc-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+/* Extracted from styles.css */
+.acc-create-card {
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 16px;
+  padding: 14px;
+  background: linear-gradient(140deg, rgba(15, 20, 33, 0.72), rgba(25, 33, 51, 0.56));
+}
+
+.acc-create-card h3 {
+  margin: 0 0 10px;
+}
+
+.acc-create-grid {
+  display: grid;
+  gap: 8px;
+}

@@ -1,0 +1,112 @@
+/* Api Page */
+/* Swagger Styles */
+.swagger-shell {
+  border-radius: 20px;
+  padding: 12px;
+  background: radial-gradient(120% 120% at 20% 0%, rgba(46, 107, 228, .18), transparent 60%), radial-gradient(120% 120% at 80% 20%, rgba(20, 184, 166, .16), transparent 65%), var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow)
+}
+
+.swagger {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--panel)
+}
+
+.swagger :where(.swagger-ui) {
+  font-family: "IBM Plex Sans", "Space Grotesk", sans-serif
+}
+
+.swagger :where(.swagger-ui .topbar) {
+  display: none
+}
+
+.swagger :where(.swagger-ui) {
+  background: transparent
+}
+
+.swagger :where(.swagger-ui .info .title, .swagger-ui .info .base-url, .swagger-ui .info .title small) {
+  color: var(--text)
+}
+
+.swagger :where(.swagger-ui .scheme-container, .swagger-ui .opblock, .swagger-ui .opblock .opblock-summary, .swagger-ui .responses-inner, .swagger-ui .model-box, .swagger-ui .model) {
+  background: var(--panel);
+  border-color: var(--border)
+}
+
+.swagger :where(.swagger-ui .opblock-summary-method) {
+  color: #fff
+}
+
+.swagger :where(.swagger-ui .opblock-description-wrapper, .swagger-ui .opblock-external-docs-wrapper, .swagger-ui .opblock-title_normal, .swagger-ui .tab li, .swagger-ui .parameter__name, .swagger-ui .parameter__type, .swagger-ui .response-col_status, .swagger-ui .response-col_description, .swagger-ui .model-title, .swagger-ui .model .property) {
+  color: var(--text)
+}
+
+.swagger :where(.swagger-ui .opblock-summary-path, .swagger-ui .opblock-summary-description, .swagger-ui .parameter__name, .swagger-ui .parameter__type, .swagger-ui .prop-type, .swagger-ui .prop-format) {
+  color: var(--muted)
+}
+
+.swagger :where(.swagger-ui .opblock-tag) {
+  color: var(--text);
+  border-bottom: 1px solid var(--border)
+}
+
+.swagger :where(.swagger-ui .btn, .swagger-ui .opblock-control-arrow) {
+  color: var(--text);
+  border-color: var(--border)
+}
+
+.swagger :where(.swagger-ui input, .swagger-ui select, .swagger-ui textarea) {
+  background: var(--panel-alt);
+  color: var(--text);
+  border-color: var(--border)
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui) {
+  color: var(--text)
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui .opblock-summary-path, .swagger-ui .opblock-summary-description) {
+  color: var(--text)
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui section.models, .swagger-ui .model-container, .swagger-ui .model-box, .swagger-ui .model-box-control, .swagger-ui .model, .swagger-ui .model-title, .swagger-ui .model-title__text, .swagger-ui .model-box-control:focus) {
+  background: transparent
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui .model-title, .swagger-ui .model-title__text, .swagger-ui .model, .swagger-ui .model-box .model-box-control) {
+  color: var(--text)
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui .model-box) {
+  border-color: var(--border)
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui .model-box-control) {
+  box-shadow: none
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui .model-box-control, .swagger-ui .model-toggle) {
+  filter: none
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui .model-box-control, .swagger-ui .model-box-control span, .swagger-ui .model-box-control button, .swagger-ui .model-title, .swagger-ui .model-title__text, .swagger-ui .model, .swagger-ui .model-container, .swagger-ui section.models) {
+  background: transparent !important;
+  color: var(--text) !important
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui .model-toggle:after, .swagger-ui .model-toggle) {
+  background: transparent !important;
+  color: var(--text) !important
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui pre, .swagger-ui code, .swagger-ui .highlight-code, .swagger-ui .microlight) {
+  background: var(--panel-alt) !important;
+  color: var(--text) !important
+}
+
+html[data-theme="dark"] .swagger :where(.swagger-ui svg) {
+  filter: brightness(1.2)
+}

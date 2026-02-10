@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSearchParams, useNavigate } from "react-router-dom"
 import { LogOut, Sun, Moon, Settings, AlertCircle, X } from "lucide-react"
-import Skeleton from "../components/Skeleton"
+import Skeleton from "../../components/Skeleton"
 
 // Components
-import SessionsCard from "../components/admin/SessionsCard"
-import VolatilityCard from "../components/admin/VolatilityCard"
-import TrendCard from "../components/admin/TrendCard"
-import PriceEventsCard from "../components/admin/PriceEventsCard"
-import PanelAdmins from "../components/admin/PanelAdmins"
+import SessionsCard from "../../components/admin/SessionsCard"
+import VolatilityCard from "../../components/admin/VolatilityCard"
+import TrendCard from "../../components/admin/TrendCard"
+import PriceEventsCard from "../../components/admin/PriceEventsCard"
+import PanelAdmins from "../../components/admin/PanelAdmins"
 
 // Types
-import { SessionConfig, VolatilityConfig, PriceEvent, FilterType } from "../components/admin/types"
+import { SessionConfig, VolatilityConfig, PriceEvent, FilterType } from "../../components/admin/types"
+import "./ManagePanel.css"
 
 interface ManagePanelProps {
     baseUrl: string

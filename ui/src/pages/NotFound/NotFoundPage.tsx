@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom"
 import { Home, AlertTriangle } from "lucide-react"
+import "./NotFoundPage.css"
 
-export const NotFoundPage = () => {
+export default function NotFoundPage() {
     const navigate = useNavigate()
 
     return (

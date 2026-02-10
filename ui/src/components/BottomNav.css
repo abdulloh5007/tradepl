@@ -1,0 +1,113 @@
+/* Bottom Navigation */
+.bottom-nav-wrap {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    padding: 8px 0 calc(10px + env(safe-area-inset-bottom));
+}
+
+.bottom-nav {
+    width: min(780px, calc(100% - 24px));
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 6px;
+    border-radius: 22px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(10, 14, 24, 0.82);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(14px);
+}
+
+.bottom-nav-btn {
+    border: none;
+    background: transparent;
+    color: #cbd5e1;
+    border-radius: 16px;
+    padding: 8px 4px 7px;
+    display: grid;
+    place-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+}
+
+.bottom-nav-btn-label {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.bottom-nav-btn.active {
+    color: #dbeafe;
+    background: rgba(59, 130, 246, 0.3);
+}
+
+.bottom-nav-btn:hover {
+    color: #dbeafe;
+}
+
+html[data-theme="light"] .bottom-nav {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(148, 163, 184, 0.35);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
+}
+
+html[data-theme="light"] .bottom-nav-btn {
+    color: #334155;
+}
+
+html[data-theme="light"] .bottom-nav-btn.active {
+    color: #1d4ed8;
+    background: rgba(59, 130, 246, 0.18);
+}
+
+@media (max-width: 860px) {
+    .bottom-nav-wrap {
+        padding-top: 6px;
+    }
+
+    .bottom-nav {
+        width: min(620px, calc(100% - 14px));
+        border-radius: 18px;
+    }
+
+    .bottom-nav-btn-label {
+        font-size: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .bottom-nav {
+        width: calc(100% - 10px);
+        border-radius: 16px;
+        gap: 2px;
+        padding: 5px;
+    }
+
+    .bottom-nav-btn {
+        border-radius: 12px;
+        padding: 8px 2px 6px;
+    }
+}  .bottom-nav-wrap {
+    padding-top: 6px;
+  }
+
+  .bottom-nav {
+    width: min(620px, calc(100% - 14px));
+    border-radius: 18px;
+  }
+
+  .bottom-nav-btn-label {
+    font-size: 10px;
+  }
+
+}
+
+@media (max-width: 480px) {
+  .bottom-nav {
+    width: calc(100% - 10px);
+    border-radius: 16px;
+    gap: 2px;
+    padding: 5px;
+  }

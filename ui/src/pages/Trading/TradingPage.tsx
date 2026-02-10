@@ -1,8 +1,9 @@
 import { useState } from "react"
 import { ChevronsUpDown } from "lucide-react"
-import TradingChart from "../components/TradingChart"
-import MarketPanel from "../components/MarketPanel"
-import type { Quote, Lang, MarketConfig, Order } from "../types"
+import TradingChart from "../../components/TradingChart"
+import MarketPanel from "../../components/MarketPanel"
+import type { Quote, Lang, MarketConfig, Order } from "../../types"
+import "./TradingPage.css"
 
 interface TradingPageProps {
     candles: Array<{ time: number; open: number; high: number; low: number; close: number }>

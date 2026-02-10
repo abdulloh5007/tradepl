@@ -1,3 +1,5 @@
+import "./ApiPage.css"
+
 export default function ApiPage() {
     return (
         <div style={{ maxWidth: 1000 }}>

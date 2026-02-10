@@ -1,5 +1,6 @@
-import type { Lang, Theme } from "../types"
-import { t } from "../utils/i18n"
+import type { Lang, Theme } from "../../types"
+import { t } from "../../utils/i18n"
+import "./SettingsPage.css"
 
 interface SettingsPageProps {
     lang: Lang

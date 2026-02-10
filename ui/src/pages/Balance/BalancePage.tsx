@@ -1,6 +1,7 @@
-import AccountMetrics from "../components/AccountMetrics"
-import type { Metrics, Lang } from "../types"
-import { formatNumber } from "../utils/format"
+import AccountMetrics from "../../components/AccountMetrics"
+import type { Metrics, Lang } from "../../types"
+import { formatNumber } from "../../utils/format"
+import "./BalancePage.css"
 
 interface BalancePageProps {
     metrics: Metrics
