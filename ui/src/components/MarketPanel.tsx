@@ -15,19 +15,13 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
   const bid = quote?.bid || "—"
   const ask = quote?.ask || "—"
   const qtyHint = "0.01 - 999.99"
-  const [minusMenuOpen, setMinusMenuOpen] = useState(false)
-  const [plusMenuOpen, setPlusMenuOpen] = useState(false)
-  const minusMenuRef = useRef<HTMLDivElement | null>(null)
-  const plusMenuRef = useRef<HTMLDivElement | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (minusMenuRef.current && !minusMenuRef.current.contains(target)) {
-        setMinusMenuOpen(false)
-      }
-      if (plusMenuRef.current && !plusMenuRef.current.contains(target)) {
-        setPlusMenuOpen(false)
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
       }
     }
     document.addEventListener("mousedown", onClickOutside)
@@ -70,47 +64,29 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
     const base = Number.isFinite(current) ? current : 0.01
     const next = clampQty(base + delta)
     setQuickQty(next.toFixed(2))
-    setMinusMenuOpen(false)
-    setPlusMenuOpen(false)
   }
 
-  const quickSteps = [1, 10, 20]
+  const setFixedQty = (val: number) => {
+    setQuickQty(val.toFixed(2))
+    // Do not close menu as requested
+  }
+
+  const quickSteps = [0.01, 0.05, 0.1, 0.2, 0.5, 1.0]
 
   return (
     <div className="market-panel">
-      {/* Quantity Input */}
+      {/* Quantity Input Row */}
       <div className="lot-control">
-        <div className="lot-row">
-          <div className="lot-side left">
-            <button
-              type="button"
-              onClick={() => applyDelta(-0.01)}
-              className="lot-step-btn"
-            >
-              -0.01
-            </button>
-            <button
-              type="button"
-              onClick={() => applyDelta(-0.05)}
-              className="lot-step-btn"
-            >
-              -0.05
-            </button>
-            <div ref={minusMenuRef} className="lot-menu-wrap left">
-              <button type="button" className="lot-menu-toggle" onClick={() => setMinusMenuOpen(v => !v)}>-⋯</button>
-              {minusMenuOpen && (
-                <div className="lot-menu">
-                {quickSteps.map(step => (
-                  <button key={`minus-${step}`} type="button" onClick={() => applyDelta(-step)} className="lot-menu-item">
-                    -{step}
-                  </button>
-                ))}
-                </div>
-              )}
-            </div>
-          </div>
+        <div className="lot-row-new">
+          <button
+            type="button"
+            onClick={() => applyDelta(0.01)}
+            className="lot-step-btn-new"
+          >
+            +0.01
+          </button>
 
-          <div className="lot-input-wrap">
+          <div className="lot-input-wrap-new">
             <input
               inputMode="decimal"
               value={quickQty}
@@ -127,63 +103,58 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
                 setQuickQty(clampQty(parsed).toFixed(2))
               }}
               placeholder={t("qty", lang)}
-              className="lot-input"
+              className="lot-input-new"
             />
           </div>
 
-          <div className="lot-side right">
+          <div className="lot-menu-wrap-new" ref={menuRef}>
             <button
               type="button"
-              onClick={() => applyDelta(0.01)}
-              className="lot-step-btn"
+              className={`lot-menu-toggle-new ${menuOpen ? "active" : ""}`}
+              onClick={() => setMenuOpen(v => !v)}
             >
-              +0.01
+              Presets
             </button>
-            <button
-              type="button"
-              onClick={() => applyDelta(0.05)}
-              className="lot-step-btn"
-            >
-              +0.05
-            </button>
-            <div ref={plusMenuRef} className="lot-menu-wrap right">
-              <button type="button" className="lot-menu-toggle" onClick={() => setPlusMenuOpen(v => !v)}>+⋯</button>
-              {plusMenuOpen && (
-                <div className="lot-menu">
+            {menuOpen && (
+              <div className="lot-menu-new">
                 {quickSteps.map(step => (
-                  <button key={`plus-${step}`} type="button" onClick={() => applyDelta(step)} className="lot-menu-item">
-                    +{step}
+                  <button
+                    key={step}
+                    type="button"
+                    onClick={() => setFixedQty(step)}
+                    className="lot-preset-btn"
+                  >
+                    {step}
                   </button>
                 ))}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        </div>
-        <div className="lot-hint">
-          Lot: {qtyHint}
         </div>
       </div>
 
       {/* Buy/Sell Buttons */}
-      <button
-        onClick={onSell}
-        className="market-order-btn sell"
-      >
-        <div style={{ display: "grid", gap: 2 }}>
-          <span>{t("sell", lang)}</span>
-          <span style={{ fontSize: 12, opacity: 0.9 }}>{t("bid", lang)} {bid}</span>
-        </div>
-      </button>
-      <button
-        onClick={onBuy}
-        className="market-order-btn buy"
-      >
-        <div style={{ display: "grid", gap: 2 }}>
-          <span>{t("buy", lang)}</span>
-          <span style={{ fontSize: 12, opacity: 0.9 }}>{t("ask", lang)} {ask}</span>
-        </div>
-      </button>
+      <div className="trade-buttons-row">
+        <button
+          onClick={onSell}
+          className="market-order-btn sell"
+        >
+          <div className="btn-content">
+            <span className="btn-label">{t("sell", lang)}</span>
+            <span className="btn-price">{bid}</span>
+          </div>
+        </button>
+        <button
+          onClick={onBuy}
+          className="market-order-btn buy"
+        >
+          <div className="btn-content">
+            <span className="btn-label">{t("buy", lang)}</span>
+            <span className="btn-price">{ask}</span>
+          </div>
+        </button>
+      </div>
     </div>
   )
 }
+

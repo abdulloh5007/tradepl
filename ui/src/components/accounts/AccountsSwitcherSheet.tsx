@@ -92,7 +92,7 @@ export default function AccountsSwitcherSheet({
                 >
                   <div className="acm-label">
                     <strong>{account.name}</strong>
-                    <span style={{ fontSize: 12 }}>{account.mode.toUpperCase()} • #{accountShortNumericId(account.id)}</span>
+                    <span style={{ fontSize: 12 }}>{account.plan?.name || "Standard"} • #{accountShortNumericId(account.id)}</span>
                   </div>
                   <div className="acm-label" style={{ alignItems: "flex-end" }}>
                     <span style={{ color: plColor, fontWeight: 600 }}>{plPrefix}{formatUsd(shot.pl)} USD</span>

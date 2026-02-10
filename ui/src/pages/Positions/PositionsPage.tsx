@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import PositionsTable from "../../components/PositionsTable"
-import AccountMetrics from "../../components/AccountMetrics"
+import { Plus, ArrowRight } from "lucide-react"
 import type { Order, Quote, Lang, MarketConfig, Metrics } from "../../types"
+import { formatNumber } from "../../utils/format"
+import { calcOrderProfit } from "../../utils/trading"
+import { t } from "../../utils/i18n"
 import "./PositionsPage.css"
 
 interface PositionsPageProps {
@@ -36,6 +38,7 @@ export default function PositionsPage({
     const [menuOpen, setMenuOpen] = useState(false)
     const menuRef = useRef<HTMLDivElement | null>(null)
 
+    // Close menu when clicking outside
     useEffect(() => {
         const onClickOutside = (e: MouseEvent) => {
             if (!menuRef.current) return
@@ -47,105 +50,161 @@ export default function PositionsPage({
         return () => window.removeEventListener("mousedown", onClickOutside)
     }, [])
 
+    const formatValue = (v: string | number) => {
+        const num = typeof v === 'string' ? parseFloat(v) : v
+        if (isNaN(num)) return "0.00"
+        return formatNumber(num, 2, 2)
+    }
+
+    const pl = parseFloat(metrics.pl || "0")
+    // Keep 0 as 0, but handle small float errors
+    const shownPl = Math.abs(pl) < 0.000000000001 ? 0 : pl
+    const plClass = shownPl >= 0 ? "profit" : "loss"
+
+    const bidDisplay = quote?.bid ? parseFloat(quote.bid) : marketPrice
+    const askDisplay = quote?.ask ? parseFloat(quote.ask) : marketPrice
+
     return (
-        <div style={{ maxWidth: 1200 }}>
-            <h2 style={{ marginBottom: 16 }}>Trade</h2>
-            <AccountMetrics metrics={metrics} lang={lang} />
-            <div style={{ height: 16 }} />
-            <div style={{ marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h2 style={{ margin: 0 }}>Open Positions</h2>
+        <div className="pos-container">
+            {/* Header Section */}
+            <div className="pos-header">
+                <div className="pos-top-row">
+                    <div style={{ width: 36 }} /> {/* Spacer for centering */}
+                    <div className={`pos-total-pl ${plClass}`}>
+                        {formatValue(shownPl)} USD
+                    </div>
+                    <button className="pos-add-btn">
+                        <Plus size={24} />
+                    </button>
+                </div>
+
+                <div className="pos-stats">
+                    <StatRow label="Balance:" value={formatValue(metrics.balance)} />
+                    <StatRow label="Equity:" value={formatValue(metrics.equity)} />
+                    <StatRow label="Margin:" value={formatValue(metrics.margin)} />
+                    <StatRow label="Free Margin:" value={formatValue(metrics.free_margin)} />
+                    <StatRow
+                        label="Margin Level (%):"
+                        value={metrics.margin_level ? formatNumber(parseFloat(metrics.margin_level), 2, 2) : "0.00"}
+                    />
+                </div>
+            </div>
+
+            {/* Options / Title Row */}
+            <div className="pos-options-row">
+                <h3 className="pos-section-title">Positions</h3>
                 <div style={{ position: "relative" }} ref={menuRef}>
                     <button
+                        className="pos-dots-btn"
                         onClick={() => setMenuOpen(v => !v)}
                         disabled={bulkClosing}
-                        style={{
-                            border: "1px solid var(--border-subtle)",
-                            background: "var(--card-bg)",
-                            color: "var(--text-base)",
-                            borderRadius: 8,
-                            width: 36,
-                            height: 32,
-                            cursor: bulkClosing ? "not-allowed" : "pointer",
-                            fontSize: 18,
-                            lineHeight: 1
-                        }}
-                        aria-label="Open close menu"
                     >
-                        ⋯
+                        •••
                     </button>
                     {menuOpen && (
-                        <div
-                            style={{
-                                position: "absolute",
-                                right: 0,
-                                top: 36,
-                                minWidth: 220,
-                                background: "var(--card-bg)",
-                                border: "1px solid var(--border-subtle)",
-                                borderRadius: 8,
-                                boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
-                                padding: 6,
-                                zIndex: 20
-                            }}
-                        >
-                            <MenuItem
-                                label="Close All"
+                        <div className="pos-menu-popup">
+                            <button
+                                className="pos-menu-item"
                                 disabled={bulkClosing}
                                 onClick={() => {
                                     setMenuOpen(false)
                                     onCloseAll()
                                 }}
-                            />
-                            <MenuItem
-                                label="Close Profit"
+                            >
+                                Close All
+                            </button>
+                            <button
+                                className="pos-menu-item"
                                 disabled={bulkClosing}
                                 onClick={() => {
                                     setMenuOpen(false)
                                     onCloseProfit()
                                 }}
-                            />
-                            <MenuItem
-                                label="Close Loss"
+                            >
+                                Close Profit
+                            </button>
+                            <button
+                                className="pos-menu-item"
                                 disabled={bulkClosing}
                                 onClick={() => {
                                     setMenuOpen(false)
                                     onCloseLoss()
                                 }}
-                            />
+                            >
+                                Close Loss
+                            </button>
                         </div>
                     )}
                 </div>
             </div>
-            <PositionsTable
-                orders={orders}
-                quote={quote}
-                marketPair={marketPair}
-                marketConfig={marketConfig}
-                marketPrice={marketPrice}
-                onClose={onClose}
-                lang={lang}
-            />
+
+            {/* Positions List */}
+            <div className="pos-list">
+                {orders.length === 0 ? (
+                    <div className="pos-empty">No open positions</div>
+                ) : (
+                    orders.map(o => {
+                        // Use symbol for display, fallback to pair_id
+                        const displaySymbol = o.symbol || o.pair_id
+                        const cfg = marketConfig[displaySymbol] || marketConfig[o.pair_id] || (displaySymbol === "UZS-USD" ? { invertForApi: true, displayDecimals: 2 } : undefined)
+
+                        // Profit uses pair_id for lookup usually, or symbol
+                        const profit = calcOrderProfit(o, bidDisplay, askDisplay, o.pair_id, marketConfig)
+
+                        // Entry Price Calculation:
+                        // If o.price is "0" (market order), try to calculate from spent_amount / qty
+                        let rawEntry = parseFloat(o.price || "0")
+                        const qty = parseFloat(o.qty || "0")
+
+                        if (rawEntry === 0 && o.spent_amount && qty > 0) {
+                            rawEntry = parseFloat(o.spent_amount) / qty
+                        }
+
+                        const entryDisplay = cfg?.invertForApi && rawEntry > 0 ? 1 / rawEntry : rawEntry
+
+                        // For current price, we use bid for buy (close sell), ask for sell (close buy)
+                        const currentPrice = o.side === 'buy' ? bidDisplay : askDisplay
+
+                        const isBuy = o.side === "buy"
+                        const plClass = profit >= 0 ? "profit" : "loss"
+
+                        return (
+                            <div
+                                key={o.id}
+                                className="pos-item"
+                                onClick={() => onClose(o.id)}
+                            >
+                                <div className="pos-item-left">
+                                    <div className="pos-symbol-row">
+                                        <span>{displaySymbol}</span>
+                                        <span className={`pos-side ${o.side}`}>{o.side}</span>
+                                        <span className="pos-size">{formatNumber(qty, 2, 2)}</span>
+                                    </div>
+                                    <div className="pos-price-row">
+                                        <span>{formatNumber(entryDisplay, cfg?.displayDecimals || 2, cfg?.displayDecimals || 2)}</span>
+                                        <ArrowRight size={12} className="pos-arrow" />
+                                        <span>{formatNumber(currentPrice, cfg?.displayDecimals || 2, cfg?.displayDecimals || 2)}</span>
+                                    </div>
+                                </div>
+                                <div className="pos-item-right">
+                                    <div className={`pos-pl ${plClass}`}>
+                                        {formatNumber(profit, 2, 2)}
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    })
+                )}
+            </div>
         </div>
     )
 }
 
-function MenuItem({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+function StatRow({ label, value }: { label: string, value: string }) {
     return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            style={{
-                width: "100%",
-                textAlign: "left",
-                border: "none",
-                background: "transparent",
-                color: "var(--text-base)",
-                padding: "8px 10px",
-                borderRadius: 6,
-                cursor: disabled ? "not-allowed" : "pointer"
-            }}
-        >
-            {label}
-        </button>
+        <div className="pos-stat-row">
+            <span className="pos-stat-label">{label}</span>
+            <span className="pos-stat-value">{value}</span>
+        </div>
     )
 }

@@ -3,7 +3,8 @@
   /* Darker background from image */
   border: 1px solid rgba(148, 163, 184, 0.1);
   border-radius: 20px;
-  padding: 20px;
+  /* padding: 20px; <-- REMOVED PARENT PADDING */
+  padding: 0;
   position: relative;
   overflow: hidden;
   font-family: 'Inter', system-ui, sans-serif;
@@ -14,6 +15,41 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  padding: 20px 20px 0;
+  /* Applied specific padding */
+}
+
+/* ... existing styles ... */
+
+/* Balance */
+.acc-pl-block {
+  margin-top: 24px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  padding: 0 20px;
+  /* Applied specific padding */
+}
+
+/* Actions Row */
+.acc-action-row {
+  margin-top: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0 20px 24px;
+  /* Applied specific padding with bottom space */
+  /* No negative margins needed now */
+}
+
+.acc-action-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  /* flex: 1; <-- REMOVED to allow space-between to push items to edges */
 }
 
 .acc-active-title-row {
@@ -96,6 +132,8 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   color: #ffffff;
+  padding: 0 20px;
+  /* Restoring padding */
 }
 
 /* Actions Row */
@@ -103,9 +141,10 @@
   margin-top: 28px;
   display: flex;
   justify-content: space-between;
-  /* Spread them out like in image */
   align-items: flex-start;
-  padding: 0 4px;
+  width: 100%;
+  padding: 0 20px 24px;
+  /* Padding restored, no negative margins */
 }
 
 .acc-action-item {
@@ -113,7 +152,7 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  flex: 1;
+  /* flex: 1 removed to allow space-between to push to edges */
 }
 
 .acc-action-btn {

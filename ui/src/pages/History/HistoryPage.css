@@ -1,1 +1,335 @@
 /* History Page */
+.history-container {
+    padding: 0;
+    background-color: transparent;
+    /* Removed black bg */
+    height: 100%;
+    /* Occupy full parent height */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* Prevent container scroll, let list scroll */
+    color: #ffffff;
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Header / Filter Bar */
+.history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 10px;
+    /* Reduced from 16px to match Positions */
+    background-color: transparent;
+    flex-shrink: 0;
+    z-index: 10;
+    min-height: 56px;
+    /* Ensure sufficient touch target/height consistency */
+}
+
+.history-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+    flex: 1;
+}
+
+.history-filter-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    padding: 0;
+}
+
+.history-filter-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.history-filter-pills {
+    display: flex;
+    background: #1c1c1e;
+    border-radius: 20px;
+    padding: 2px;
+}
+
+.history-pill {
+    padding: 6px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #8e8e93;
+    background: transparent;
+    border: none;
+    border-radius: 18px;
+    cursor: pointer;
+}
+
+.history-pill.active {
+    background: #3a3a3c;
+    color: #ffffff;
+}
+
+.history-icon-btn {
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    cursor: pointer;
+    padding: 4px;
+}
+
+/* List Items */
+.history-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.history-item {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 10px;
+    /* Match Positions item padding-x (10px) */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    /* More subtle border */
+    gap: 4px;
+}
+
+.h-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.h-symbol-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+}
+
+.h-symbol {
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.h-side {
+    font-weight: 600;
+}
+
+.h-side.buy {
+    color: #3b82f6;
+    /* Blue */
+}
+
+.h-side.sell {
+    color: #ef4444;
+    /* Red */
+}
+
+.h-qty {
+    font-weight: 600;
+}
+
+.h-pl {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.h-pl.profit {
+    color: #3b82f6;
+}
+
+.h-pl.loss {
+    color: #ef4444;
+}
+
+.h-price-row {
+    display: flex;
+    gap: 6px;
+    font-size: 13px;
+    color: #9ca3af;
+    align-items: center;
+}
+
+.h-date {
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+/* Balance Item (Deposit/Withdraw) */
+.history-item.balance-item .h-symbol {
+    color: #ffffff;
+}
+
+.history-item.balance-item .h-pl {
+    font-size: 16px;
+    font-weight: 700;
+    color: #3b82f6;
+    /* Default blue for positive balance ops */
+}
+
+/* Footer Summary */
+.history-footer {
+    padding: 16px 10px;
+    background: transparent;
+    margin-top: 24px;
+    /* Space from list */
+    padding-bottom: 120px;
+    /* Ensure space at bottom for nav */
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #ffffff;
+}
+
+.summary-split {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.1);
+    margin: 8px 0;
+}
+
+.summary-row.balance-total {
+    margin-top: 12px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.summary-val {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Modal Internal Body Styles (rendered inside acm-sheet) */
+.hm-header {
+    padding: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hm-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.hm-symbol-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 18px;
+}
+
+.hm-symbol {
+    font-weight: 700;
+    color: #fff;
+}
+
+.hm-side {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.hm-side.buy {
+    color: #3b82f6;
+}
+
+.hm-side.sell {
+    color: #ef4444;
+}
+
+.hm-ticket {
+    color: #9ca3af;
+    font-size: 14px;
+}
+
+.hm-desc {
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.hm-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.hm-main-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.hm-prices {
+    font-size: 16px;
+    font-weight: 600;
+    color: #d1d5db;
+}
+
+.hm-profit {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.hm-profit.profit {
+    color: #3b82f6;
+}
+
+/* Screenshot shows negative logic? No, typically Red is negative. Screenshot -0.77 is Red. */
+.hm-profit.loss {
+    color: #ef4444;
+}
+
+.hm-delta-row {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.hm-delta.profit {
+    color: #3b82f6;
+}
+
+.hm-delta.loss {
+    color: #ef4444;
+}
+
+.hm-times-row {
+    margin-top: 4px;
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+.hm-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hm-grid-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+}
+
+.hm-label {
+    color: #9ca3af;
+}
+
+.hm-val {
+    color: #fff;
+    font-weight: 500;
+}

@@ -29,6 +29,7 @@ export interface Order {
     user_id?: string
     trading_account_id?: string
     pair_id: string
+    symbol: string /* Added symbol */
     side: string
     type?: string
     price: string
@@ -39,6 +40,12 @@ export interface Order {
     reserved_amount?: string
     spent_amount?: string
     unrealized_pnl?: string
+    profit?: string /* Added profit */
+    commission?: string /* Added commission */
+    swap?: string /* Added swap */
+    close_price?: string /* Added close_price */
+    close_time?: string /* Added close_time */
+    comment?: string /* Added comment */
     time_in_force?: string
     status: string
     created_at: string
