@@ -32,10 +32,26 @@ const toNumber = (value: unknown, fallback = 0) => {
     return Number.isFinite(n) ? n : fallback
 }
 
-const resolvePrice = (primary: unknown, secondary?: unknown) => {
-    const first = toNumber(primary, Number.NaN)
+const toDisplayPrice = (symbol: string, rawPrice: number) => {
+    if (!Number.isFinite(rawPrice) || rawPrice <= 0) return Number.NaN
+    // UZS-USD is stored in API-inverted form, display must be normal price space.
+    if (symbol === "UZS-USD" && rawPrice < 1) {
+        return 1 / rawPrice
+    }
+    return rawPrice
+}
+
+const deriveRawPriceFromSpent = (order: Order) => {
+    const qty = toNumber(order.qty, Number.NaN)
+    const spent = toNumber(order.spent_amount, Number.NaN)
+    if (!Number.isFinite(qty) || !Number.isFinite(spent) || qty <= 0 || spent <= 0) return Number.NaN
+    return spent / qty
+}
+
+const resolveDisplayPrice = (symbol: string, primary: unknown, secondary?: unknown) => {
+    const first = toDisplayPrice(symbol, toNumber(primary, Number.NaN))
     if (Number.isFinite(first) && first > 0) return first
-    const second = toNumber(secondary, Number.NaN)
+    const second = toDisplayPrice(symbol, toNumber(secondary, Number.NaN))
     if (Number.isFinite(second) && second > 0) return second
     return Number.NaN
 }
@@ -92,11 +108,14 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
     const [showFilter, setShowFilter] = useState(false)
     const [dateRange, setDateRange] = useState<DateRange>({ type: "month" })
     const listRef = useRef<HTMLDivElement | null>(null)
-    const loadSentinelRef = useRef<HTMLDivElement | null>(null)
+    const loadSentinelTopRef = useRef<HTMLDivElement | null>(null)
     const loadLockRef = useRef(false)
+    const initialBottomPinnedRef = useRef(false)
+    const shouldStickToBottomRef = useRef(true)
 
     const sortedOrders = useMemo(() => {
-        return [...orders].sort((a, b) => eventTimeMs(b) - eventTimeMs(a))
+        // History grows downward: oldest at top, newest at bottom.
+        return [...orders].sort((a, b) => eventTimeMs(a) - eventTimeMs(b))
     }, [orders])
 
     const filteredOrders = useMemo(() => {
@@ -134,8 +153,13 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
     const balance = totals.deposit + totals.profit + totals.swap + totals.commission
 
     const selectedSymbol = selectedOrder ? resolveOrderSymbol(selectedOrder) : ""
-    const selectedOpenPrice = selectedOrder ? resolvePrice(selectedOrder.price, selectedOrder.close_price) : Number.NaN
-    const selectedClosePrice = selectedOrder ? resolvePrice(selectedOrder.close_price, selectedOrder.price) : Number.NaN
+    const selectedDerivedRawPrice = selectedOrder ? deriveRawPriceFromSpent(selectedOrder) : Number.NaN
+    const selectedOpenPrice = selectedOrder
+        ? resolveDisplayPrice(selectedSymbol, selectedOrder.price, Number.isFinite(selectedDerivedRawPrice) ? selectedDerivedRawPrice : selectedOrder.close_price)
+        : Number.NaN
+    const selectedClosePrice = selectedOrder
+        ? resolveDisplayPrice(selectedSymbol, selectedOrder.close_price, selectedOrder.price || selectedDerivedRawPrice)
+        : Number.NaN
     const selectedProfit = selectedOrder ? toNumber(selectedOrder.profit) : 0
     const selectedSpent = selectedOrder ? toNumber(selectedOrder.spent_amount) : 0
     const selectedPercent = selectedSpent > 0 ? (selectedProfit / selectedSpent) * 100 : 0
@@ -150,8 +174,36 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
     }, [loading])
 
     useEffect(() => {
+        const list = listRef.current
+        if (!list) return
+
+        const updateStickState = () => {
+            const distanceFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight
+            shouldStickToBottomRef.current = distanceFromBottom <= 80
+        }
+
+        updateStickState()
+        list.addEventListener("scroll", updateStickState, { passive: true })
+        return () => list.removeEventListener("scroll", updateStickState)
+    }, [])
+
+    useEffect(() => {
+        const list = listRef.current
+        if (!list) return
+
+        if (!initialBottomPinnedRef.current) {
+            list.scrollTop = list.scrollHeight
+            initialBottomPinnedRef.current = true
+            return
+        }
+        if (shouldStickToBottomRef.current) {
+            list.scrollTop = list.scrollHeight
+        }
+    }, [filteredOrders.length])
+
+    useEffect(() => {
         const root = listRef.current
-        const sentinel = loadSentinelRef.current
+        const sentinel = loadSentinelTopRef.current
         if (!root || !sentinel || !hasMore) return
 
         const observer = new IntersectionObserver(
@@ -173,7 +225,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
             },
             {
                 root,
-                rootMargin: "0px 0px 220px 0px",
+                rootMargin: "220px 0px 0px 0px",
                 threshold: 0.01,
             }
         )
@@ -194,6 +246,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
 
             <div className="history-content">
                 <div className="history-list" ref={listRef}>
+                    {hasMore && <div ref={loadSentinelTopRef} className="history-sentinel history-sentinel-top" aria-hidden="true" />}
                     {filteredOrders.length === 0 ? (
                         <div className="history-empty">No history for this period</div>
                     ) : (
@@ -201,8 +254,9 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                             const profit = toNumber(order.profit)
                             const isProfit = profit >= 0
                             const displaySymbol = resolveOrderSymbol(order)
-                            const openPrice = resolvePrice(order.price, order.close_price)
-                            const closePrice = resolvePrice(order.close_price, order.price)
+                            const derivedRawPrice = deriveRawPriceFromSpent(order)
+                            const openPrice = resolveDisplayPrice(displaySymbol, order.price, Number.isFinite(derivedRawPrice) ? derivedRawPrice : order.close_price)
+                            const closePrice = resolveDisplayPrice(displaySymbol, order.close_price, order.price || derivedRawPrice)
                             return (
                                 <div key={order.id} className="history-item" onClick={() => setSelectedOrder(order)}>
                                     <div className="h-row">
@@ -223,16 +277,12 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                                         </div>
                                         <div className="h-date">{formatDate(order.close_time || order.created_at)}</div>
                                     </div>
-                                    <div className="h-row h-ticket-row">
-                                        <span className="h-ticket">{formatTicket(order)}</span>
-                                    </div>
                                 </div>
                             )
                         })
                     )}
 
                     {loading && <div className="history-loading">Loading...</div>}
-                    {hasMore && <div ref={loadSentinelRef} className="history-sentinel" aria-hidden="true" />}
                 </div>
 
                 <div className="history-footer">

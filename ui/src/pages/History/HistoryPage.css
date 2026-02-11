@@ -214,6 +214,10 @@
     width: 100%;
 }
 
+.history-sentinel-top {
+    margin-top: 1px;
+}
+
 /* Modal Internal Body Styles */
 .hm-header {
     padding: 16px;
