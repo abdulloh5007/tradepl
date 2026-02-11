@@ -5,10 +5,10 @@ import { toast, Toaster } from "sonner"
 import type { Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics } from "./types"
 
 // Utils
-import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId } from "./utils/cookies"
+import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId, storedTimeframe } from "./utils/cookies"
 import { normalizeBaseUrl, apiPriceFromDisplay, toDisplayCandle } from "./utils/format"
 import { t } from "./utils/i18n"
-import { calcOrderProfit } from "./utils/trading"
+import { calcDisplayedOrderProfit } from "./utils/trading"
 
 // API
 import { createApiClient, createWsUrl } from "./api"
@@ -71,7 +71,7 @@ export default function App() {
 
   // Market state
   const [marketPair] = useState(marketPairs[0])
-  const [timeframe, setTimeframe] = useState("1m")
+  const [timeframe, setTimeframe] = useState(storedTimeframe)
   const [candles, setCandles] = useState<Array<{ time: number; open: number; high: number; low: number; close: number }>>([])
   const [quote, setQuote] = useState<Quote | null>(null)
   const [quickQty, setQuickQty] = useState("0.01")
@@ -178,8 +178,7 @@ export default function App() {
 
     let livePl = 0
     for (const order of openOrders) {
-      if (order.status !== "filled") continue
-      livePl += calcOrderProfit(order, bidDisplay, askDisplay, marketPair, marketConfig)
+      livePl += calcDisplayedOrderProfit(order, bidDisplay, askDisplay, marketPair, marketConfig)
     }
     if (!Number.isFinite(livePl)) livePl = toSafe(metrics.pl)
     if (Math.abs(livePl) < 0.000000000001) livePl = 0
@@ -201,7 +200,7 @@ export default function App() {
     }
   }, [metrics.balance, metrics.margin, metrics.pl, openOrders, bidDisplay, askDisplay, marketPair, marketConfig])
 
-  const isLiveTradingView = view === "chart" || view === "positions"
+  const isLiveTradingView = view === "chart" || view === "positions" || view === "accounts"
 
   const setPollBackoffState = useCallback((key: PollKey, failures: number, retryAt: number) => {
     setPollBackoff(prev => {
@@ -236,7 +235,8 @@ export default function App() {
     historyLoadingRef.current = true
     setHistoryLoading(true)
     try {
-      const before = reset ? undefined : orderHistoryRef.current[orderHistoryRef.current.length - 1]?.created_at
+      const lastOrder = orderHistoryRef.current[orderHistoryRef.current.length - 1]
+      const before = reset ? undefined : (lastOrder?.close_time || lastOrder?.created_at)
       const page = (await api.orderHistory({ limit: historyPageLimit, before })) || []
 
       if (reset) {
@@ -374,6 +374,10 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme)
     setCookie("lv_theme", theme)
   }, [theme])
+
+  useEffect(() => {
+    setCookie("lv_timeframe", timeframe)
+  }, [timeframe])
 
   useEffect(() => {
     window.location.hash = view

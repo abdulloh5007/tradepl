@@ -1,8 +1,9 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ChevronsUpDown } from "lucide-react"
 import TradingChart from "../../components/TradingChart"
 import MarketPanel from "../../components/MarketPanel"
 import type { Quote, Lang, MarketConfig, Order } from "../../types"
+import { setCookie, storedTradePanelOpen } from "../../utils/cookies"
 import "./TradingPage.css"
 
 interface TradingPageProps {
@@ -46,7 +47,11 @@ export default function TradingPage({
     isLoadingMore,
     hasMoreData
 }: TradingPageProps) {
-    const [tradePanelOpen, setTradePanelOpen] = useState(false)
+    const [tradePanelOpen, setTradePanelOpen] = useState(storedTradePanelOpen)
+
+    useEffect(() => {
+        setCookie("lv_trade_panel", tradePanelOpen ? "1" : "0")
+    }, [tradePanelOpen])
 
     return (
         <div className="trading-immersive">

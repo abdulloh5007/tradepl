@@ -32,3 +32,14 @@ export function storedToken(): string {
 export function storedAccountId(): string {
     return getCookie("lv_account_id") || ""
 }
+
+export function storedTimeframe(): string {
+    const v = getCookie("lv_timeframe")
+    const allowed = new Set(["1m", "5m", "10m", "15m", "30m", "1h"])
+    if (v && allowed.has(v)) return v
+    return "1m"
+}
+
+export function storedTradePanelOpen(): boolean {
+    return getCookie("lv_trade_panel") === "1"
+}

@@ -48,7 +48,7 @@ export default function ActiveAccountCard({
       </div>
 
       <div className="acc-pl-block" style={{ color: plColor }}>
-        {formatUsd(snapshot.metrics?.balance || 0)} USD
+        {formatUsd(snapshot.metrics?.equity || snapshot.metrics?.balance || 0)} USD
       </div>
 
       <div className="acc-action-row">

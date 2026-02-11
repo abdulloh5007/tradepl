@@ -41,7 +41,7 @@ func (s *Store) GetOrderForUpdate(ctx context.Context, tx pgx.Tx, orderID string
 	var price *decimal.Decimal
 	var quoteAmount *decimal.Decimal
 	var remainingQuote *decimal.Decimal
-	err := tx.QueryRow(ctx, "select id, user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where id = $1 for update", orderID).Scan(&o.ID, &o.UserID, &o.TradingAccountID, &o.PairID, &side, &typ, &status, &price, &o.Qty, &o.RemainingQty, &quoteAmount, &remainingQuote, &o.ReservedAmount, &o.SpentAmount, &tif, &o.CreatedAt)
+	err := tx.QueryRow(ctx, "select id, coalesce(ticket_no, 0), user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at from orders where id = $1 for update", orderID).Scan(&o.ID, &o.TicketNo, &o.UserID, &o.TradingAccountID, &o.PairID, &side, &typ, &status, &price, &o.Qty, &o.RemainingQty, &quoteAmount, &remainingQuote, &o.ReservedAmount, &o.SpentAmount, &tif, &o.CreatedAt)
 	if err != nil {
 		return o, err
 	}
@@ -108,7 +108,45 @@ func (s *Store) UpdateOrderFill(ctx context.Context, tx pgx.Tx, orderID string, 
 }
 
 func (s *Store) UpdateOrderStatus(ctx context.Context, tx pgx.Tx, orderID string, status types.OrderStatus) error {
+	now := time.Now().UTC()
+	if status == types.OrderStatusCanceled || status == types.OrderStatusClosed {
+		_, err := tx.Exec(ctx, "update orders set status = $1, close_time = coalesce(close_time, $2), close_price = coalesce(close_price, price), updated_at = $2 where id = $3", string(status), now, orderID)
+		return err
+	}
 	_, err := tx.Exec(ctx, "update orders set status = $1, updated_at = $2 where id = $3", string(status), time.Now().UTC(), orderID)
+	return err
+}
+
+func (s *Store) CloseOrderWithSnapshot(
+	ctx context.Context,
+	tx pgx.Tx,
+	orderID string,
+	status types.OrderStatus,
+	closePrice decimal.Decimal,
+	closeTime time.Time,
+	realizedPnL decimal.Decimal,
+	realizedCommission decimal.Decimal,
+	realizedSwap decimal.Decimal,
+) error {
+	_, err := tx.Exec(
+		ctx,
+		`UPDATE orders
+		 SET status = $1,
+		     close_price = $2,
+		     close_time = $3,
+		     realized_pnl = $4,
+		     realized_commission = $5,
+		     realized_swap = $6,
+		     updated_at = $3
+		 WHERE id = $7`,
+		string(status),
+		closePrice,
+		closeTime,
+		realizedPnL,
+		realizedCommission,
+		realizedSwap,
+		orderID,
+	)
 	return err
 }
 

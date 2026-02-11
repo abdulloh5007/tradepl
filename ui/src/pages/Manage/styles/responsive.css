@@ -1,0 +1,247 @@
+@media (max-width: 768px) {
+  .admin-dashboard {
+    padding: 14px;
+  }
+
+  .admin-header {
+    top: 0;
+    min-height: 60px;
+    padding: 12px 14px;
+    border-radius: 0 0 12px 12px;
+    margin-left: -14px;
+    margin-right: -14px;
+    border-left: none;
+    border-right: none;
+    gap: 10px;
+  }
+
+  .admin-header.compact {
+    top: 0;
+    min-height: 50px;
+    padding: 8px 10px;
+    border-radius: 0 0 12px 12px;
+  }
+
+  .admin-header-left {
+    max-width: 34px;
+    min-width: 0;
+    justify-content: flex-start;
+    gap: 0;
+  }
+
+  .admin-header-left h1 {
+    display: none;
+  }
+
+  .admin-title-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .admin-header-right {
+    margin-left: auto;
+    gap: 8px;
+  }
+
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-card {
+    border-radius: 16px;
+    padding: 18px;
+  }
+
+  .sessions-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trend-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .event-form-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .event-field input,
+  .event-field select {
+    width: 100%;
+  }
+
+  .event-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .event-info {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .admin-form-row {
+    flex-direction: column;
+  }
+
+  .admin-rights-row {
+    gap: 10px;
+  }
+
+  .admin-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .admin-info {
+    width: 100%;
+  }
+
+  .admin-rights {
+    flex-wrap: wrap;
+  }
+
+  .admin-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .admin-content {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .session-grid,
+  .volatility-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .risk-grid,
+  .pair-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .risk-actions {
+    justify-content: stretch;
+  }
+
+  .risk-actions .add-event-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .filter-presets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .date-range-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-dashboard {
+    padding: 10px;
+  }
+
+  .admin-header {
+    top: 0;
+    min-height: 58px;
+    padding: 10px 12px;
+    margin-left: -10px;
+    margin-right: -10px;
+    border-radius: 0 0 10px 10px;
+  }
+
+  .admin-header.compact {
+    top: 0;
+    min-height: 46px;
+    padding: 7px 9px;
+    border-radius: 0 0 10px 10px;
+  }
+
+  .admin-header-left h1 {
+    font-size: 16px;
+  }
+
+  .role-pill {
+    height: 20px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  .icon-btn,
+  .logout-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .logout-btn {
+    padding: 0;
+    justify-content: center;
+  }
+
+  .logout-btn span {
+    display: none;
+  }
+
+  .admin-card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .admin-card-header {
+    margin-bottom: 14px;
+  }
+
+  .admin-card-header h2 {
+    font-size: 14px;
+  }
+
+  .sessions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .session-grid,
+  .volatility-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .direction-btns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .direction-btns button {
+    justify-content: center;
+  }
+
+  .filter-modal {
+    min-width: calc(100% - 24px);
+    max-width: calc(100% - 24px);
+    padding: 16px;
+  }
+
+  .filter-modal.swiper {
+    padding: 18px 16px;
+  }
+
+  .filter-header h3 {
+    font-size: 16px;
+  }
+
+  .not-found-content h1 {
+    font-size: 56px;
+  }
+
+  .not-found-content p {
+    font-size: 16px;
+  }
+}

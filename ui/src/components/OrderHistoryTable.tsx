@@ -8,6 +8,16 @@ interface OrderHistoryTableProps {
     lang: Lang
 }
 
+const isMarketSymbol = (value?: string) => /^[A-Z0-9]{2,12}-[A-Z0-9]{2,12}$/.test(String(value || "").trim().toUpperCase())
+
+const resolveOrderSymbol = (order: Order, fallback = "UZS-USD") => {
+    const bySymbol = String(order.symbol || "").trim().toUpperCase()
+    if (isMarketSymbol(bySymbol)) return bySymbol
+    const byPairID = String(order.pair_id || "").trim().toUpperCase()
+    if (isMarketSymbol(byPairID)) return byPairID
+    return fallback
+}
+
 const money = (v?: string) => {
     const n = Number(v || "0")
     if (!Number.isFinite(n)) return "0.00"
@@ -46,7 +56,7 @@ export default function OrderHistoryTable({ orders, lang }: OrderHistoryTablePro
 
     const cards = useMemo(() => orders.map(o => {
         const isBuy = o.side === "buy"
-        const symbol = o.pair_id && o.pair_id.includes("-") ? o.pair_id : "UZS-USD"
+        const symbol = resolveOrderSymbol(o)
         return (
             <button
                 key={o.id}
@@ -161,7 +171,7 @@ export default function OrderHistoryTable({ orders, lang }: OrderHistoryTablePro
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
                                 <Field label="Ticket" value={selected.id} mono />
                                 <Field label="Account" value={selected.trading_account_id || "—"} mono />
-                                <Field label="Symbol" value={selected.pair_id && selected.pair_id.includes("-") ? selected.pair_id : "UZS-USD"} />
+                                <Field label="Symbol" value={resolveOrderSymbol(selected)} />
                                 <Field label="Status" value={selected.status || "—"} />
                                 <Field label="Type" value={`${(selected.side || "—").toUpperCase()} ${(selected.type || "").toUpperCase()}`.trim()} />
                                 <Field label="Time" value={localTime(selected.created_at)} />

@@ -107,9 +107,15 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         manualTrend: string
     } | null>(null)
     const [eventLoading, setEventLoading] = useState(true)
+    const [isHeaderCompact, setIsHeaderCompact] = useState(false)
+    const [isMobileHeader, setIsMobileHeader] = useState<boolean>(() => {
+        if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
+        return window.matchMedia("(max-width: 768px)").matches
+    })
 
     // Error logging flags
     const errorLogged = useRef({ fetchData: false, fetchEvents: false })
+    const scrollRafRef = useRef<number | null>(null)
 
     // Validate token on mount
     useEffect(() => {
@@ -148,6 +154,57 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
         validateToken()
     }, [urlToken, baseUrl, navigate])
+
+    useEffect(() => {
+        if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+
+        const media = window.matchMedia("(max-width: 768px)")
+        const apply = (matches: boolean) => {
+            setIsMobileHeader(matches)
+            if (!matches) setIsHeaderCompact(false)
+        }
+
+        apply(media.matches)
+        const onMediaChange = (e: MediaQueryListEvent) => apply(e.matches)
+
+        if (typeof media.addEventListener === "function") {
+            media.addEventListener("change", onMediaChange)
+            return () => media.removeEventListener("change", onMediaChange)
+        }
+
+        const legacyListener = (e: MediaQueryListEvent) => apply(e.matches)
+        media.addListener(legacyListener)
+        return () => media.removeListener(legacyListener)
+    }, [])
+
+    useEffect(() => {
+        if (!isMobileHeader) {
+            setIsHeaderCompact(false)
+            return
+        }
+
+        const updateCompact = () => {
+            scrollRafRef.current = null
+            const y = window.scrollY
+            // Hysteresis prevents rapid flip-flop near threshold and keeps scroll smooth.
+            setIsHeaderCompact(prev => (prev ? y > 8 : y > 28))
+        }
+
+        const onScroll = () => {
+            if (scrollRafRef.current !== null) return
+            scrollRafRef.current = window.requestAnimationFrame(updateCompact)
+        }
+
+        updateCompact()
+        window.addEventListener("scroll", onScroll, { passive: true })
+        return () => {
+            window.removeEventListener("scroll", onScroll)
+            if (scrollRafRef.current !== null) {
+                window.cancelAnimationFrame(scrollRafRef.current)
+                scrollRafRef.current = null
+            }
+        }
+    }, [isMobileHeader])
 
     const headers = useMemo(() => ({
         "Authorization": `Bearer ${adminToken}`,
@@ -600,10 +657,12 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     return (
         <div className="admin-dashboard">
             {/* Header */}
-            <header className="admin-header">
+            <header className={`admin-header ${isMobileHeader && isHeaderCompact ? "compact" : ""}`}>
                 <div className="admin-header-left">
-                    <Settings size={28} />
-                    <h1>{userRole === "owner" ? "Owner Panel" : "Admin Panel"}</h1>
+                    <Settings size={24} className="admin-title-icon" />
+                    <h1>Panel</h1>
+                </div>
+                <div className="admin-header-center">
                     <span className={`role-pill ${userRole === "owner" ? "owner" : "admin"}`}>
                         {userRole === "owner" ? "OWNER" : "ADMIN"}
                     </span>

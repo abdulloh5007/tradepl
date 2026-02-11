@@ -49,12 +49,14 @@ export default function AccountsPage({
 
   const activeSnapshot = useMemo<AccountSnapshot | null>(() => {
     if (!activeAccount) return null
-    const fromMap = snapshots[activeAccount.id]
-    if (fromMap) return fromMap
+    const fromMap = snapshots[activeAccount.id] || null
+    const livePl = Number(metrics.pl || 0)
+    const safeLivePl = Number.isFinite(livePl) ? livePl : (fromMap?.pl || 0)
+    const liveOpenCount = Number.isFinite(activeOpenOrdersCount) ? activeOpenOrdersCount : (fromMap?.openCount || 0)
     return {
-      pl: Number(metrics.pl || 0),
-      openCount: activeOpenOrdersCount,
-      metrics
+      pl: safeLivePl,
+      openCount: liveOpenCount,
+      metrics: metrics || fromMap?.metrics || null
     }
   }, [activeAccount, snapshots, metrics, activeOpenOrdersCount])
 

@@ -1,5 +1,7 @@
+import { useState } from "react"
 import { motion } from "framer-motion"
 import { Rocket } from "lucide-react"
+import SmartDropdown from "./ui/SmartDropdown"
 import { PanelMotion } from "../types/ui"
 
 type Props = {
@@ -10,6 +12,10 @@ type Props = {
 }
 
 export default function OrderPanel({ t, panelMotion, onSubmit, result }: Props) {
+  const [side, setSide] = useState<"buy" | "sell">("buy")
+  const [orderType, setOrderType] = useState<"limit" | "market">("limit")
+  const [tif, setTif] = useState<"gtc" | "ioc">("gtc")
+
   return (
     <motion.section className="panel" {...panelMotion}>
       <div className="panel-head">
@@ -31,17 +37,31 @@ export default function OrderPanel({ t, panelMotion, onSubmit, result }: Props) 
         </label>
         <label className="field">
           <span>{t("side")}</span>
-          <select name="side" required>
-            <option value="buy">Buy</option>
-            <option value="sell">Sell</option>
-          </select>
+          <input type="hidden" name="side" value={side} />
+          <SmartDropdown
+            value={side}
+            options={[
+              { value: "buy", label: "Buy" },
+              { value: "sell", label: "Sell" }
+            ]}
+            onChange={next => setSide(String(next) as "buy" | "sell")}
+            ariaLabel="Order side"
+            className="field-dropdown"
+          />
         </label>
         <label className="field">
           <span>{t("type")}</span>
-          <select name="type" required>
-            <option value="limit">Limit</option>
-            <option value="market">Market</option>
-          </select>
+          <input type="hidden" name="type" value={orderType} />
+          <SmartDropdown
+            value={orderType}
+            options={[
+              { value: "limit", label: "Limit" },
+              { value: "market", label: "Market" }
+            ]}
+            onChange={next => setOrderType(String(next) as "limit" | "market")}
+            ariaLabel="Order type"
+            className="field-dropdown"
+          />
         </label>
         <label className="field">
           <span>{t("price")}</span>
@@ -57,10 +77,17 @@ export default function OrderPanel({ t, panelMotion, onSubmit, result }: Props) 
         </label>
         <label className="field">
           <span>{t("tif")}</span>
-          <select name="time_in_force" required>
-            <option value="gtc">GTC</option>
-            <option value="ioc">IOC</option>
-          </select>
+          <input type="hidden" name="time_in_force" value={tif} />
+          <SmartDropdown
+            value={tif}
+            options={[
+              { value: "gtc", label: "GTC" },
+              { value: "ioc", label: "IOC" }
+            ]}
+            onChange={next => setTif(String(next) as "gtc" | "ioc")}
+            ariaLabel="Time in force"
+            className="field-dropdown"
+          />
         </label>
         <label className="field">
           <span>{t("clientRef")}</span>

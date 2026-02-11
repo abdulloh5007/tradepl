@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Plus, ArrowRight } from "lucide-react"
 import type { Order, Quote, Lang, MarketConfig, Metrics } from "../../types"
 import { formatNumber } from "../../utils/format"
-import { calcOrderProfit } from "../../utils/trading"
-import { t } from "../../utils/i18n"
+import { calcDisplayedOrderProfit, resolveOrderSymbol } from "../../utils/trading"
 import "./PositionsPage.css"
 
 interface PositionsPageProps {
@@ -144,28 +143,20 @@ export default function PositionsPage({
                     <div className="pos-empty">No open positions</div>
                 ) : (
                     orders.map(o => {
-                        // Use symbol for display, fallback to pair_id
-                        const displaySymbol = o.symbol || o.pair_id
-                        const cfg = marketConfig[displaySymbol] || marketConfig[o.pair_id] || (displaySymbol === "UZS-USD" ? { invertForApi: true, displayDecimals: 2 } : undefined)
+                        const displaySymbol = resolveOrderSymbol(o, marketPair)
+                        const cfg = marketConfig[displaySymbol] || (displaySymbol === "UZS-USD" ? { invertForApi: true, displayDecimals: 2 } : undefined)
+                        const profit = calcDisplayedOrderProfit(o, bidDisplay, askDisplay, marketPair, marketConfig)
 
-                        // Profit uses pair_id for lookup usually, or symbol
-                        const profit = calcOrderProfit(o, bidDisplay, askDisplay, o.pair_id, marketConfig)
-
-                        // Entry Price Calculation:
-                        // If o.price is "0" (market order), try to calculate from spent_amount / qty
-                        let rawEntry = parseFloat(o.price || "0")
+                        // Entry price comes from backend order.price (raw API price). If missing/invalid, show placeholder.
+                        const rawEntry = parseFloat(o.price || "0")
                         const qty = parseFloat(o.qty || "0")
-
-                        if (rawEntry === 0 && o.spent_amount && qty > 0) {
-                            rawEntry = parseFloat(o.spent_amount) / qty
-                        }
-
                         const entryDisplay = cfg?.invertForApi && rawEntry > 0 ? 1 / rawEntry : rawEntry
+                        const hasEntryPrice = Number.isFinite(entryDisplay) && entryDisplay > 0
 
                         // For current price, we use bid for buy (close sell), ask for sell (close buy)
                         const currentPrice = o.side === 'buy' ? bidDisplay : askDisplay
+                        const hasCurrentPrice = Number.isFinite(currentPrice) && currentPrice > 0
 
-                        const isBuy = o.side === "buy"
                         const plClass = profit >= 0 ? "profit" : "loss"
 
                         return (
@@ -181,9 +172,9 @@ export default function PositionsPage({
                                         <span className="pos-size">{formatNumber(qty, 2, 2)}</span>
                                     </div>
                                     <div className="pos-price-row">
-                                        <span>{formatNumber(entryDisplay, cfg?.displayDecimals || 2, cfg?.displayDecimals || 2)}</span>
+                                        <span>{hasEntryPrice ? formatNumber(entryDisplay, cfg?.displayDecimals || 2, cfg?.displayDecimals || 2) : "—"}</span>
                                         <ArrowRight size={12} className="pos-arrow" />
-                                        <span>{formatNumber(currentPrice, cfg?.displayDecimals || 2, cfg?.displayDecimals || 2)}</span>
+                                        <span>{hasCurrentPrice ? formatNumber(currentPrice, cfg?.displayDecimals || 2, cfg?.displayDecimals || 2) : "—"}</span>
                                     </div>
                                 </div>
                                 <div className="pos-item-right">

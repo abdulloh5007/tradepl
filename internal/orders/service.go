@@ -760,6 +760,17 @@ func (s *Service) ListOpenOrdersByAccount(ctx context.Context, userID, accountID
 		ask decimal.Decimal
 	}
 	quoteCache := make(map[string]quoteMark, 4)
+	resolvePair := func(pairID string) (marketdata.Pair, bool) {
+		if pair, ok := pairCache[pairID]; ok {
+			return pair, true
+		}
+		pair, err := s.market.GetPairByID(ctx, pairID)
+		if err != nil {
+			return marketdata.Pair{}, false
+		}
+		pairCache[pairID] = pair
+		return pair, true
+	}
 
 	var orders []model.Order
 	for rows.Next() {
@@ -773,48 +784,41 @@ func (s *Service) ListOpenOrdersByAccount(ctx context.Context, userID, accountID
 			return nil, err
 		}
 
+		pair, hasPair := resolvePair(o.PairID)
+		if hasPair && pair.Symbol != "" {
+			o.Symbol = pair.Symbol
+		}
+
 		// Broker Logic: Calculate entry price only if DB entry is missing.
 		filledQty := o.Qty.Sub(o.RemainingQty)
-		if (o.Price == nil || o.Price.LessThanOrEqual(decimal.Zero)) && filledQty.GreaterThan(decimal.Zero) && o.SpentAmount.GreaterThan(decimal.Zero) {
-			if pair, pairErr := s.market.GetPairByID(ctx, o.PairID); pairErr == nil {
-				avgRaw, ok := deriveEntryRawFromSpent(pair.Symbol, o.SpentAmount, filledQty, pairContractSize(pair))
-				if ok {
-					o.Price = &avgRaw
-				}
+		if hasPair && pair.Symbol != "" && (o.Price == nil || o.Price.LessThanOrEqual(decimal.Zero)) && filledQty.GreaterThan(decimal.Zero) && o.SpentAmount.GreaterThan(decimal.Zero) {
+			avgRaw, ok := deriveEntryRawFromSpent(pair.Symbol, o.SpentAmount, filledQty, pairContractSize(pair))
+			if ok {
+				o.Price = &avgRaw
 			}
 		}
 
-		if filledQty.GreaterThan(decimal.Zero) && o.Price != nil && o.Price.GreaterThan(decimal.Zero) && (o.Side == types.OrderSideBuy || o.Side == types.OrderSideSell) {
-			pair, ok := pairCache[o.PairID]
+		if hasPair && pair.Symbol != "" && filledQty.GreaterThan(decimal.Zero) && o.Price != nil && o.Price.GreaterThan(decimal.Zero) && (o.Side == types.OrderSideBuy || o.Side == types.OrderSideSell) {
+			qm, ok := quoteCache[o.PairID]
 			if !ok {
-				p, pairErr := s.market.GetPairByID(ctx, o.PairID)
-				if pairErr == nil {
-					pair = p
-					pairCache[o.PairID] = p
+				bid, ask, quoteErr := marketdata.GetCurrentQuote(pair.Symbol)
+				if quoteErr == nil {
+					bid, ask = applySpreadMultiplier(bid, ask, spreadMultiplier)
+					qm = quoteMark{
+						bid: decimal.NewFromFloat(bid),
+						ask: decimal.NewFromFloat(ask),
+					}
+					quoteCache[o.PairID] = qm
+					ok = true
 				}
 			}
-			if pair.Symbol != "" {
-				qm, ok := quoteCache[o.PairID]
-				if !ok {
-					bid, ask, quoteErr := marketdata.GetCurrentQuote(pair.Symbol)
-					if quoteErr == nil {
-						bid, ask = applySpreadMultiplier(bid, ask, spreadMultiplier)
-						qm = quoteMark{
-							bid: decimal.NewFromFloat(bid),
-							ask: decimal.NewFromFloat(ask),
-						}
-						quoteCache[o.PairID] = qm
-						ok = true
-					}
+			if ok {
+				mark := qm.bid
+				if o.Side == types.OrderSideSell {
+					mark = qm.ask
 				}
-				if ok {
-					mark := qm.bid
-					if o.Side == types.OrderSideSell {
-						mark = qm.ask
-					}
-					pnl := calculateOrderPnL(pair.Symbol, o.Side, *o.Price, mark, filledQty, pairPnLContractSize(pair))
-					o.UnrealizedPnL = &pnl
-				}
+				pnl := calculateOrderPnL(pair.Symbol, o.Side, *o.Price, mark, filledQty, pairPnLContractSize(pair))
+				o.UnrealizedPnL = &pnl
 			}
 		}
 
@@ -832,13 +836,34 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 	}
 
 	query := `
-		SELECT id, user_id, trading_account_id, pair_id, side, type, status, price, qty, remaining_qty, quote_amount, remaining_quote, reserved_amount, spent_amount, time_in_force, created_at
+		SELECT id,
+		       coalesce(ticket_no, 0),
+		       user_id,
+		       trading_account_id,
+		       pair_id,
+		       side,
+		       type,
+		       status,
+		       price,
+		       qty,
+		       remaining_qty,
+		       quote_amount,
+		       remaining_quote,
+		       reserved_amount,
+		       spent_amount,
+		       time_in_force,
+		       created_at,
+		       close_price,
+		       coalesce(close_time, updated_at, created_at) as close_time,
+		       coalesce(realized_pnl, 0),
+		       coalesce(realized_commission, 0),
+		       coalesce(realized_swap, 0)
 		FROM orders
 		WHERE user_id = $1
 		  AND ($2 = '' OR coalesce(trading_account_id::text, '') = $2)
-		  AND ($3::timestamptz IS NULL OR created_at < $3)
+		  AND ($3::timestamptz IS NULL OR coalesce(close_time, updated_at, created_at) < $3)
 		  AND status IN ('closed', 'canceled')
-		ORDER BY created_at DESC
+		ORDER BY coalesce(close_time, updated_at, created_at) DESC, created_at DESC
 		LIMIT $4
 	`
 	rows, err := s.pool.Query(ctx, query, userID, accountID, before, limit)
@@ -847,26 +872,58 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 	}
 	defer rows.Close()
 
+	pairCache := make(map[string]marketdata.Pair, 4)
+	resolvePair := func(pairID string) (marketdata.Pair, bool) {
+		if pair, ok := pairCache[pairID]; ok {
+			return pair, true
+		}
+		pair, err := s.market.GetPairByID(ctx, pairID)
+		if err != nil {
+			return marketdata.Pair{}, false
+		}
+		pairCache[pairID] = pair
+		return pair, true
+	}
+
 	var orders []model.Order
 	for rows.Next() {
 		var o model.Order
+		var closeTime time.Time
+		var realizedPnL decimal.Decimal
+		var realizedCommission decimal.Decimal
+		var realizedSwap decimal.Decimal
 		err := rows.Scan(
-			&o.ID, &o.UserID, &o.TradingAccountID, &o.PairID, &o.Side, &o.Type, &o.Status,
+			&o.ID, &o.TicketNo, &o.UserID, &o.TradingAccountID, &o.PairID, &o.Side, &o.Type, &o.Status,
 			&o.Price, &o.Qty, &o.RemainingQty, &o.QuoteAmount, &o.RemainingQuote,
 			&o.ReservedAmount, &o.SpentAmount, &o.TimeInForce, &o.CreatedAt,
+			&o.ClosePrice, &closeTime, &realizedPnL, &realizedCommission, &realizedSwap,
 		)
 		if err != nil {
 			return nil, err
 		}
+		o.CloseTime = &closeTime
+		o.Profit = &realizedPnL
+		o.Commission = &realizedCommission
+		o.Swap = &realizedSwap
+
+		pair, hasPair := resolvePair(o.PairID)
+		if hasPair && pair.Symbol != "" {
+			o.Symbol = pair.Symbol
+		}
 
 		filledQty := o.Qty.Sub(o.RemainingQty)
-		if (o.Price == nil || o.Price.LessThanOrEqual(decimal.Zero)) && filledQty.GreaterThan(decimal.Zero) && o.SpentAmount.GreaterThan(decimal.Zero) {
-			if pair, pairErr := s.market.GetPairByID(ctx, o.PairID); pairErr == nil {
-				avgRaw, ok := deriveEntryRawFromSpent(pair.Symbol, o.SpentAmount, filledQty, pairContractSize(pair))
-				if ok {
-					o.Price = &avgRaw
-				}
+		if hasPair && pair.Symbol != "" && (o.Price == nil || o.Price.LessThanOrEqual(decimal.Zero)) && filledQty.GreaterThan(decimal.Zero) && o.SpentAmount.GreaterThan(decimal.Zero) {
+			avgRaw, ok := deriveEntryRawFromSpent(pair.Symbol, o.SpentAmount, filledQty, pairContractSize(pair))
+			if ok {
+				o.Price = &avgRaw
 			}
+		}
+		if o.ClosePrice == nil && o.Price != nil {
+			o.ClosePrice = o.Price
+		}
+		if o.Profit != nil && o.Commission != nil && o.Commission.IsZero() && hasPair && pair.Symbol != "" && o.Price != nil && o.ClosePrice != nil && filledQty.GreaterThan(decimal.Zero) {
+			derivedPnL := calculateOrderPnL(pair.Symbol, o.Side, *o.Price, *o.ClosePrice, filledQty, pairPnLContractSize(pair))
+			o.Profit = &derivedPnL
 		}
 
 		orders = append(orders, o)
@@ -997,10 +1054,12 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 	// Calculate total return: original investment + P/L
 	// For a buy: we spent order.SpentAmount (USD), now we get it back + P/L
 	closeAmount := order.SpentAmount.Add(pnl)
+	closeCommission := decimal.Zero
 	if commissionRate > 0 {
 		closeNotional := orderNotional(pair.Symbol, exitPrice, qty, contractSize)
 		if closeNotional.GreaterThan(decimal.Zero) {
-			closeAmount = closeAmount.Sub(closeNotional.Mul(decimal.NewFromFloat(commissionRate)))
+			closeCommission = closeNotional.Mul(decimal.NewFromFloat(commissionRate))
+			closeAmount = closeAmount.Sub(closeCommission)
 		}
 	}
 
@@ -1044,8 +1103,20 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 		}
 	}
 
-	// 9. Mark order as closed position.
-	if err := s.store.UpdateOrderStatus(ctx, tx, orderID, types.OrderStatusClosed); err != nil {
+	// 9. Mark order as closed position with a persisted close snapshot for history/details.
+	closeTime := time.Now().UTC()
+	realizedPnL := closeAmount.Sub(order.SpentAmount)
+	if err := s.store.CloseOrderWithSnapshot(
+		ctx,
+		tx,
+		orderID,
+		types.OrderStatusClosed,
+		exitPrice,
+		closeTime,
+		realizedPnL,
+		closeCommission,
+		decimal.Zero,
+	); err != nil {
 		return fmt.Errorf("failed to update order status: %w", err)
 	}
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import SmartDropdown from "./ui/SmartDropdown"
 
 type SessionConfig = {
     id: string
@@ -237,14 +238,18 @@ export default function AdminPanel({ baseUrl, internalToken }: AdminPanelProps) 
                         onChange={e => setNewTargetPrice(e.target.value)}
                         style={{ width: 100, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel-alt)" }}
                     />
-                    <select
-                        value={newDirection}
-                        onChange={e => setNewDirection(e.target.value as "up" | "down")}
-                        className="select-compact"
-                    >
-                        <option value="up">↑ Up</option>
-                        <option value="down">↓ Down</option>
-                    </select>
+                    <div style={{ width: 92 }}>
+                        <SmartDropdown
+                            value={newDirection}
+                            options={[
+                                { value: "up", label: "↑ Up" },
+                                { value: "down", label: "↓ Down" }
+                            ]}
+                            onChange={next => setNewDirection(String(next) as "up" | "down")}
+                            ariaLabel="Direction"
+                            triggerClassName="select-compact"
+                        />
+                    </div>
                     <input
                         type="number"
                         placeholder="Duration (sec)"

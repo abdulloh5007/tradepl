@@ -2,6 +2,7 @@ import { Moon, Sun } from "lucide-react"
 import * as Switch from "@radix-ui/react-switch"
 import type { Theme, Lang } from "../types"
 import { t } from "../utils/i18n"
+import SmartDropdown from "./ui/SmartDropdown"
 
 interface HeaderProps {
     theme: Theme
@@ -13,6 +14,12 @@ interface HeaderProps {
 }
 
 export default function Header({ theme, setTheme, lang, setLang, token, onLogout }: HeaderProps) {
+    const langOptions = [
+        { value: "en", label: "EN" },
+        { value: "uz", label: "UZ" },
+        { value: "ru", label: "RU" }
+    ]
+
     return (
         <header style={{
             display: "flex",
@@ -28,22 +35,13 @@ export default function Header({ theme, setTheme, lang, setLang, token, onLogout
 
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 {/* Language Selector */}
-                <select
+                <SmartDropdown
                     value={lang}
-                    onChange={e => setLang(e.target.value as Lang)}
-                    style={{
-                        padding: "6px 10px",
-                        border: "1px solid var(--border-subtle)",
-                        borderRadius: 4,
-                        background: "var(--input-bg)",
-                        color: "var(--text-base)",
-                        fontSize: 12
-                    }}
-                >
-                    <option value="en">EN</option>
-                    <option value="uz">UZ</option>
-                    <option value="ru">RU</option>
-                </select>
+                    options={langOptions}
+                    onChange={v => setLang(String(v) as Lang)}
+                    ariaLabel="Language"
+                    className="header-lang-dropdown"
+                />
 
                 {/* Theme Toggle */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

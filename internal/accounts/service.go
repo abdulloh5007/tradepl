@@ -26,6 +26,8 @@ var allowedLeverageValues = map[int]struct{}{
 	100: {}, 200: {}, 500: {}, 1000: {}, 2000: {}, 3000: {},
 }
 
+const defaultNewAccountLeverage = 2000
+
 func isAllowedLeverage(v int) bool {
 	_, ok := allowedLeverageValues[v]
 	return ok
@@ -71,28 +73,24 @@ func (s *Service) ensureDefaultAccountsTx(ctx context.Context, tx pgx.Tx, userID
 
 	_, err := tx.Exec(ctx, `
 		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active, leverage)
-		SELECT $1, 'standard', 'demo', 'Demo Standard', FALSE, p.leverage
-		FROM account_plans p
-		WHERE p.id = 'standard'
-		  AND NOT EXISTS (
+		SELECT $1, 'standard', 'demo', 'Demo Standard', FALSE, $2
+		WHERE NOT EXISTS (
 			SELECT 1 FROM trading_accounts
 			WHERE user_id = $1 AND mode = 'demo' AND plan_id = 'standard'
 		)
-	`, userID)
+	`, userID, defaultNewAccountLeverage)
 	if err != nil {
 		return err
 	}
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO trading_accounts (user_id, plan_id, mode, name, is_active, leverage)
-		SELECT $1, 'standard', 'real', 'Real Standard', FALSE, p.leverage
-		FROM account_plans p
-		WHERE p.id = 'standard'
-		  AND NOT EXISTS (
+		SELECT $1, 'standard', 'real', 'Real Standard', FALSE, $2
+		WHERE NOT EXISTS (
 			SELECT 1 FROM trading_accounts
 			WHERE user_id = $1 AND mode = 'real' AND plan_id = 'standard'
 		)
-	`, userID)
+	`, userID, defaultNewAccountLeverage)
 	if err != nil {
 		return err
 	}
@@ -308,12 +306,12 @@ func (s *Service) Create(ctx context.Context, userID, planID, mode, name string,
 	}
 	defer tx.Rollback(ctx)
 
-	var defaultLeverage int
-	if err := tx.QueryRow(ctx, "SELECT leverage FROM account_plans WHERE id = $1", planID).Scan(&defaultLeverage); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("plan not found")
-		}
+	var planExists bool
+	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM account_plans WHERE id = $1)", planID).Scan(&planExists); err != nil {
 		return nil, err
+	}
+	if !planExists {
+		return nil, errors.New("plan not found")
 	}
 
 	var id string
@@ -321,7 +319,7 @@ func (s *Service) Create(ctx context.Context, userID, planID, mode, name string,
 		INSERT INTO trading_accounts (user_id, plan_id, leverage, mode, name, is_active)
 		VALUES ($1, $2, $3, $4, $5, FALSE)
 		RETURNING id
-	`, userID, planID, defaultLeverage, mode, name).Scan(&id)
+	`, userID, planID, defaultNewAccountLeverage, mode, name).Scan(&id)
 	if err != nil {
 		return nil, err
 	}

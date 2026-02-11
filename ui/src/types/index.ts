@@ -26,6 +26,7 @@ export interface RawCandle {
 
 export interface Order {
     id: string
+    ticket_no?: number
     user_id?: string
     trading_account_id?: string
     pair_id: string

@@ -1,8 +1,7 @@
-import { useState, useMemo } from "react"
-import { Calendar, ArrowUpDown, Filter, X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Filter, X } from "lucide-react"
 import type { Lang, Order } from "../../types"
 import { formatNumber } from "../../utils/format"
-import { t } from "../../utils/i18n"
 import "./HistoryPage.css"
 import "../../components/accounts/SharedAccountSheet.css"
 import HistoryFilterModal, { DateRange } from "./HistoryFilterModal"
@@ -16,145 +15,226 @@ interface HistoryPageProps {
     onLoadMore: () => Promise<void> | void
 }
 
-export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh, onLoadMore }: HistoryPageProps) {
-    const [filter, setFilter] = useState("Positions")
+const isMarketSymbol = (value?: string) => /^[A-Z0-9]{2,12}-[A-Z0-9]{2,12}$/.test(String(value || "").trim().toUpperCase())
+
+const resolveOrderSymbol = (order: Order, fallback = "UZS-USD") => {
+    const bySymbol = String(order.symbol || "").trim().toUpperCase()
+    if (isMarketSymbol(bySymbol)) return bySymbol
+    const byPairID = String(order.pair_id || "").trim().toUpperCase()
+    if (isMarketSymbol(byPairID)) return byPairID
+    return fallback
+}
+
+const toNumber = (value: unknown, fallback = 0) => {
+    if (value === null || value === undefined) return fallback
+    if (typeof value === "string" && value.trim() === "") return fallback
+    const n = Number(value)
+    return Number.isFinite(n) ? n : fallback
+}
+
+const resolvePrice = (primary: unknown, secondary?: unknown) => {
+    const first = toNumber(primary, Number.NaN)
+    if (Number.isFinite(first) && first > 0) return first
+    const second = toNumber(secondary, Number.NaN)
+    if (Number.isFinite(second) && second > 0) return second
+    return Number.NaN
+}
+
+const formatPriceOrDash = (value: number) => {
+    if (!Number.isFinite(value)) return "—"
+    return formatNumber(value, 2, 2)
+}
+
+const eventTimeMs = (order: Order) => {
+    const raw = order.close_time || order.created_at
+    const ms = Date.parse(raw || "")
+    return Number.isFinite(ms) ? ms : 0
+}
+
+const formatDate = (ts?: string) => {
+    if (!ts) return "—"
+    const d = new Date(ts)
+    if (Number.isNaN(d.getTime())) return "—"
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, "0")
+    const dd = String(d.getDate()).padStart(2, "0")
+    const hh = String(d.getHours()).padStart(2, "0")
+    const min = String(d.getMinutes()).padStart(2, "0")
+    const ss = String(d.getSeconds()).padStart(2, "0")
+    return `${yyyy}.${mm}.${dd} ${hh}:${min}:${ss}`
+}
+
+const getSymbolDesc = (symbol: string) => {
+    if (symbol.includes("BTC")) return "Bitcoin vs US Dollar"
+    if (symbol.includes("ETH")) return "Ethereum vs US Dollar"
+    if (symbol.includes("XAU")) return "Gold vs US Dollar"
+    if (symbol.includes("EUR")) return "Euro vs US Dollar"
+    if (symbol.includes("UZS")) return "Uzbek Som vs US Dollar"
+    return "Spot Market"
+}
+
+const hashTicketFromID = (id: string) => {
+    let hash = 0
+    for (let i = 0; i < id.length; i += 1) {
+        hash = (hash * 31 + id.charCodeAt(i)) % 9000000
+    }
+    return 1000000 + hash
+}
+
+const formatTicket = (order: Order) => {
+    const fromServer = Number(order.ticket_no)
+    const value = Number.isFinite(fromServer) && fromServer > 0 ? Math.trunc(fromServer) : hashTicketFromID(order.id || "")
+    return `#bx-${String(value).padStart(7, "0")}`
+}
+
+export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore }: HistoryPageProps) {
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
     const [showFilter, setShowFilter] = useState(false)
     const [dateRange, setDateRange] = useState<DateRange>({ type: "month" })
+    const listRef = useRef<HTMLDivElement | null>(null)
+    const loadSentinelRef = useRef<HTMLDivElement | null>(null)
+    const loadLockRef = useRef(false)
 
-    // Filter Logic
+    const sortedOrders = useMemo(() => {
+        return [...orders].sort((a, b) => eventTimeMs(b) - eventTimeMs(a))
+    }, [orders])
+
     const filteredOrders = useMemo(() => {
-        const now = new Date()
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+        const now = Date.now()
+        const todayStart = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime()
 
-        return orders.filter(o => {
-            const time = new Date(o.close_time || o.created_at).getTime()
-            if (isNaN(time)) return true
+        return sortedOrders.filter(order => {
+            const time = eventTimeMs(order)
+            if (!Number.isFinite(time) || time === 0) return true
 
-            if (dateRange.type === "today") {
-                return time >= todayStart
-            }
-            if (dateRange.type === "week") {
-                const weekAgo = todayStart - (7 * 24 * 60 * 60 * 1000)
-                return time >= weekAgo
-            }
-            if (dateRange.type === "month") {
-                const monthAgo = todayStart - (30 * 24 * 60 * 60 * 1000)
-                return time >= monthAgo
-            }
+            if (dateRange.type === "today") return time >= todayStart
+            if (dateRange.type === "week") return time >= todayStart - 7 * 24 * 60 * 60 * 1000
+            if (dateRange.type === "month") return time >= todayStart - 30 * 24 * 60 * 60 * 1000
             if (dateRange.type === "custom") {
                 if (!dateRange.startDate) return true
                 const start = new Date(dateRange.startDate).getTime()
-                const end = dateRange.endDate ? new Date(dateRange.endDate).getTime() + (24 * 60 * 60 * 1000) : now.getTime()
+                const end = dateRange.endDate
+                    ? new Date(dateRange.endDate).getTime() + 24 * 60 * 60 * 1000
+                    : now
                 return time >= start && time < end
             }
             return true
         })
-    }, [orders, dateRange])
+    }, [sortedOrders, dateRange])
 
-    // Helper: Date Format YYYY.MM.DD HH:mm:ss
-    const formatDate = (ts?: string) => {
-        if (!ts) return "—"
-        const d = new Date(ts)
-        if (isNaN(d.getTime())) return "—"
-        const yyyy = d.getFullYear()
-        const mm = String(d.getMonth() + 1).padStart(2, '0')
-        const dd = String(d.getDate()).padStart(2, '0')
-        const hh = String(d.getHours()).padStart(2, '0')
-        const min = String(d.getMinutes()).padStart(2, '0')
-        const ss = String(d.getSeconds()).padStart(2, '0')
-        return `${yyyy}.${mm}.${dd} ${hh}:${min}:${ss}`
-    }
+    const totals = useMemo(() => {
+        return filteredOrders.reduce((acc, order) => {
+            acc.profit += toNumber(order.profit)
+            acc.commission += toNumber(order.commission)
+            acc.swap += toNumber(order.swap)
+            return acc
+        }, { profit: 0, commission: 0, swap: 0, deposit: 0 })
+    }, [filteredOrders])
 
-    // Helper: Map symbol to description
-    const getSymbolDesc = (sym: string) => {
-        if (sym.includes("BTC")) return "Bitcoin vs US Dollar"
-        if (sym.includes("ETH")) return "Ethereum vs US Dollar"
-        if (sym.includes("XAU")) return "Gold vs US Dollar"
-        if (sym.includes("EUR")) return "Euro vs US Dollar"
-        return "Spot Market"
-    }
-
-    // Helper: Calculate Totals
-    const totals = filteredOrders.reduce((acc, o) => {
-        const profit = parseFloat(o.profit || "0")
-        const commission = parseFloat(o.commission || "0")
-        const swap = parseFloat(o.swap || "0")
-        acc.profit += profit
-        acc.commission += commission
-        acc.swap += swap
-        return acc
-    }, { profit: 0, commission: 0, swap: 0, deposit: 1009374808.93 })
-
-    // Mock balance calculation
     const balance = totals.deposit + totals.profit + totals.swap + totals.commission
+
+    const selectedSymbol = selectedOrder ? resolveOrderSymbol(selectedOrder) : ""
+    const selectedOpenPrice = selectedOrder ? resolvePrice(selectedOrder.price, selectedOrder.close_price) : Number.NaN
+    const selectedClosePrice = selectedOrder ? resolvePrice(selectedOrder.close_price, selectedOrder.price) : Number.NaN
+    const selectedProfit = selectedOrder ? toNumber(selectedOrder.profit) : 0
+    const selectedSpent = selectedOrder ? toNumber(selectedOrder.spent_amount) : 0
+    const selectedPercent = selectedSpent > 0 ? (selectedProfit / selectedSpent) * 100 : 0
+    const selectedDiff = Number.isFinite(selectedClosePrice) && Number.isFinite(selectedOpenPrice)
+        ? selectedClosePrice - selectedOpenPrice
+        : 0
+
+    useEffect(() => {
+        if (!loading) {
+            loadLockRef.current = false
+        }
+    }, [loading])
+
+    useEffect(() => {
+        const root = listRef.current
+        const sentinel = loadSentinelRef.current
+        if (!root || !sentinel || !hasMore) return
+
+        const observer = new IntersectionObserver(
+            entries => {
+                const entry = entries[0]
+                if (!entry?.isIntersecting) return
+                if (!hasMore || loading || loadLockRef.current) return
+
+                loadLockRef.current = true
+                Promise.resolve(onLoadMore())
+                    .catch(() => { })
+                    .finally(() => {
+                        window.setTimeout(() => {
+                            if (!loading) {
+                                loadLockRef.current = false
+                            }
+                        }, 250)
+                    })
+            },
+            {
+                root,
+                rootMargin: "0px 0px 220px 0px",
+                threshold: 0.01,
+            }
+        )
+
+        observer.observe(sentinel)
+        return () => observer.disconnect()
+    }, [hasMore, loading, onLoadMore, filteredOrders.length])
 
     return (
         <div className="history-container">
-            {/* Header */}
             <div className="history-header">
-                <div style={{ width: 36 }} /> {/* Spacer for centering */}
+                <div style={{ width: 36 }} />
                 <h3 className="history-title">History</h3>
-                <button className="history-filter-btn" onClick={() => setShowFilter(true)}>
+                <button className="history-filter-btn" onClick={() => setShowFilter(true)} aria-label="Open history filters">
                     <Filter size={20} />
                 </button>
             </div>
 
-            {/* List */}
-            <div className="history-list">
-                {filteredOrders.length === 0 ? (
-                    <div style={{ padding: 40, textAlign: 'center', color: '#8e8e93' }}>
-                        No history for this period
-                    </div>
-                ) : (
-                    filteredOrders.map(o => {
-                        const isBuy = o.side === "buy"
-                        const profit = parseFloat(o.profit || "0")
-                        const isProfit = profit >= 0
-                        const displaySymbol = o.symbol || o.pair_id || "Unknown"
-                        const openPrice = parseFloat(o.price || "0")
-                        const closePrice = parseFloat(o.close_price || o.price || "0") // Fallback
-
-                        return (
-                            <div key={o.id} className="history-item" onClick={() => setSelectedOrder(o)}>
-                                <div className="h-row">
-                                    <div className="h-symbol-group">
-                                        <span className="h-symbol">{displaySymbol}</span>
-                                        <span className={`h-side ${o.side}`}>{o.side}</span>
-                                        <span className={`h-qty h-side ${o.side}`}>{o.qty}</span>
+            <div className="history-content">
+                <div className="history-list" ref={listRef}>
+                    {filteredOrders.length === 0 ? (
+                        <div className="history-empty">No history for this period</div>
+                    ) : (
+                        filteredOrders.map(order => {
+                            const profit = toNumber(order.profit)
+                            const isProfit = profit >= 0
+                            const displaySymbol = resolveOrderSymbol(order)
+                            const openPrice = resolvePrice(order.price, order.close_price)
+                            const closePrice = resolvePrice(order.close_price, order.price)
+                            return (
+                                <div key={order.id} className="history-item" onClick={() => setSelectedOrder(order)}>
+                                    <div className="h-row">
+                                        <div className="h-symbol-group">
+                                            <span className="h-symbol">{displaySymbol}</span>
+                                            <span className={`h-side ${order.side}`}>{order.side}</span>
+                                            <span className={`h-qty h-side ${order.side}`}>{order.qty}</span>
+                                        </div>
+                                        <div className={`h-pl ${isProfit ? "profit" : "loss"}`}>
+                                            {formatNumber(profit, 2, 2)}
+                                        </div>
                                     </div>
-                                    <div className={`h-pl ${isProfit ? "profit" : "loss"}`}>
-                                        {formatNumber(profit, 2, 2)}
+                                    <div className="h-row">
+                                        <div className="h-price-row">
+                                            <span>{formatPriceOrDash(openPrice)}</span>
+                                            <span>→</span>
+                                            <span>{formatPriceOrDash(closePrice)}</span>
+                                        </div>
+                                        <div className="h-date">{formatDate(order.close_time || order.created_at)}</div>
                                     </div>
-                                </div>
-                                <div className="h-row">
-                                    <div className="h-price-row">
-                                        <span>{formatNumber(openPrice, 2, 2)}</span>
-                                        <span>→</span>
-                                        <span>{formatNumber(closePrice, 2, 2)}</span>
-                                    </div>
-                                    <div className="h-date">
-                                        {formatDate(o.close_time || o.created_at)}
+                                    <div className="h-row h-ticket-row">
+                                        <span className="h-ticket">{formatTicket(order)}</span>
                                     </div>
                                 </div>
-                            </div>
-                        )
-                    })
-                )}
+                            )
+                        })
+                    )}
 
-                {/* Mock Balance Item Example (matching screenshot) */}
-                <div className="history-item balance-item">
-                    <div className="h-row">
-                        <span className="h-symbol">Balance</span>
-                        <div className="h-pl profit">1 000 000 000.00</div>
-                    </div>
-                    <div className="h-row">
-                        <div className="h-date" style={{ color: '#9ca3af' }}>D-trial-USD-9375e1c9138e42</div>
-                        <div className="h-date">2026.02.10 13:51:08</div>
-                    </div>
+                    {loading && <div className="history-loading">Loading...</div>}
+                    {hasMore && <div ref={loadSentinelRef} className="history-sentinel" aria-hidden="true" />}
                 </div>
 
-                {/* Footer Summary - Now inside the scrolling flow at the bottom */}
                 <div className="history-footer">
                     <div className="summary-row">
                         <span>Deposit</span>
@@ -178,71 +258,42 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh,
                         <span className="summary-val">{formatNumber(balance, 2, 2)}</span>
                     </div>
                 </div>
-
-                {loading && <div style={{ padding: 20, textAlign: 'center', color: '#666' }}>Loading...</div>}
-
-                {!loading && hasMore && (
-                    <button onClick={() => onLoadMore()} style={{ padding: 16, width: '100%', background: 'transparent', color: '#3b82f6', border: 'none' }}>
-                        Load More
-                    </button>
-                )}
             </div>
 
-            {/* Details Sheet Modal */}
             {selectedOrder && (
                 <div className="acm-overlay" onClick={() => setSelectedOrder(null)}>
-                    {/* ... modal content ... */}
                     <div className="acm-backdrop" />
                     <div className="acm-sheet" onClick={e => e.stopPropagation()}>
-                        {/* ... */}
-                        {/* Reusing existing code structure, just ensuring this block is correct */}
                         <div className="acm-header">
                             <button onClick={() => setSelectedOrder(null)} className="acm-close-btn">
                                 <X size={24} />
                             </button>
-                            <h2 className="acm-title">Order #{selectedOrder.id.slice(0, 8)}</h2>
+                            <h2 className="acm-title">{formatTicket(selectedOrder)}</h2>
                             <div className="acm-spacer" />
                         </div>
-                        {/* ... body ... */}
+
                         <div className="acm-content">
-                            {/* ... Content ... */}
                             <div className="hm-body">
-                                {/* ... Content ... */}
-                                <div className="hm-desc" style={{ textAlign: 'center', paddingBottom: 16 }}>
-                                    {getSymbolDesc(selectedOrder.symbol || selectedOrder.pair_id)}
+                                <div className="hm-desc" style={{ textAlign: "center", paddingBottom: 12 }}>
+                                    {getSymbolDesc(selectedSymbol)}
                                 </div>
-                                {/* ... rest of details ... */}
+
                                 <div className="hm-main-row">
                                     <div className="hm-prices">
-                                        {formatNumber(parseFloat(selectedOrder.price || "0"), 2, 2)} &rarr; {formatNumber(parseFloat(selectedOrder.close_price || selectedOrder.price || "0"), 2, 2)}
+                                        {formatPriceOrDash(selectedOpenPrice)} &rarr; {formatPriceOrDash(selectedClosePrice)}
                                     </div>
-                                    <div className={`hm-profit ${parseFloat(selectedOrder.profit || "0") >= 0 ? "profit" : "loss"}`}>
-                                        {formatNumber(parseFloat(selectedOrder.profit || "0"), 2, 2)}
+                                    <div className={`hm-profit ${selectedProfit >= 0 ? "profit" : "loss"}`}>
+                                        {formatNumber(selectedProfit, 2, 2)}
                                     </div>
                                 </div>
 
                                 <div className="hm-delta-row">
-                                    {(() => {
-                                        const open = parseFloat(selectedOrder.price || "0")
-                                        const close = parseFloat(selectedOrder.close_price || selectedOrder.price || "0")
-                                        const diff = close - open
-                                        const percent = open > 0 ? (diff / open) * 100 : 0
-                                        const points = Math.round(diff * 10000)
-                                        const isPos = diff >= 0
-                                        const colorClass = isPos ? "profit" : "loss"
-                                        return (
-                                            <div className={`hm-delta ${colorClass}`}>
-                                                Δ = {points} ({formatNumber(percent, 2, 2)}%) {isPos ? "▲" : "▼"}
-                                            </div>
-                                        )
-                                    })()}
-                                </div>
-                                {/* ... times ... */}
-                                <div className="hm-times-row">
-                                    {formatDate(selectedOrder.created_at)} &rarr; {formatDate(selectedOrder.close_time || selectedOrder.created_at)}
+                                    <div className={`hm-delta ${selectedPercent >= 0 ? "profit" : "loss"}`}>
+                                        ROI {formatNumber(selectedPercent, 2, 2)}% {selectedPercent >= 0 ? "▲" : "▼"}
+                                        {Number.isFinite(selectedOpenPrice) && Number.isFinite(selectedClosePrice) ? ` · Δ ${formatNumber(selectedDiff, 2, 2)}` : ""}
+                                    </div>
                                 </div>
 
-                                {/* ... grid ... */}
                                 <div className="hm-grid">
                                     <div className="hm-grid-item">
                                         <span className="hm-label">Type:</span>
@@ -252,21 +303,21 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh,
                                         <span className="hm-label">Volume:</span>
                                         <span className="hm-val">{selectedOrder.qty}</span>
                                     </div>
-                                    <div className="hm-grid-item">
-                                        <span className="hm-label">S/L:</span>
-                                        <span className="hm-val">-</span>
+                                    <div className="hm-grid-item hm-grid-item-time">
+                                        <span className="hm-label">Open:</span>
+                                        <span className="hm-val">{formatDate(selectedOrder.created_at)}</span>
+                                    </div>
+                                    <div className="hm-grid-item hm-grid-item-time">
+                                        <span className="hm-label">Close:</span>
+                                        <span className="hm-val">{formatDate(selectedOrder.close_time || selectedOrder.created_at)}</span>
                                     </div>
                                     <div className="hm-grid-item">
                                         <span className="hm-label">Swap:</span>
-                                        <span className="hm-val">{formatNumber(parseFloat(selectedOrder.swap || "0"), 2, 2)}</span>
-                                    </div>
-                                    <div className="hm-grid-item">
-                                        <span className="hm-label">T/P:</span>
-                                        <span className="hm-val">-</span>
+                                        <span className="hm-val">{formatNumber(toNumber(selectedOrder.swap), 2, 2)}</span>
                                     </div>
                                     <div className="hm-grid-item">
                                         <span className="hm-label">Commission:</span>
-                                        <span className="hm-val">{formatNumber(parseFloat(selectedOrder.commission || "0"), 2, 2)}</span>
+                                        <span className="hm-val">{formatNumber(toNumber(selectedOrder.commission), 2, 2)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -275,7 +326,6 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh,
                 </div>
             )}
 
-            {/* Filter Modal */}
             <HistoryFilterModal
                 open={showFilter}
                 currentRange={dateRange}

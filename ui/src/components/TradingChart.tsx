@@ -77,6 +77,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const orderLabelsLayerRef = useRef<HTMLDivElement | null>(null)
     const orderLabelItemsRef = useRef<Array<{ price: number; node: HTMLDivElement }>>([])
     const lastCandleCountRef = useRef(0)
+    const lastFirstTimeRef = useRef<number | null>(null)
     const resizeObserverRef = useRef<ResizeObserver | null>(null)
     // Track timeframe to detect changes
     const lastTimeframeRef = useRef(timeframe)
@@ -220,15 +221,23 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             lastValueVisible: false
         })
 
-        // Initialize data immediately to avoid race condition
-        if (candles.length > 0) {
-            series.setData(candles)
-            chart.timeScale().fitContent()
-            lastCandleCountRef.current = candles.length
-        }
-
         chartRef.current = chart
         seriesRef.current = series
+
+        // Initialize data and restore viewport immediately when data already exists.
+        // This is crucial when returning to chart from another page (component remount).
+        if (candles.length > 0) {
+            series.setData(candles)
+            const key = viewportKeyRef.current
+            const restored = restoreViewport(key)
+            restoredViewportKeyRef.current = key
+            if (!restored) {
+                chart.timeScale().fitContent()
+            }
+            lastCandleCountRef.current = candles.length
+            lastFirstTimeRef.current = candles[0]?.time ?? null
+        }
+
         lastCandleCountRef.current = candles.length // Sync ref
 
         // Use ResizeObserver for better responsive handling
@@ -328,7 +337,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             orderLabelItemsRef.current = []
             chart.remove()
         }
-    }, [updateOrderLabelPositions, persistViewport, schedulePersistViewport]) // Keep chart mounted; avoid remount on pair/timeframe/theme changes
+    }, [updateOrderLabelPositions, persistViewport, schedulePersistViewport, restoreViewport]) // Keep chart mounted; avoid remount on pair/timeframe/theme changes
 
     // Apply visual theme without recreating chart (keeps viewport and zoom intact).
     useEffect(() => {
@@ -357,9 +366,11 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
 
         const timeframeChanged = lastTimeframeRef.current !== timeframe
         const candlesDiff = candles.length - lastCandleCountRef.current
+        const firstTime = candles[0]?.time ?? null
+        const datasetReplaced = firstTime !== null && lastFirstTimeRef.current !== null && firstTime !== lastFirstTimeRef.current
 
         // If timeframe changed OR initial load OR multiple candles added (lazy loading or reload)
-        if (timeframeChanged || lastCandleCountRef.current === 0 || Math.abs(candlesDiff) > 1) {
+        if (timeframeChanged || lastCandleCountRef.current === 0 || Math.abs(candlesDiff) > 1 || datasetReplaced) {
             // Save current visible range before update
             const currentRange = chart?.timeScale().getVisibleLogicalRange()
 
@@ -385,6 +396,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
 
             lastCandleCountRef.current = candles.length
             lastTimeframeRef.current = timeframe
+            lastFirstTimeRef.current = firstTime
         } else {
             // For single candle updates or real-time updates to current candle
             // candlesDiff === 1 means new candle, candlesDiff === 0 means update to current candle
@@ -397,6 +409,7 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
                 series.setData(candles)
             }
             lastCandleCountRef.current = candles.length
+            lastFirstTimeRef.current = firstTime
         }
         updateOrderLabelPositions()
     }, [candles, timeframe, viewportKey, restoreViewport, updateOrderLabelPositions])

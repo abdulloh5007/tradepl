@@ -1,5 +1,17 @@
 import type { MarketConfig, Order } from "../types"
 
+export function isMarketSymbol(value?: string): boolean {
+  return /^[A-Z0-9]{2,12}-[A-Z0-9]{2,12}$/.test(String(value || "").trim().toUpperCase())
+}
+
+export function resolveOrderSymbol(order: Pick<Order, "symbol" | "pair_id">, fallbackPair = "UZS-USD"): string {
+  const symbol = String(order.symbol || "").trim().toUpperCase()
+  if (isMarketSymbol(symbol)) return symbol
+  const pairID = String(order.pair_id || "").trim().toUpperCase()
+  if (isMarketSymbol(pairID)) return pairID
+  return fallbackPair
+}
+
 export function calcOrderProfit(
   order: Order,
   bidDisplay: number,
@@ -45,4 +57,21 @@ export function calcOrderProfit(
   }
   if (isBuy) return (rawBid - entryRaw) * filledQty * contractSize
   return (entryRaw - rawAsk) * filledQty * contractSize
+}
+
+export function calcDisplayedOrderProfit(
+  order: Order,
+  bidDisplay: number,
+  askDisplay: number,
+  fallbackPair: string,
+  marketConfig: Record<string, MarketConfig>
+): number {
+  const backendPnL = parseFloat(order.unrealized_pnl || "")
+
+  const symbol = resolveOrderSymbol(order, fallbackPair)
+  const calculated = calcOrderProfit(order, bidDisplay, askDisplay, symbol, marketConfig)
+  if (Number.isFinite(calculated)) return Math.abs(calculated) < 1e-12 ? 0 : calculated
+
+  if (Number.isFinite(backendPnL)) return Math.abs(backendPnL) < 1e-12 ? 0 : backendPnL
+  return 0
 }

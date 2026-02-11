@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { CandlestickChart } from "lucide-react"
 import type { TradingPairSpec } from "./types"
+import SmartDropdown from "../ui/SmartDropdown"
 
 interface TradingPairsCardProps {
     pairs: TradingPairSpec[]
@@ -11,6 +12,11 @@ interface TradingPairsCardProps {
 }
 
 type DraftMap = Record<string, TradingPairSpec>
+const statusOptions = [
+    { value: "active", label: "active" },
+    { value: "paused", label: "paused" },
+    { value: "disabled", label: "disabled" }
+]
 
 export default function TradingPairsCard({ pairs, loading, initialLoad, canAccess, onSave }: TradingPairsCardProps) {
     const [drafts, setDrafts] = useState<DraftMap>({})
@@ -74,11 +80,13 @@ export default function TradingPairsCard({ pairs, loading, initialLoad, canAcces
                                     </label>
                                     <label className="risk-field">
                                         <span>Status</span>
-                                        <select value={d.status} onChange={e => update(pair.symbol, "status", e.target.value)}>
-                                            <option value="active">active</option>
-                                            <option value="paused">paused</option>
-                                            <option value="disabled">disabled</option>
-                                        </select>
+                                        <SmartDropdown
+                                            value={d.status}
+                                            options={statusOptions}
+                                            onChange={next => update(pair.symbol, "status", String(next))}
+                                            ariaLabel={`Status for ${pair.symbol}`}
+                                            className="risk-dropdown"
+                                        />
                                     </label>
                                 </div>
 

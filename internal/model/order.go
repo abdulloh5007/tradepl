@@ -10,9 +10,11 @@ import (
 
 type Order struct {
 	ID               string            `json:"id"`
+	TicketNo         int64             `json:"ticket_no,omitempty"`
 	UserID           string            `json:"user_id"`
 	TradingAccountID string            `json:"trading_account_id"`
 	PairID           string            `json:"pair_id"`
+	Symbol           string            `json:"symbol,omitempty"`
 	Side             types.OrderSide   `json:"side"`
 	Type             types.OrderType   `json:"type"`
 	Status           types.OrderStatus `json:"status"`
@@ -24,6 +26,11 @@ type Order struct {
 	ReservedAmount   decimal.Decimal   `json:"reserved_amount"`
 	SpentAmount      decimal.Decimal   `json:"spent_amount"`
 	UnrealizedPnL    *decimal.Decimal  `json:"unrealized_pnl,omitempty"`
+	Profit           *decimal.Decimal  `json:"profit,omitempty"`
+	Commission       *decimal.Decimal  `json:"commission,omitempty"`
+	Swap             *decimal.Decimal  `json:"swap,omitempty"`
+	ClosePrice       *decimal.Decimal  `json:"close_price,omitempty"`
+	CloseTime        *time.Time        `json:"close_time,omitempty"`
 	TimeInForce      types.TimeInForce `json:"time_in_force"`
 	CreatedAt        time.Time         `json:"created_at"`
 }

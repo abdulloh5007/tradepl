@@ -183,7 +183,7 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                     <div key={admin.id} className="admin-item">
                         <div className="admin-info">
                             <User size={20} />
-                            <div>
+                            <div className="admin-meta">
                                 <span className="admin-name">{admin.name}</span>
                                 <span className="admin-tg">ID: {admin.telegram_id}</span>
                             </div>
@@ -192,7 +192,7 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                             {Array.isArray(admin.rights) && admin.rights.map(r => <span key={r} className="right-badge">{r}</span>)}
                         </div>
                         <div className="admin-actions">
-                            <button className="edit-admin-btn" onClick={() => startEditing(admin)} style={{ marginRight: 8 }}>
+                            <button className="edit-admin-btn" onClick={() => startEditing(admin)}>
                                 <Edit2 size={16} />
                             </button>
                             <button className="delete-admin-btn" onClick={() => deleteAdmin(admin.id)}>

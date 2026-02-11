@@ -124,9 +124,11 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     metrics: () => request<{ balance: string; equity: string; margin: string; free_margin: string; margin_level: string; pl: string }>("/v1/metrics", "GET", undefined, true),
     orders: () => request<Array<{
       id: string
+      ticket_no?: number
       user_id?: string
       trading_account_id?: string
       pair_id: string
+      symbol?: string
       side: string
       type?: string
       price: string
@@ -137,6 +139,12 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       reserved_amount?: string
       spent_amount?: string
       unrealized_pnl?: string
+      profit?: string
+      commission?: string
+      swap?: string
+      close_price?: string
+      close_time?: string
+      comment?: string
       time_in_force?: string
       status: string
       created_at: string
@@ -149,9 +157,11 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       if (q.length > 0) url += `?${q.join("&")}`
       return request<Array<{
       id: string
+      ticket_no?: number
       user_id?: string
       trading_account_id?: string
       pair_id: string
+      symbol?: string
       side: string
       type?: string
       price: string
@@ -162,6 +172,12 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       reserved_amount?: string
       spent_amount?: string
       unrealized_pnl?: string
+      profit?: string
+      commission?: string
+      swap?: string
+      close_price?: string
+      close_time?: string
+      comment?: string
       time_in_force?: string
       status: string
       created_at: string

@@ -3,6 +3,7 @@ import { X } from "lucide-react"
 import type { TradingAccount } from "../../types"
 import type { AccountSnapshot } from "./types"
 import { accountShortNumericId, formatPercent, formatUsd, getLeverage, leverageLabel, leverageOptions } from "./utils"
+import SmartDropdown from "../ui/SmartDropdown"
 import "./SharedAccountSheet.css"
 
 interface AccountDetailsModalProps {
@@ -49,6 +50,10 @@ export default function AccountDetailsModal({
       { label: "Leverage", value: account ? leverageLabel(getLeverage(account)) : "—" }
     ]
   }, [snapshot, account])
+
+  const leverageItems = useMemo(() => {
+    return leverageOptions.map(value => ({ value, label: leverageLabel(value) }))
+  }, [])
 
   if (!open || !account) return null
 
@@ -140,15 +145,15 @@ export default function AccountDetailsModal({
 
               <label className="acm-label">
                 Leverage
-                <select
-                  className="acm-select"
+                <SmartDropdown
                   value={String(levDraft)}
-                  onChange={e => setLevDraft(Number(e.target.value))}
-                >
-                  {leverageOptions.map(value => (
-                    <option key={value} value={value}>{leverageLabel(value)}</option>
-                  ))}
-                </select>
+                  options={leverageItems}
+                  onChange={(next) => setLevDraft(Number(next))}
+                  ariaLabel="Select leverage"
+                  className="acm-dropdown"
+                  triggerClassName="acm-select-like"
+                  menuClassName="acm-dropdown-menu"
+                />
               </label>
               <button
                 type="button"
