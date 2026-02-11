@@ -50,6 +50,7 @@ func main() {
 	matchEngine := matching.NewEngine(orderStore, ledgerSvc, bus)
 	orderSvc := orders.NewService(pool, orderStore, ledgerSvc, market, matchEngine, accountSvc)
 	authSvc := auth.NewService(pool, cfg.JWTIssuer, []byte(cfg.JWTSecret), cfg.JWTTTL)
+	authSvc.SetTelegramBotToken(cfg.TelegramBotToken)
 	authSvc.SetAccountService(accountSvc)
 	authHandler := auth.NewHandler(authSvc)
 	faucetMax, err := decimal.NewFromString(cfg.FaucetMax)

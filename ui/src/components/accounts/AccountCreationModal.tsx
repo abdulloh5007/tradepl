@@ -69,7 +69,7 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
         if (open) {
             setActiveIndex(0)
             if (scrollRef.current) {
-                scrollRef.current.scrollTo({ left: 0, behavior: "instant" })
+                scrollRef.current.scrollTo({ left: 0, behavior: "auto" })
             }
         }
     }, [open])
@@ -179,13 +179,6 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
 
                 {/* Footer */}
                 <div className="acm-footer">
-                    <div className="acm-contract-specs">
-                        <p className="acm-contract-title">Contract specifications</p>
-                        <p className="acm-contract-desc">
-                            Full breakdown of instrument terms, costs, and trading hours.
-                        </p>
-                    </div>
-
                     <button
                         onClick={handleCreate}
                         disabled={creating}

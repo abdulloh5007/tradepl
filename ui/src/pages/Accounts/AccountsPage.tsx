@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import type { Metrics, TradingAccount } from "../../types"
@@ -16,6 +16,7 @@ interface AccountsPageProps {
   metrics: Metrics
   activeOpenOrdersCount: number
   snapshots: Record<string, AccountSnapshot>
+  onRefreshSnapshots: () => Promise<void>
   onSwitch: (accountId: string) => Promise<void>
   onCreate: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => Promise<void>
   onUpdateLeverage: (accountId: string, leverage: number) => Promise<void>
@@ -34,6 +35,7 @@ export default function AccountsPage({
   metrics,
   activeOpenOrdersCount,
   snapshots,
+  onRefreshSnapshots,
   onSwitch,
   onCreate,
   onUpdateLeverage,
@@ -66,6 +68,35 @@ export default function AccountsPage({
   const [fundingAmount, setFundingAmount] = useState("1000")
   const [fundingBusy, setFundingBusy] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (!switcherOpen) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const run = async () => {
+      if (cancelled) return
+      try {
+        await onRefreshSnapshots()
+      } finally {
+        if (!cancelled) timer = setTimeout(run, 2500)
+      }
+    }
+
+    run().catch(() => { })
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [switcherOpen, onRefreshSnapshots])
+
+  const switcherSnapshots = useMemo(() => {
+    if (!activeAccount || !activeSnapshot) return snapshots
+    return {
+      ...snapshots,
+      [activeAccount.id]: activeSnapshot
+    }
+  }, [snapshots, activeAccount, activeSnapshot])
 
   if (!activeAccount) {
     return (
@@ -121,7 +152,7 @@ export default function AccountsPage({
         open={switcherOpen}
         accounts={accounts}
         activeAccountId={activeAccountId}
-        snapshots={snapshots}
+        snapshots={switcherSnapshots}
         onClose={() => setSwitcherOpen(false)}
         onSwitch={onSwitch}
       />

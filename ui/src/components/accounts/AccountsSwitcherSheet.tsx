@@ -70,10 +70,10 @@ export default function AccountsSwitcherSheet({
             {filtered.length === 0 ? (
               <div className="acm-note" style={{ padding: 20 }}>No {tab} accounts</div>
             ) : filtered.map(account => {
-              const shot = snapshots[account.id] || { pl: 0, openCount: 0, metrics: null }
+              const shot = snapshots[account.id]
               const active = account.id === activeAccountId
-              const plColor = shot.pl >= 0 ? "#22c55e" : "#ef4444"
-              const plPrefix = shot.pl >= 0 ? "+" : ""
+              const plColor = !shot ? "#9ca3af" : shot.pl >= 0 ? "#22c55e" : "#ef4444"
+              const plPrefix = !shot ? "" : shot.pl >= 0 ? "+" : ""
               return (
                 <button
                   type="button"
@@ -95,8 +95,8 @@ export default function AccountsSwitcherSheet({
                     <span style={{ fontSize: 12 }}>{account.plan?.name || "Standard"} • #{accountShortNumericId(account.id)}</span>
                   </div>
                   <div className="acm-label" style={{ alignItems: "flex-end" }}>
-                    <span style={{ color: plColor, fontWeight: 600 }}>{plPrefix}{formatUsd(shot.pl)} USD</span>
-                    <span>{openCountLabel(shot.openCount)}</span>
+                    <span style={{ color: plColor, fontWeight: 600 }}>{!shot ? "Updating..." : `${plPrefix}${formatUsd(shot.pl)} USD`}</span>
+                    <span>{!shot ? "—" : openCountLabel(shot.openCount)}</span>
                   </div>
                 </button>
               )

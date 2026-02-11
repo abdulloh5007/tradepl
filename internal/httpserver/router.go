@@ -66,6 +66,7 @@ func NewRouter(d RouterDeps) http.Handler {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", d.AuthHandler.Register)
 			r.Post("/login", d.AuthHandler.Login)
+			r.Post("/telegram", d.AuthHandler.LoginTelegram)
 			// Verify endpoint - check if user exists in DB (with rate limiting)
 			r.With(VerifyRateLimitMiddleware).Group(func(r chi.Router) {
 				r.Use(WithAuth(d.AuthService))

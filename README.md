@@ -17,6 +17,7 @@ Run
    - JWT_TTL
    - INTERNAL_API_TOKEN
    - WS_ORIGIN
+   - TELEGRAM_BOT_TOKEN (optional, required for Telegram Mini App auth)
    - FAUCET_ENABLED (optional, default true)
    - FAUCET_MAX (optional, default 10000)
    - MARKETDATA_DIR (optional, default empty, example db/marketdata)

@@ -57,6 +57,14 @@ export type TradingAccount = {
   updated_at: string
 }
 
+export type UserProfile = {
+  id: string
+  email: string
+  telegram_id?: number
+  display_name?: string
+  avatar_url?: string
+}
+
 const parseBody = (text: string) => {
   const trimmed = text.trim()
   if (!trimmed) return null
@@ -99,7 +107,8 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
   return {
     register: (email: string, password: string) => request<{ user_id: string; access_token: string }>("/v1/auth/register", "POST", { email, password }),
     login: (email: string, password: string) => request<{ access_token: string }>("/v1/auth/login", "POST", { email, password }),
-    me: () => request<{ id: string; email: string }>("/v1/me", "GET", undefined, true),
+    telegramAuth: (initData: string) => request<{ access_token: string; user: UserProfile }>("/v1/auth/telegram", "POST", { init_data: initData }),
+    me: () => request<UserProfile>("/v1/me", "GET", undefined, true),
     accounts: () => request<TradingAccount[] | null>("/v1/accounts", "GET", undefined, true),
     createAccount: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) =>
       request<TradingAccount>("/v1/accounts", "POST", payload, true),

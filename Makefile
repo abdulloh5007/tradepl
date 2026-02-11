@@ -7,6 +7,7 @@ INTERNAL_API_TOKEN ?= internal_dev_token
 WS_ORIGIN ?= http://localhost:5173
 UI_DIST ?=
 MARKETDATA_DIR ?= db/marketdata
+TELEGRAM_BOT_TOKEN ?=
 
 .PHONY: db api migrate seed run ui env run-env dev
 
@@ -32,7 +33,7 @@ seed:
 	DB_DSN="$(DB_DSN)" ./scripts/seed.sh
 
 api:
-	HTTP_ADDR="$(HTTP_ADDR)" DB_DSN="$(DB_DSN)" JWT_ISSUER="$(JWT_ISSUER)" JWT_SECRET="$(JWT_SECRET)" JWT_TTL="$(JWT_TTL)" INTERNAL_API_TOKEN="$(INTERNAL_API_TOKEN)" WS_ORIGIN="$(WS_ORIGIN)" UI_DIST="$(UI_DIST)" MARKETDATA_DIR="$(MARKETDATA_DIR)" go run ./cmd/api
+	HTTP_ADDR="$(HTTP_ADDR)" DB_DSN="$(DB_DSN)" JWT_ISSUER="$(JWT_ISSUER)" JWT_SECRET="$(JWT_SECRET)" JWT_TTL="$(JWT_TTL)" INTERNAL_API_TOKEN="$(INTERNAL_API_TOKEN)" WS_ORIGIN="$(WS_ORIGIN)" TELEGRAM_BOT_TOKEN="$(TELEGRAM_BOT_TOKEN)" UI_DIST="$(UI_DIST)" MARKETDATA_DIR="$(MARKETDATA_DIR)" go run ./cmd/api
 
 env:
 	@set -a; . ./.env; set +a

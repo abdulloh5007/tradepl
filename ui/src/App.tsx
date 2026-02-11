@@ -11,7 +11,7 @@ import { t } from "./utils/i18n"
 import { calcDisplayedOrderProfit } from "./utils/trading"
 
 // API
-import { createApiClient, createWsUrl } from "./api"
+import { createApiClient, createWsUrl, type UserProfile } from "./api"
 
 // Components
 import BottomNav from "./components/BottomNav"
@@ -57,6 +57,15 @@ function resolveView(): View {
   if (hash === "positions" || hash === "history" || hash === "accounts" || hash === "profile" || hash === "api" || hash === "faucet") return hash
   if (hash === "balance") return "positions"
   return "chart"
+}
+
+function telegramInitData(): string {
+  if (typeof window === "undefined") return ""
+  return (window.Telegram?.WebApp?.initData || "").trim()
+}
+
+function isTelegramMiniApp(): boolean {
+  return telegramInitData().length > 0
 }
 
 export default function App() {
@@ -112,9 +121,14 @@ export default function App() {
   const [password, setPassword] = useState("")
   const [authMode, setAuthMode] = useState<"login" | "register">("login")
   const [authLoading, setAuthLoading] = useState(false)
+  const [autoAuthChecked, setAutoAuthChecked] = useState(false)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const telegramRedirectedRef = useRef(false)
 
   const logout = useCallback(() => {
     setToken("")
+    setProfile(null)
+    telegramRedirectedRef.current = false
     setActiveAccountId("")
     setAccounts([])
     setOpenOrders([])
@@ -160,6 +174,8 @@ export default function App() {
   // Memoized API client (prevents recreation on every render = fixes lag)
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
   const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token, activeAccountId }, logout), [normalizedBaseUrl, token, activeAccountId, logout])
+  const authApi = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token }, logout), [normalizedBaseUrl, token, logout])
+  const publicApi = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token: "" }), [normalizedBaseUrl])
   const marketPrice = quote?.bid ? parseFloat(quote.bid) : marketConfig[marketPair].displayBase
   const bidDisplay = quote?.bid ? parseFloat(quote.bid) : marketPrice
   const askDisplay = quote?.ask ? parseFloat(quote.ask) : marketPrice
@@ -363,6 +379,64 @@ export default function App() {
     }
     refreshAccounts().catch(() => { })
   }, [token, refreshAccounts])
+
+  useEffect(() => {
+    if (token) {
+      setAutoAuthChecked(true)
+      return
+    }
+
+    const initData = telegramInitData()
+    if (!initData) {
+      setAutoAuthChecked(true)
+      return
+    }
+
+    let cancelled = false
+    setAuthLoading(true)
+    window.Telegram?.WebApp?.ready?.()
+    ; (async () => {
+      try {
+        const res = await publicApi.telegramAuth(initData)
+        if (cancelled) return
+        setToken(res.access_token)
+        setProfile(res.user || null)
+        setCookie("lv_token", res.access_token)
+        setCookie("lv_account_id", "")
+        setActiveAccountId("")
+        setView("accounts")
+      } catch {
+        if (cancelled) return
+        setCookie("lv_token", "")
+      } finally {
+        if (!cancelled) {
+          setAuthLoading(false)
+          setAutoAuthChecked(true)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [token, publicApi])
+
+  useEffect(() => {
+    if (!token) {
+      setProfile(null)
+      return
+    }
+    authApi.me()
+      .then(user => setProfile(user))
+      .catch(() => { })
+  }, [token, authApi])
+
+  useEffect(() => {
+    if (telegramRedirectedRef.current) return
+    if (!token || !isTelegramMiniApp()) return
+    setView("accounts")
+    telegramRedirectedRef.current = true
+  }, [token])
 
   // Persist preferences
   useEffect(() => {
@@ -828,6 +902,7 @@ export default function App() {
         ? await api.login(email, password)
         : await api.register(email, password)
       setToken(res.access_token)
+      setProfile(null)
       setCookie("lv_token", res.access_token)
       setCookie("lv_account_id", "")
       setActiveAccountId("")
@@ -905,6 +980,16 @@ export default function App() {
 
   // Show login form if not authenticated
   if (!token) {
+    if (!autoAuthChecked) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)", alignItems: "center", justifyContent: "center", gap: 10 }}>
+          <Toaster position="top-right" />
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-base)" }}>
+            {isTelegramMiniApp() ? "Connecting Telegram..." : "Loading..."}
+          </div>
+        </div>
+      )
+    }
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)", alignItems: "center", justifyContent: "center" }}>
         <Toaster position="top-right" />
@@ -1051,6 +1136,7 @@ export default function App() {
             metrics={liveMetrics}
             activeOpenOrdersCount={openOrders.filter(o => o.status === "filled").length}
             snapshots={accountSnapshots}
+            onRefreshSnapshots={refreshAccountSnapshots}
             onSwitch={handleSwitchAccount}
             onCreate={handleCreateAccount}
             onUpdateLeverage={handleUpdateAccountLeverage}
@@ -1062,13 +1148,14 @@ export default function App() {
           />
         )}
 
-        {view === "settings" && (
-          <SettingsPage
+        {view === "profile" && (
+          <ProfilePage
             lang={lang}
             setLang={setLang}
             theme={theme}
             setTheme={setTheme}
             onLogout={logout}
+            profile={profile}
           />
         )}
 

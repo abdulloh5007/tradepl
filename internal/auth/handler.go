@@ -24,6 +24,10 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+type telegramLoginRequest struct {
+	InitData string `json:"init_data"`
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := httputil.ReadJSON(r, &req); err != nil {
@@ -57,13 +61,42 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"access_token": token})
 }
 
+func (h *Handler) LoginTelegram(w http.ResponseWriter, r *http.Request) {
+	var req telegramLoginRequest
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	token, user, err := h.svc.LoginTelegram(r.Context(), req.InitData)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"access_token": token,
+		"user": map[string]interface{}{
+			"id":           user.ID,
+			"email":        user.Email,
+			"telegram_id":  user.TelegramID,
+			"display_name": user.DisplayName,
+			"avatar_url":   user.AvatarURL,
+		},
+	})
+}
+
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request, userID string) {
 	user, err := h.svc.GetUser(r.Context(), userID)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]string{"id": user.ID, "email": user.Email})
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"id":           user.ID,
+		"email":        user.Email,
+		"telegram_id":  user.TelegramID,
+		"display_name": user.DisplayName,
+		"avatar_url":   user.AvatarURL,
+	})
 }
 
 // Verify checks if user exists in database - used on page load to validate session

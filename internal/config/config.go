@@ -8,17 +8,18 @@ import (
 )
 
 type Config struct {
-	HTTPAddr        string
-	DBDSN           string
-	JWTIssuer       string
-	JWTSecret       string
-	JWTTTL          time.Duration
-	InternalToken   string
-	WebSocketOrigin string
-	UIDist          string
-	FaucetEnabled   bool
-	FaucetMax       string
-	MarketDataDir   string
+	HTTPAddr         string
+	DBDSN            string
+	JWTIssuer        string
+	JWTSecret        string
+	JWTTTL           time.Duration
+	InternalToken    string
+	WebSocketOrigin  string
+	TelegramBotToken string
+	UIDist           string
+	FaucetEnabled    bool
+	FaucetMax        string
+	MarketDataDir    string
 }
 
 func Load() (Config, error) {
@@ -58,6 +59,7 @@ func Load() (Config, error) {
 	if c.WebSocketOrigin == "" {
 		missing = append(missing, "WS_ORIGIN")
 	}
+	c.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	c.UIDist = os.Getenv("UI_DIST")
 	c.MarketDataDir = os.Getenv("MARKETDATA_DIR")
 	faucetEnabled := os.Getenv("FAUCET_ENABLED")
