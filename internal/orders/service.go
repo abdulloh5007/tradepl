@@ -1387,6 +1387,8 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 			ticket = formatSystemCoverTicket(accountMode, sequence, entryID)
 		} else if eventType == string(types.LedgerEntryTypeDeposit) && isSignupRewardRef(txRef) {
 			ticket = formatRewardTicket(accountMode, sequence, entryID)
+		} else if eventType == string(types.LedgerEntryTypeDeposit) && isDepositBonusRef(txRef) {
+			ticket = formatDepositBonusTicket(accountMode, sequence, entryID)
 		}
 
 		closeTime := createdAt
@@ -1605,6 +1607,12 @@ func formatRewardTicket(accountMode string, sequence int64, seed string) string 
 	return modeTicketPrefix(accountMode) + "BXrew" + digits + letters
 }
 
+func formatDepositBonusTicket(accountMode string, sequence int64, seed string) string {
+	digits := normalizeTicketNumber(sequence, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("cash:deposit_bonus:%d:%s", sequence, seed))
+	return modeTicketPrefix(accountMode) + "BXbon" + digits + letters
+}
+
 func isUndefinedTableError(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "42P01"
@@ -1618,6 +1626,11 @@ func isSystemNegativeCoverRef(ref string) bool {
 func isSignupRewardRef(ref string) bool {
 	ref = strings.ToLower(strings.TrimSpace(ref))
 	return strings.HasPrefix(ref, "signup_reward")
+}
+
+func isDepositBonusRef(ref string) bool {
+	ref = strings.ToLower(strings.TrimSpace(ref))
+	return strings.HasPrefix(ref, "deposit_bonus:")
 }
 
 func (s *Service) CloseOrdersByScope(ctx context.Context, userID, accountID, scope string) (CloseOrdersResult, error) {

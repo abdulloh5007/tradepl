@@ -48,10 +48,12 @@ export function useWebSocket({ baseUrl, marketPair, marketConfig, onQuote, onCan
                     }
 
                     const s = a - b
+                    const l = (a + b) / 2
 
                     onQuote?.({
                         bid: isNaN(b) ? String(data.bid) : b.toFixed(cfg.displayDecimals),
                         ask: isNaN(a) ? String(data.ask) : a.toFixed(cfg.displayDecimals),
+                        last: isNaN(l) ? String(data.last || data.bid || data.ask || "0") : l.toFixed(cfg.displayDecimals),
                         spread: isNaN(s) ? String(data.spread) : s.toFixed(2),
                         ts: Number(data.ts)
                     })

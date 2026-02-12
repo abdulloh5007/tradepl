@@ -44,6 +44,13 @@ export type TradingRiskConfig = {
     margin_call_level_pct: string
     stop_out_level_pct: string
     unlimited_effective_leverage: number
+    signup_bonus_total_limit: number
+    signup_bonus_amount: string
+    real_deposit_min_usd: string
+    real_deposit_max_usd: string
+    usd_to_uzs_rate: string
+    real_deposit_review_minutes: number
+    telegram_deposit_chat_id: string
 }
 
 export type TradingPairSpec = {

@@ -10,20 +10,21 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/shopspring/decimal"
 	"lv-tradepl/internal/httputil"
 	"lv-tradepl/internal/types"
 )
 
 const signupBonusRefPrefix = "signup_reward"
 
-var signupBonusAmount = decimal.NewFromInt(10)
-
 type signupBonusStatusResponse struct {
 	Amount             string     `json:"amount"`
 	Currency           string     `json:"currency"`
 	Claimed            bool       `json:"claimed"`
 	CanClaim           bool       `json:"can_claim"`
+	TotalLimit         int        `json:"total_limit"`
+	ClaimedTotal       int        `json:"claimed_total"`
+	Remaining          int        `json:"remaining"`
+	StandardOnly       bool       `json:"standard_only"`
 	ClaimedAt          *time.Time `json:"claimed_at,omitempty"`
 	TradingAccountID   string     `json:"trading_account_id,omitempty"`
 	TradingAccountName string     `json:"trading_account_name,omitempty"`
@@ -50,20 +51,45 @@ func (h *Handler) SignupBonusStatus(w http.ResponseWriter, r *http.Request, user
 		return
 	}
 
+	cfg, cfgErr := h.loadBonusProgramConfig(r.Context())
+	if cfgErr != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: cfgErr.Error()})
+		return
+	}
+
 	status := signupBonusStatusResponse{
-		Amount:   signupBonusAmount.StringFixed(2),
-		Currency: "USD",
-		Claimed:  false,
-		CanClaim: false,
+		Amount:       cfg.SignupBonusAmount.StringFixed(2),
+		Currency:     "USD",
+		Claimed:      false,
+		CanClaim:     false,
+		TotalLimit:   cfg.SignupBonusTotalLimit,
+		ClaimedTotal: 0,
+		Remaining:    cfg.SignupBonusTotalLimit,
+		StandardOnly: true,
 	}
 
 	target, targetErr := h.resolveSignupBonusTargetAccount(r.Context(), userID)
 	if targetErr == nil {
-		status.CanClaim = true
 		status.TradingAccountID = target.ID
 		status.TradingAccountName = target.Name
 		status.TradingAccountMode = target.Mode
 	}
+
+	var claimedTotal int
+	if err := h.svc.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM signup_bonus_claims`).Scan(&claimedTotal); err != nil {
+		if isUndefinedTableError(err) {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "signup bonus is unavailable: run migrations"})
+			return
+		}
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	status.ClaimedTotal = claimedTotal
+	remaining := cfg.SignupBonusTotalLimit - claimedTotal
+	if remaining < 0 {
+		remaining = 0
+	}
+	status.Remaining = remaining
 
 	var claimedAt time.Time
 	var claimedAccountID string
@@ -88,6 +114,7 @@ func (h *Handler) SignupBonusStatus(w http.ResponseWriter, r *http.Request, user
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 			return
 		}
+		status.CanClaim = targetErr == nil && status.Remaining > 0
 		httputil.WriteJSON(w, http.StatusOK, status)
 		return
 	}
@@ -128,6 +155,12 @@ func (h *Handler) ClaimSignupBonus(w http.ResponseWriter, r *http.Request, userI
 	}
 	defer tx.Rollback(r.Context())
 
+	cfg, cfgErr := h.loadBonusProgramConfigTx(r.Context(), tx)
+	if cfgErr != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: cfgErr.Error()})
+		return
+	}
+
 	var alreadyClaimed bool
 	if err := tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM signup_bonus_claims WHERE user_id = $1)`, userID).Scan(&alreadyClaimed); err != nil {
 		if isUndefinedTableError(err) {
@@ -139,6 +172,19 @@ func (h *Handler) ClaimSignupBonus(w http.ResponseWriter, r *http.Request, userI
 	}
 	if alreadyClaimed {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorResponse{Error: "signup bonus already claimed"})
+		return
+	}
+	var claimedTotal int
+	if err := tx.QueryRow(r.Context(), `SELECT COUNT(*) FROM signup_bonus_claims`).Scan(&claimedTotal); err != nil {
+		if isUndefinedTableError(err) {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "signup bonus is unavailable: run migrations"})
+			return
+		}
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if claimedTotal >= cfg.SignupBonusTotalLimit {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorResponse{Error: "signup bonus limit reached"})
 		return
 	}
 
@@ -174,7 +220,7 @@ func (h *Handler) ClaimSignupBonus(w http.ResponseWriter, r *http.Request, userI
 	}
 
 	ref := fmt.Sprintf("%s:%s:%s", signupBonusRefPrefix, userID, target.ID)
-	ledgerTxID, err := h.svc.Transfer(r.Context(), tx, systemAccount, userAccount, signupBonusAmount, types.LedgerEntryTypeDeposit, ref)
+	ledgerTxID, err := h.svc.Transfer(r.Context(), tx, systemAccount, userAccount, cfg.SignupBonusAmount, types.LedgerEntryTypeDeposit, ref)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 		return
@@ -191,7 +237,7 @@ func (h *Handler) ClaimSignupBonus(w http.ResponseWriter, r *http.Request, userI
 			claimed_at
 		) VALUES ($1, $2, $3, $4, TRUE, NOW())
 		RETURNING claimed_at
-	`, userID, target.ID, signupBonusAmount, ledgerTxID).Scan(&claimedAt)
+	`, userID, target.ID, cfg.SignupBonusAmount, ledgerTxID).Scan(&claimedAt)
 	if err != nil {
 		if isUniqueViolationError(err) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorResponse{Error: "signup bonus already claimed"})
@@ -207,10 +253,14 @@ func (h *Handler) ClaimSignupBonus(w http.ResponseWriter, r *http.Request, userI
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, signupBonusStatusResponse{
-		Amount:             signupBonusAmount.StringFixed(2),
+		Amount:             cfg.SignupBonusAmount.StringFixed(2),
 		Currency:           "USD",
 		Claimed:            true,
 		CanClaim:           false,
+		TotalLimit:         cfg.SignupBonusTotalLimit,
+		ClaimedTotal:       claimedTotal + 1,
+		Remaining:          maxInt(0, cfg.SignupBonusTotalLimit-(claimedTotal+1)),
+		StandardOnly:       true,
 		ClaimedAt:          &claimedAt,
 		TradingAccountID:   target.ID,
 		TradingAccountName: target.Name,
@@ -225,6 +275,7 @@ func (h *Handler) resolveSignupBonusTargetAccount(ctx context.Context, userID st
 		FROM trading_accounts
 		WHERE user_id = $1
 		  AND mode = 'real'
+		  AND plan_id = 'standard'
 		ORDER BY is_active DESC, created_at ASC
 		LIMIT 1
 	`, userID).Scan(&target.ID, &target.Name, &target.Mode)
@@ -242,6 +293,7 @@ func (h *Handler) resolveSignupBonusTargetAccountTx(ctx context.Context, tx pgx.
 		FROM trading_accounts
 		WHERE user_id = $1
 		  AND mode = 'real'
+		  AND plan_id = 'standard'
 		ORDER BY is_active DESC, created_at ASC
 		LIMIT 1
 		FOR UPDATE
@@ -258,7 +310,19 @@ func isUndefinedTableError(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "42P01"
 }
 
+func isUndefinedColumnError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42703"
+}
+
 func isUniqueViolationError(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

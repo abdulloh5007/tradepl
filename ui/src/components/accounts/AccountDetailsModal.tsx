@@ -66,7 +66,7 @@ export default function AccountDetailsModal({
   const hasOpenOrders = (snapshot?.openCount || 0) > 0
   const rawBalance = Number(snapshot?.metrics?.balance ?? account?.balance ?? 0)
   const accountBalance = Number.isFinite(rawBalance) ? rawBalance : 0
-  const unlimitedBlockedByBalance = levDraft === 0 && account && getLeverage(account) !== 0 && accountBalance > 1000
+  const unlimitedBlockedByBalance = Boolean(levDraft === 0 && account && getLeverage(account) !== 0 && accountBalance > 1000)
 
   if (!open || !account) return null
 

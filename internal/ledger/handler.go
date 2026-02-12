@@ -18,10 +18,28 @@ type Handler struct {
 	accountSvc    *accounts.Service
 	faucetEnabled bool
 	faucetMax     decimal.Decimal
+	tgBotToken    string
+	ownerTgID     int64
 }
 
-func NewHandler(svc *Service, store *marketdata.Store, accountSvc *accounts.Service, faucetEnabled bool, faucetMax decimal.Decimal) *Handler {
-	return &Handler{svc: svc, store: store, accountSvc: accountSvc, faucetEnabled: faucetEnabled, faucetMax: faucetMax}
+func NewHandler(
+	svc *Service,
+	store *marketdata.Store,
+	accountSvc *accounts.Service,
+	faucetEnabled bool,
+	faucetMax decimal.Decimal,
+	tgBotToken string,
+	ownerTelegramID int64,
+) *Handler {
+	return &Handler{
+		svc:           svc,
+		store:         store,
+		accountSvc:    accountSvc,
+		faucetEnabled: faucetEnabled,
+		faucetMax:     faucetMax,
+		tgBotToken:    strings.TrimSpace(tgBotToken),
+		ownerTgID:     ownerTelegramID,
+	}
 }
 
 type movementRequest struct {

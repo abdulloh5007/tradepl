@@ -12,7 +12,7 @@ import { calcDisplayedOrderProfit } from "./utils/trading"
 import { useMarketWebSocket } from "./hooks/useMarketWebSocket"
 
 // API
-import { createApiClient, type SignupBonusStatus, type UserProfile } from "./api"
+import { createApiClient, type DepositBonusStatus, type SignupBonusStatus, type UserProfile } from "./api"
 
 // Components
 import BottomNav from "./components/BottomNav"
@@ -115,6 +115,7 @@ export default function App() {
   const [telegramAuthError, setTelegramAuthError] = useState("")
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [signupBonus, setSignupBonus] = useState<SignupBonusStatus | null>(null)
+  const [depositBonus, setDepositBonus] = useState<DepositBonusStatus | null>(null)
   const telegramRedirectedRef = useRef(false)
 
   const logout = useCallback(() => {
@@ -127,6 +128,7 @@ export default function App() {
     setOpenOrders([])
     setOrderHistory([])
     setSignupBonus(null)
+    setDepositBonus(null)
     setHistoryAccountId("")
     setMetricsAccountId("")
     setOrdersAccountId("")
@@ -394,6 +396,19 @@ export default function App() {
     }
   }, [api, token])
 
+  const refreshDepositBonus = useCallback(async () => {
+    if (!token) {
+      setDepositBonus(null)
+      return
+    }
+    try {
+      const status = await api.depositBonusStatus()
+      setDepositBonus(status || null)
+    } catch {
+      setDepositBonus(null)
+    }
+  }, [api, token])
+
   const refreshAccountSnapshots = useCallback(async (sourceAccounts?: TradingAccount[]) => {
     if (!token) return
     const list = sourceAccounts || accounts
@@ -444,6 +459,7 @@ export default function App() {
       setOpenOrders([])
       setOrderHistory([])
       setSignupBonus(null)
+      setDepositBonus(null)
       setHistoryAccountId("")
       setMetricsAccountId("")
       setOrdersAccountId("")
@@ -465,10 +481,14 @@ export default function App() {
   useEffect(() => {
     if (!token) {
       setSignupBonus(null)
+      setDepositBonus(null)
       return
     }
-    refreshSignupBonus().catch(() => { })
-  }, [token, activeAccountId, refreshSignupBonus])
+    Promise.all([
+      refreshSignupBonus().catch(() => { }),
+      refreshDepositBonus().catch(() => { })
+    ]).catch(() => { })
+  }, [token, activeAccountId, refreshSignupBonus, refreshDepositBonus])
 
   useEffect(() => {
     let cancelled = false
@@ -895,6 +915,7 @@ export default function App() {
     ])
     refreshAccountSnapshots().catch(() => { })
     refreshSignupBonus().catch(() => { })
+    refreshDepositBonus().catch(() => { })
   }
 
   const handleUpdateAccountLeverage = async (accountID: string, leverage: number) => {
@@ -928,6 +949,7 @@ export default function App() {
     ])
     refreshAccountSnapshots().catch(() => { })
     refreshSignupBonus().catch(() => { })
+    refreshDepositBonus().catch(() => { })
   }
 
   const handleClaimSignupBonus = async () => {
@@ -941,6 +963,38 @@ export default function App() {
     ])
     refreshAccountSnapshots().catch(() => { })
     refreshSignupBonus().catch(() => { })
+    refreshDepositBonus().catch(() => { })
+  }
+
+  const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const out = String(reader.result || "")
+      const comma = out.indexOf(",")
+      if (comma >= 0) resolve(out.slice(comma + 1))
+      else resolve(out)
+    }
+    reader.onerror = () => reject(new Error("failed to read proof file"))
+    reader.readAsDataURL(file)
+  })
+
+  const handleRequestRealDeposit = async (payload: {
+    amountUSD: string
+    voucherKind: "none" | "gold" | "diamond"
+    proofFile: File
+  }) => {
+    const proofBase64 = await fileToBase64(payload.proofFile)
+    await api.requestRealDeposit({
+      amount_usd: payload.amountUSD,
+      voucher_kind: payload.voucherKind,
+      proof_file_name: payload.proofFile.name,
+      proof_mime_type: payload.proofFile.type || "application/octet-stream",
+      proof_base64: proofBase64,
+    })
+    await Promise.all([
+      refreshDepositBonus().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { }),
+    ])
   }
 
   const handleTopUpDemo = async (amount: string) => {
@@ -1035,7 +1089,9 @@ export default function App() {
           onTopUpDemo={handleTopUpDemo}
           onWithdrawDemo={handleWithdrawDemo}
           signupBonus={signupBonus}
+          depositBonus={depositBonus}
           onClaimSignupBonus={handleClaimSignupBonus}
+          onRequestRealDeposit={handleRequestRealDeposit}
           onGoTrade={() => setView("chart")}
           profile={profile}
           setLang={setLang}

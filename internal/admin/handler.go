@@ -101,9 +101,12 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 	_, err := h.pool.Exec(r.Context(), `
 		INSERT INTO trading_risk_config (
 			id, max_open_positions, max_order_lots, max_order_notional_usd,
-			margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage
+			margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage,
+			signup_bonus_total_limit, signup_bonus_amount,
+			real_deposit_min_usd, real_deposit_max_usd, usd_to_uzs_rate, real_deposit_review_minutes,
+			telegram_deposit_chat_id
 		)
-		VALUES (1, 200, 100, 50000, 60, 20, 3000)
+		VALUES (1, 200, 100, 50000, 60, 20, 3000, 700, 10, 10, 1000, 13000, 120, '')
 		ON CONFLICT (id) DO NOTHING
 	`)
 	if err != nil {
@@ -118,14 +121,36 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 		MarginCallLevelPercent  string `json:"margin_call_level_pct"`
 		StopOutLevelPercent     string `json:"stop_out_level_pct"`
 		UnlimitedEffectiveLevel int    `json:"unlimited_effective_leverage"`
+		SignupBonusTotalLimit   int    `json:"signup_bonus_total_limit"`
+		SignupBonusAmount       string `json:"signup_bonus_amount"`
+		RealDepositMinUSD       string `json:"real_deposit_min_usd"`
+		RealDepositMaxUSD       string `json:"real_deposit_max_usd"`
+		USDToUZSRate            string `json:"usd_to_uzs_rate"`
+		RealDepositReviewMinute int    `json:"real_deposit_review_minutes"`
+		TelegramDepositChatID   string `json:"telegram_deposit_chat_id"`
 	}
 	err = h.pool.QueryRow(r.Context(), `
-		SELECT max_open_positions, max_order_lots, max_order_notional_usd, margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage
-		FROM trading_risk_config
-		WHERE id = 1
+		SELECT
+			trc.max_open_positions,
+			trc.max_order_lots::text,
+			trc.max_order_notional_usd::text,
+			trc.margin_call_level_pct::text,
+			trc.stop_out_level_pct::text,
+			trc.unlimited_effective_leverage,
+			COALESCE((to_jsonb(trc)->>'signup_bonus_total_limit')::int, 700),
+			COALESCE((to_jsonb(trc)->>'signup_bonus_amount')::numeric, 10)::text,
+			COALESCE((to_jsonb(trc)->>'real_deposit_min_usd')::numeric, 10)::text,
+			COALESCE((to_jsonb(trc)->>'real_deposit_max_usd')::numeric, 1000)::text,
+			COALESCE((to_jsonb(trc)->>'usd_to_uzs_rate')::numeric, 13000)::text,
+			COALESCE((to_jsonb(trc)->>'real_deposit_review_minutes')::int, 120),
+			COALESCE((to_jsonb(trc)->>'telegram_deposit_chat_id')::text, '')
+		FROM trading_risk_config trc
+		WHERE trc.id = 1
 	`).Scan(
 		&res.MaxOpenPositions, &res.MaxOrderLots, &res.MaxOrderNotionalUSD,
 		&res.MarginCallLevelPercent, &res.StopOutLevelPercent, &res.UnlimitedEffectiveLevel,
+		&res.SignupBonusTotalLimit, &res.SignupBonusAmount,
+		&res.RealDepositMinUSD, &res.RealDepositMaxUSD, &res.USDToUZSRate, &res.RealDepositReviewMinute, &res.TelegramDepositChatID,
 	)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
@@ -146,6 +171,13 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 		MarginCallLevelPercent  string `json:"margin_call_level_pct"`
 		StopOutLevelPercent     string `json:"stop_out_level_pct"`
 		UnlimitedEffectiveLevel int    `json:"unlimited_effective_leverage"`
+		SignupBonusTotalLimit   int    `json:"signup_bonus_total_limit"`
+		SignupBonusAmount       string `json:"signup_bonus_amount"`
+		RealDepositMinUSD       string `json:"real_deposit_min_usd"`
+		RealDepositMaxUSD       string `json:"real_deposit_max_usd"`
+		USDToUZSRate            string `json:"usd_to_uzs_rate"`
+		RealDepositReviewMinute int    `json:"real_deposit_review_minutes"`
+		TelegramDepositChatID   string `json:"telegram_deposit_chat_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
@@ -156,17 +188,39 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "max_open_positions and unlimited_effective_leverage must be > 0"})
 		return
 	}
-	if !isPositiveNumeric(req.MaxOrderLots) || !isPositiveNumeric(req.MaxOrderNotionalUSD) || !isPositiveNumeric(req.MarginCallLevelPercent) || !isPositiveNumeric(req.StopOutLevelPercent) {
+	if req.SignupBonusTotalLimit <= 0 || req.RealDepositReviewMinute <= 0 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "signup_bonus_total_limit and real_deposit_review_minutes must be > 0"})
+		return
+	}
+	if !isPositiveNumeric(req.MaxOrderLots) ||
+		!isPositiveNumeric(req.MaxOrderNotionalUSD) ||
+		!isPositiveNumeric(req.MarginCallLevelPercent) ||
+		!isPositiveNumeric(req.StopOutLevelPercent) ||
+		!isPositiveNumeric(req.SignupBonusAmount) ||
+		!isPositiveNumeric(req.RealDepositMinUSD) ||
+		!isPositiveNumeric(req.RealDepositMaxUSD) ||
+		!isPositiveNumeric(req.USDToUZSRate) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "numeric fields must be positive numbers"})
 		return
 	}
+	minDep, _ := strconv.ParseFloat(strings.TrimSpace(req.RealDepositMinUSD), 64)
+	maxDep, _ := strconv.ParseFloat(strings.TrimSpace(req.RealDepositMaxUSD), 64)
+	if maxDep < minDep {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "real_deposit_max_usd must be >= real_deposit_min_usd"})
+		return
+	}
+	req.TelegramDepositChatID = strings.TrimSpace(req.TelegramDepositChatID)
 
 	_, err := h.pool.Exec(r.Context(), `
 		INSERT INTO trading_risk_config (
 			id, max_open_positions, max_order_lots, max_order_notional_usd,
-			margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage, updated_at
+			margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage,
+			signup_bonus_total_limit, signup_bonus_amount,
+			real_deposit_min_usd, real_deposit_max_usd, usd_to_uzs_rate, real_deposit_review_minutes,
+			telegram_deposit_chat_id,
+			updated_at
 		)
-		VALUES (1, $1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, NOW())
+		VALUES (1, $1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, $7, $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12, $13, NOW())
 		ON CONFLICT (id) DO UPDATE
 		SET max_open_positions = EXCLUDED.max_open_positions,
 			max_order_lots = EXCLUDED.max_order_lots,
@@ -174,8 +228,15 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 			margin_call_level_pct = EXCLUDED.margin_call_level_pct,
 			stop_out_level_pct = EXCLUDED.stop_out_level_pct,
 			unlimited_effective_leverage = EXCLUDED.unlimited_effective_leverage,
+			signup_bonus_total_limit = EXCLUDED.signup_bonus_total_limit,
+			signup_bonus_amount = EXCLUDED.signup_bonus_amount,
+			real_deposit_min_usd = EXCLUDED.real_deposit_min_usd,
+			real_deposit_max_usd = EXCLUDED.real_deposit_max_usd,
+			usd_to_uzs_rate = EXCLUDED.usd_to_uzs_rate,
+			real_deposit_review_minutes = EXCLUDED.real_deposit_review_minutes,
+			telegram_deposit_chat_id = EXCLUDED.telegram_deposit_chat_id,
 			updated_at = NOW()
-	`, req.MaxOpenPositions, req.MaxOrderLots, req.MaxOrderNotionalUSD, req.MarginCallLevelPercent, req.StopOutLevelPercent, req.UnlimitedEffectiveLevel)
+	`, req.MaxOpenPositions, req.MaxOrderLots, req.MaxOrderNotionalUSD, req.MarginCallLevelPercent, req.StopOutLevelPercent, req.UnlimitedEffectiveLevel, req.SignupBonusTotalLimit, req.SignupBonusAmount, req.RealDepositMinUSD, req.RealDepositMaxUSD, req.USDToUZSRate, req.RealDepositReviewMinute, req.TelegramDepositChatID)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 		return

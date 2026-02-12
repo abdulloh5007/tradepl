@@ -18,6 +18,7 @@ type Config struct {
 	WebSocketOrigin  string
 	ProfectMode      string
 	TelegramBotToken string
+	OwnerTelegramID  int64
 	UIDist           string
 	FaucetEnabled    bool
 	FaucetMax        string
@@ -71,6 +72,14 @@ func Load() (Config, error) {
 	c.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	if c.ProfectMode == "production" && c.TelegramBotToken == "" {
 		missing = append(missing, "TELEGRAM_BOT_TOKEN")
+	}
+	ownerTelegramRaw := strings.TrimSpace(os.Getenv("OWNER_TELEGRAM_ID"))
+	if ownerTelegramRaw != "" {
+		ownerTelegramID, err := strconv.ParseInt(ownerTelegramRaw, 10, 64)
+		if err != nil {
+			return c, errors.New("invalid OWNER_TELEGRAM_ID")
+		}
+		c.OwnerTelegramID = ownerTelegramID
 	}
 	c.UIDist = os.Getenv("UI_DIST")
 	c.MarketDataDir = os.Getenv("MARKETDATA_DIR")

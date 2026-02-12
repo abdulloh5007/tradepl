@@ -70,7 +70,6 @@ export default function ActiveAccountCard({
             type="button"
             className="acc-action-btn"
             onClick={onDeposit}
-            disabled={account.mode !== "demo"}
             aria-label="Deposit"
           >
             <ArrowDown size={24} strokeWidth={2.5} />

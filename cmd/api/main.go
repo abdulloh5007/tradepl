@@ -57,7 +57,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ledgerHandler := ledger.NewHandler(ledgerSvc, market, accountSvc, cfg.FaucetEnabled, faucetMax)
+	ledgerHandler := ledger.NewHandler(
+		ledgerSvc,
+		market,
+		accountSvc,
+		cfg.FaucetEnabled,
+		faucetMax,
+		cfg.TelegramBotToken,
+		cfg.OwnerTelegramID,
+	)
 	orderHandler := orders.NewHandler(orderSvc, accountSvc)
 	marketWS := marketdata.NewMarketWS(cfg.WebSocketOrigin)
 	store := marketdata.NewCandleStore(cfg.MarketDataDir)
@@ -101,6 +109,7 @@ func main() {
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	go orderSvc.StartSwapRolloverWorker(workerCtx)
+	go ledgerHandler.StartRealDepositApprovalWorker(workerCtx)
 
 	log.Printf("server listening on %s", cfg.HTTPAddr)
 	log.Printf("health endpoint: http://localhost%s/health", cfg.HTTPAddr)

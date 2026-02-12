@@ -16,7 +16,14 @@ const DEFAULT_RISK: TradingRiskConfig = {
     max_order_notional_usd: "50000",
     margin_call_level_pct: "60",
     stop_out_level_pct: "20",
-    unlimited_effective_leverage: 3000
+    unlimited_effective_leverage: 3000,
+    signup_bonus_total_limit: 700,
+    signup_bonus_amount: "10",
+    real_deposit_min_usd: "10",
+    real_deposit_max_usd: "1000",
+    usd_to_uzs_rate: "13000",
+    real_deposit_review_minutes: 120,
+    telegram_deposit_chat_id: "",
 }
 
 const asPositiveNumberString = (value: unknown, fallback: string) => {
@@ -33,6 +40,13 @@ const normalizeRisk = (value: TradingRiskConfig | null | undefined): TradingRisk
     margin_call_level_pct: asPositiveNumberString(value?.margin_call_level_pct, DEFAULT_RISK.margin_call_level_pct),
     stop_out_level_pct: asPositiveNumberString(value?.stop_out_level_pct, DEFAULT_RISK.stop_out_level_pct),
     unlimited_effective_leverage: Number(value?.unlimited_effective_leverage) > 0 ? Number(value?.unlimited_effective_leverage) : DEFAULT_RISK.unlimited_effective_leverage,
+    signup_bonus_total_limit: Number(value?.signup_bonus_total_limit) > 0 ? Number(value?.signup_bonus_total_limit) : DEFAULT_RISK.signup_bonus_total_limit,
+    signup_bonus_amount: asPositiveNumberString(value?.signup_bonus_amount, DEFAULT_RISK.signup_bonus_amount),
+    real_deposit_min_usd: asPositiveNumberString(value?.real_deposit_min_usd, DEFAULT_RISK.real_deposit_min_usd),
+    real_deposit_max_usd: asPositiveNumberString(value?.real_deposit_max_usd, DEFAULT_RISK.real_deposit_max_usd),
+    usd_to_uzs_rate: asPositiveNumberString(value?.usd_to_uzs_rate, DEFAULT_RISK.usd_to_uzs_rate),
+    real_deposit_review_minutes: Number(value?.real_deposit_review_minutes) > 0 ? Number(value?.real_deposit_review_minutes) : DEFAULT_RISK.real_deposit_review_minutes,
+    telegram_deposit_chat_id: String(value?.telegram_deposit_chat_id || DEFAULT_RISK.telegram_deposit_chat_id).trim(),
 })
 
 export default function TradingRiskCard({ value, loading, initialLoad, canAccess, onSave }: TradingRiskCardProps) {
@@ -44,9 +58,9 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
 
     if (!canAccess) return null
 
-    const update = (key: "max_open_positions" | "max_order_lots", val: string) => {
+    const update = (key: keyof TradingRiskConfig, val: string) => {
         setDraft(prev => {
-            if (key === "max_open_positions") {
+            if (key === "max_open_positions" || key === "unlimited_effective_leverage" || key === "signup_bonus_total_limit" || key === "real_deposit_review_minutes") {
                 return { ...prev, [key]: Number(val || 0) }
             }
             return { ...prev, [key]: val }
@@ -82,10 +96,43 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                             onChange={e => update("max_order_lots", e.target.value)}
                         />
                     </label>
+                    <label className="risk-field">
+                        <span>Real Deposit Min (USD)</span>
+                        <input
+                            type="text"
+                            value={draft.real_deposit_min_usd}
+                            onChange={e => update("real_deposit_min_usd", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>Real Deposit Max (USD)</span>
+                        <input
+                            type="text"
+                            value={draft.real_deposit_max_usd}
+                            onChange={e => update("real_deposit_max_usd", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>USD to UZS Rate</span>
+                        <input
+                            type="text"
+                            value={draft.usd_to_uzs_rate}
+                            onChange={e => update("usd_to_uzs_rate", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>Telegram Deposit Review Chat ID</span>
+                        <input
+                            type="text"
+                            value={draft.telegram_deposit_chat_id}
+                            onChange={e => update("telegram_deposit_chat_id", e.target.value)}
+                            placeholder="-1001234567890"
+                        />
+                    </label>
                     <div className="risk-field">
                         <span>System</span>
                         <div className="no-events" style={{ margin: 0, padding: "11px 12px", textAlign: "left" }}>
-                            Margin call, stop out and other limits are auto-managed by system defaults.
+                            Margin call, stop out, and bonus pools are auto-managed. Real deposits go to Telegram review chat when chat ID is configured.
                         </div>
                     </div>
                 </div>

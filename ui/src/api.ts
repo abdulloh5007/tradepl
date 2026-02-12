@@ -74,10 +74,53 @@ export type SignupBonusStatus = {
   currency: string
   claimed: boolean
   can_claim: boolean
+  total_limit?: number
+  claimed_total?: number
+  remaining?: number
+  standard_only?: boolean
   claimed_at?: string
   trading_account_id?: string
   trading_account_name?: string
   trading_account_mode?: "demo" | "real" | string
+}
+
+export type DepositVoucherStatus = {
+  id: "gold" | "diamond" | string
+  title: string
+  percent: string
+  available: boolean
+  used: boolean
+}
+
+export type DepositBonusStatus = {
+  min_amount_usd: string
+  max_amount_usd: string
+  usd_to_uzs_rate: string
+  review_minutes: number
+  one_time_used: boolean
+  pending_count: number
+  next_review_due_at?: string
+  eligible_account_id?: string
+  vouchers: DepositVoucherStatus[]
+}
+
+export type RealDepositRequestPayload = {
+  amount_usd: string
+  voucher_kind?: "none" | "gold" | "diamond"
+  proof_file_name: string
+  proof_mime_type: string
+  proof_base64: string
+}
+
+export type RealDepositRequestResponse = {
+  request_id: string
+  ticket: string
+  status: string
+  review_due_at: string
+  amount_usd: string
+  bonus_amount_usd: string
+  total_credit_usd: string
+  voucher_kind: "none" | "gold" | "diamond" | string
 }
 
 const parseBody = (text: string) => {
@@ -136,6 +179,9 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     signupBonusStatus: () => request<SignupBonusStatus>("/v1/rewards/signup", "GET", undefined, true),
     claimSignupBonus: (payload: { accept_terms: boolean }) =>
       request<SignupBonusStatus>("/v1/rewards/signup/claim", "POST", payload, true),
+    depositBonusStatus: () => request<DepositBonusStatus>("/v1/rewards/deposit", "GET", undefined, true),
+    requestRealDeposit: (payload: RealDepositRequestPayload) =>
+      request<RealDepositRequestResponse>("/v1/deposits/real/request", "POST", payload, true),
     balances: async () => {
       const res = await request<Array<{ asset_id: string; symbol: string; kind: string; amount: string }> | null>("/v1/balances", "GET", undefined, true)
       return res || []

@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react"
-import type { SignupBonusStatus, UserProfile } from "../api"
+import type { DepositBonusStatus, SignupBonusStatus, UserProfile } from "../api"
 import type { Lang, MarketConfig, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
 import { AccountsPage, ApiPage, FaucetPage, HistoryPage, PositionsPage, ProfilePage, TradingPage } from "../pages"
 import type { AccountSnapshot } from "./accounts/types"
@@ -51,7 +51,13 @@ interface AppViewRouterProps {
   onTopUpDemo: (amount: string) => Promise<void>
   onWithdrawDemo: (amount: string) => Promise<void>
   signupBonus: SignupBonusStatus | null
+  depositBonus: DepositBonusStatus | null
   onClaimSignupBonus: () => Promise<void>
+  onRequestRealDeposit: (payload: {
+    amountUSD: string
+    voucherKind: "none" | "gold" | "diamond"
+    proofFile: File
+  }) => Promise<void>
   onGoTrade: () => void
   profile: UserProfile | null
   setLang: (lang: Lang) => void
@@ -108,7 +114,9 @@ export default function AppViewRouter({
   onTopUpDemo,
   onWithdrawDemo,
   signupBonus,
+  depositBonus,
   onClaimSignupBonus,
+  onRequestRealDeposit,
   onGoTrade,
   profile,
   setLang,
@@ -194,8 +202,12 @@ export default function AppViewRouter({
         onTopUpDemo={onTopUpDemo}
         onWithdrawDemo={onWithdrawDemo}
         signupBonus={signupBonus}
+        depositBonus={depositBonus}
         onClaimSignupBonus={onClaimSignupBonus}
-        onCloseAll={onCloseAll}
+        onRequestRealDeposit={onRequestRealDeposit}
+        onCloseAll={async () => {
+          await onCloseAll()
+        }}
         onGoTrade={onGoTrade}
       />
     )

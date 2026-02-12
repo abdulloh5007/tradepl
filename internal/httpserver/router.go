@@ -161,6 +161,22 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.LedgerHandler.ClaimSignupBonus(w, r, userID)
 			})
+			r.Get("/rewards/deposit", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.DepositBonusStatus(w, r, userID)
+			})
+			r.Post("/deposits/real/request", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.RequestRealDeposit(w, r, userID)
+			})
 			r.Post("/orders", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {
