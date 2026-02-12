@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import type { Metrics, TradingAccount } from "../../types"
@@ -17,8 +17,6 @@ interface AccountsPageProps {
   activeOpenOrdersCount: number
   liveDataReady: boolean
   snapshots: Record<string, AccountSnapshot>
-  snapshotPulse?: number
-  onRefreshSnapshots: () => Promise<void>
   onSwitch: (accountId: string) => Promise<void>
   onCreate: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => Promise<void>
   onUpdateLeverage: (accountId: string, leverage: number) => Promise<void>
@@ -38,8 +36,6 @@ export default function AccountsPage({
   activeOpenOrdersCount,
   liveDataReady,
   snapshots,
-  snapshotPulse = 0,
-  onRefreshSnapshots,
   onSwitch,
   onCreate,
   onUpdateLeverage,
@@ -76,43 +72,6 @@ export default function AccountsPage({
   const [fundingAmount, setFundingAmount] = useState("1000")
   const [fundingBusy, setFundingBusy] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
-  const refreshingSnapshotsRef = useRef(false)
-  const queuedRefreshRef = useRef(false)
-  const lastPulseRef = useRef<number>(0)
-
-  const runSnapshotsRefresh = async () => {
-    if (refreshingSnapshotsRef.current) {
-      queuedRefreshRef.current = true
-      return
-    }
-    refreshingSnapshotsRef.current = true
-    try {
-      for (;;) {
-        queuedRefreshRef.current = false
-        await onRefreshSnapshots()
-        if (!queuedRefreshRef.current) break
-      }
-    } finally {
-      refreshingSnapshotsRef.current = false
-    }
-  }
-
-  useEffect(() => {
-    if (!switcherOpen) return
-    runSnapshotsRefresh().catch(() => { })
-    return () => {
-      queuedRefreshRef.current = false
-    }
-  }, [switcherOpen])
-
-  useEffect(() => {
-    if (!switcherOpen) return
-    const pulse = Number(snapshotPulse || 0)
-    if (!Number.isFinite(pulse) || pulse <= 0) return
-    if (pulse === lastPulseRef.current) return
-    lastPulseRef.current = pulse
-    runSnapshotsRefresh().catch(() => { })
-  }, [switcherOpen, snapshotPulse])
 
   const switcherSnapshots = useMemo(() => {
     if (!activeAccount || !activeSnapshot) return snapshots

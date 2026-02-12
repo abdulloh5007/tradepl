@@ -68,7 +68,7 @@ func main() {
 	volStore := volatility.NewStore(pool)
 	volHandler := volatility.NewHandler(volStore)
 	adminHandler := admin.NewHandler(pool, cfg.JWTSecret)
-	wsHandler := httpserver.NewWSHandler(bus, authSvc, cfg.WebSocketOrigin)
+	wsHandler := httpserver.NewWSHandler(bus, authSvc, accountSvc, orderSvc, cfg.WebSocketOrigin)
 	eventsWSHandler := httpserver.NewEventsWSHandler(bus, cfg.WebSocketOrigin)
 	router := httpserver.NewRouter(httpserver.RouterDeps{
 		AuthHandler:       authHandler,

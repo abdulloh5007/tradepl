@@ -103,6 +103,10 @@ const isCashFlowOrder = (order: Order) => {
     return side === "deposit" || side === "withdraw" || type === "balance"
 }
 
+const cashFlowLabel = (order: Order) => (
+    String(order.side || "").toLowerCase() === "withdraw" ? "Withdraw" : "Deposit"
+)
+
 const formatTicket = (order: Order) => {
     const direct = String(order.ticket || "").trim()
     if (direct) return `#${direct}`
@@ -152,17 +156,22 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
     const totals = useMemo(() => {
         return filteredOrders.reduce((acc, order) => {
             if (isCashFlowOrder(order)) {
-                acc.deposit += toNumber(order.profit)
+                const amount = toNumber(order.profit)
+                if (String(order.side || "").toLowerCase() === "withdraw") {
+                    acc.withdraw += amount
+                } else {
+                    acc.deposit += amount
+                }
             } else {
                 acc.profit += toNumber(order.profit)
             }
             acc.commission += toNumber(order.commission)
             acc.swap += toNumber(order.swap)
             return acc
-        }, { profit: 0, commission: 0, swap: 0, deposit: 0 })
+        }, { profit: 0, commission: 0, swap: 0, deposit: 0, withdraw: 0 })
     }, [filteredOrders])
 
-    const balance = totals.deposit + totals.profit + totals.swap + totals.commission
+    const balance = totals.deposit + totals.withdraw + totals.profit + totals.swap + totals.commission
 
     const selectedSymbol = selectedOrder ? resolveOrderSymbol(selectedOrder) : ""
     const selectedDerivedRawPrice = selectedOrder ? deriveRawPriceFromSpent(selectedOrder) : Number.NaN
@@ -178,6 +187,8 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
     const selectedDiff = Number.isFinite(selectedClosePrice) && Number.isFinite(selectedOpenPrice)
         ? selectedClosePrice - selectedOpenPrice
         : 0
+    const selectedIsCashFlow = selectedOrder ? isCashFlowOrder(selectedOrder) : false
+    const selectedCashFlowLabel = selectedOrder ? cashFlowLabel(selectedOrder) : "Deposit"
 
     useEffect(() => {
         if (!loading) {
@@ -266,7 +277,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                             const profit = toNumber(order.profit)
                             const isProfit = profit >= 0
                             const isCashFlow = isCashFlowOrder(order)
-                            const cashLabel = String(order.side || "").toLowerCase() === "withdraw" ? "Withdraw" : "Deposit"
+                            const cashLabel = cashFlowLabel(order)
                             const displaySymbol = resolveOrderSymbol(order)
                             const derivedRawPrice = deriveRawPriceFromSpent(order)
                             const openPrice = resolveDisplayPrice(displaySymbol, order.price, Number.isFinite(derivedRawPrice) ? derivedRawPrice : order.close_price)
@@ -311,6 +322,10 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                         <span className="summary-val">{formatNumber(totals.deposit, 2, 2)}</span>
                     </div>
                     <div className="summary-row">
+                        <span>Withdraw</span>
+                        <span className="summary-val">{formatNumber(totals.withdraw, 2, 2)}</span>
+                    </div>
+                    <div className="summary-row">
                         <span>Profit</span>
                         <span className="summary-val">{formatNumber(totals.profit, 2, 2)}</span>
                     </div>
@@ -338,59 +353,74 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                             <button onClick={() => setSelectedOrder(null)} className="acm-close-btn">
                                 <X size={24} />
                             </button>
-                            <h2 className="acm-title">{formatTicket(selectedOrder)}</h2>
+                            <h2 className="acm-title">{selectedIsCashFlow ? selectedCashFlowLabel : formatTicket(selectedOrder)}</h2>
                             <div className="acm-spacer" />
                         </div>
 
                         <div className="acm-content">
-                            <div className="hm-body">
-                                <div className="hm-desc" style={{ textAlign: "center", paddingBottom: 12 }}>
-                                    {getSymbolDesc(selectedSymbol)}
+                            {selectedIsCashFlow ? (
+                                <div className="hm-cash-body">
+                                    <div className="hm-cash-top-row">
+                                        <div className="hm-cash-balance">Balance</div>
+                                        <div className="hm-cash-ticket">{formatTicket(selectedOrder)}</div>
+                                    </div>
+                                    <div className="hm-cash-bottom-row">
+                                        <div className="hm-cash-date">{formatDate(selectedOrder.close_time || selectedOrder.created_at)}</div>
+                                        <div className={`hm-cash-amount ${selectedProfit >= 0 ? "profit" : "loss"}`}>
+                                            {formatNumber(selectedProfit, 2, 2)}
+                                        </div>
+                                    </div>
                                 </div>
+                            ) : (
+                                <div className="hm-body">
+                                    <div className="hm-desc" style={{ textAlign: "center", paddingBottom: 12 }}>
+                                        {getSymbolDesc(selectedSymbol)}
+                                    </div>
 
-                                <div className="hm-main-row">
-                                    <div className="hm-prices">
-                                        {formatPriceOrDash(selectedOpenPrice)} &rarr; {formatPriceOrDash(selectedClosePrice)}
+                                    <div className="hm-main-row">
+                                        <div className="hm-prices">
+                                            {formatPriceOrDash(selectedOpenPrice)} &rarr; {formatPriceOrDash(selectedClosePrice)}
+                                        </div>
+                                        <div className={`hm-profit ${selectedProfit >= 0 ? "profit" : "loss"}`}>
+                                            {formatNumber(selectedProfit, 2, 2)}
+                                        </div>
                                     </div>
-                                    <div className={`hm-profit ${selectedProfit >= 0 ? "profit" : "loss"}`}>
-                                        {formatNumber(selectedProfit, 2, 2)}
-                                    </div>
-                                </div>
 
-                                <div className="hm-delta-row">
-                                    <div className={`hm-delta ${selectedPercent >= 0 ? "profit" : "loss"}`}>
-                                        ROI {formatNumber(selectedPercent, 2, 2)}% {selectedPercent >= 0 ? "▲" : "▼"}
-                                        {Number.isFinite(selectedOpenPrice) && Number.isFinite(selectedClosePrice) ? ` · Δ ${formatNumber(selectedDiff, 2, 2)}` : ""}
+                                    <div className="hm-delta-row">
+                                        <div className={`hm-delta ${selectedPercent >= 0 ? "profit" : "loss"}`}>
+                                            ROI {formatNumber(selectedPercent, 2, 2)}% {selectedPercent >= 0 ? "▲" : "▼"}
+                                            {Number.isFinite(selectedOpenPrice) && Number.isFinite(selectedClosePrice) ? ` · Δ ${formatNumber(selectedDiff, 2, 2)}` : ""}
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="hm-grid">
-                                    <div className="hm-grid-item">
-                                        <span className="hm-label">Type:</span>
-                                        <span className={`hm-side ${selectedOrder.side}`}>{selectedOrder.side.toUpperCase()}</span>
-                                    </div>
-                                    <div className="hm-grid-item">
-                                        <span className="hm-label">Volume:</span>
-                                        <span className="hm-val">{selectedOrder.qty}</span>
-                                    </div>
-                                    <div className="hm-grid-item hm-grid-item-time">
-                                        <span className="hm-label">Open:</span>
-                                        <span className="hm-val">{formatDate(selectedOrder.created_at)}</span>
-                                    </div>
-                                    <div className="hm-grid-item hm-grid-item-time">
-                                        <span className="hm-label">Close:</span>
-                                        <span className="hm-val">{formatDate(selectedOrder.close_time || selectedOrder.created_at)}</span>
-                                    </div>
-                                    <div className="hm-grid-item">
-                                        <span className="hm-label">Swap:</span>
-                                        <span className="hm-val">{formatNumber(toNumber(selectedOrder.swap), 2, 2)}</span>
-                                    </div>
-                                    <div className="hm-grid-item">
-                                        <span className="hm-label">Commission:</span>
-                                        <span className="hm-val">{formatNumber(toNumber(selectedOrder.commission), 2, 2)}</span>
+                                    <div className="hm-grid">
+                                        <div className="hm-grid-item">
+                                            <span className="hm-label">Type:</span>
+                                            <span className={`hm-side ${selectedOrder.side}`}>{selectedOrder.side.toUpperCase()}</span>
+                                        </div>
+                                        <div className="hm-grid-item">
+                                            <span className="hm-label">Volume:</span>
+                                            <span className="hm-val">{selectedOrder.qty}</span>
+                                        </div>
+                                        <div className="hm-grid-item hm-grid-item-time">
+                                            <span className="hm-label">Open:</span>
+                                            <span className="hm-val">{formatDate(selectedOrder.created_at)}</span>
+                                        </div>
+                                        <div className="hm-grid-item hm-grid-item-time">
+                                            <span className="hm-label">Close:</span>
+                                            <span className="hm-val">{formatDate(selectedOrder.close_time || selectedOrder.created_at)}</span>
+                                        </div>
+                                        <div className="hm-grid-item">
+                                            <span className="hm-label">Swap:</span>
+                                            <span className="hm-val">{formatNumber(toNumber(selectedOrder.swap), 2, 2)}</span>
+                                        </div>
+                                        <div className="hm-grid-item">
+                                            <span className="hm-label">Commission:</span>
+                                            <span className="hm-val">{formatNumber(toNumber(selectedOrder.commission), 2, 2)}</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -31,7 +31,7 @@ export interface Order {
     user_id?: string
     trading_account_id?: string
     pair_id: string
-    symbol: string /* Added symbol */
+    symbol?: string
     side: string
     type?: string
     price: string

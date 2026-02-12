@@ -349,6 +349,67 @@
     font-variant-numeric: tabular-nums;
 }
 
+.hm-cash-body {
+    display: flex;
+    flex-direction: column;
+    background: var(--card-bg);
+}
+
+.hm-cash-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 18px 16px 12px;
+}
+
+.hm-cash-balance {
+    font-size: 28px;
+    line-height: 1;
+    font-weight: 700;
+    color: #f4f5f7;
+}
+
+.hm-cash-ticket {
+    font-size: 17px;
+    line-height: 1.1;
+    color: #f4f5f7;
+    font-weight: 500;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.hm-cash-bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px;
+    background: transparent;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hm-cash-date {
+    font-size: 12px;
+    color: #c3c8d2;
+    font-variant-numeric: tabular-nums;
+}
+
+.hm-cash-amount {
+    font-size: 24px;
+    line-height: 1.1;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.hm-cash-amount.profit {
+    color: #1992ff;
+}
+
+.hm-cash-amount.loss {
+    color: #ef4444;
+}
+
 @media (max-width: 420px) {
     .history-title {
         font-size: 18px;
@@ -356,5 +417,17 @@
 
     .hm-grid {
         grid-template-columns: 1fr;
+    }
+
+    .hm-cash-balance {
+        font-size: 24px;
+    }
+
+    .hm-cash-ticket {
+        font-size: 14px;
+    }
+
+    .hm-cash-amount {
+        font-size: 19px;
     }
 }
