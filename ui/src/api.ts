@@ -69,6 +69,17 @@ export type UserProfile = {
   avatar_url?: string
 }
 
+export type SignupBonusStatus = {
+  amount: string
+  currency: string
+  claimed: boolean
+  can_claim: boolean
+  claimed_at?: string
+  trading_account_id?: string
+  trading_account_name?: string
+  trading_account_mode?: "demo" | "real" | string
+}
+
 const parseBody = (text: string) => {
   const trimmed = text.trim()
   if (!trimmed) return null
@@ -122,6 +133,9 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       request<TradingAccount>("/v1/accounts/leverage", "POST", payload, true),
     updateAccountName: (payload: { account_id: string; name: string }) =>
       request<TradingAccount>("/v1/accounts/name", "POST", payload, true),
+    signupBonusStatus: () => request<SignupBonusStatus>("/v1/rewards/signup", "GET", undefined, true),
+    claimSignupBonus: (payload: { accept_terms: boolean }) =>
+      request<SignupBonusStatus>("/v1/rewards/signup/claim", "POST", payload, true),
     balances: async () => {
       const res = await request<Array<{ asset_id: string; symbol: string; kind: string; amount: string }> | null>("/v1/balances", "GET", undefined, true)
       return res || []

@@ -145,6 +145,22 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.AccountsHandler.UpdateName(w, r, userID)
 			})
+			r.Get("/rewards/signup", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.SignupBonusStatus(w, r, userID)
+			})
+			r.Post("/rewards/signup/claim", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.ClaimSignupBonus(w, r, userID)
+			})
 			r.Post("/orders", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {

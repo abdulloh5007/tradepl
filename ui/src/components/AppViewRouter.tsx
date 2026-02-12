@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react"
-import type { UserProfile } from "../api"
+import type { SignupBonusStatus, UserProfile } from "../api"
 import type { Lang, MarketConfig, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
 import { AccountsPage, ApiPage, FaucetPage, HistoryPage, PositionsPage, ProfilePage, TradingPage } from "../pages"
 import type { AccountSnapshot } from "./accounts/types"
@@ -50,6 +50,8 @@ interface AppViewRouterProps {
   onRenameAccount: (accountId: string, name: string) => Promise<void>
   onTopUpDemo: (amount: string) => Promise<void>
   onWithdrawDemo: (amount: string) => Promise<void>
+  signupBonus: SignupBonusStatus | null
+  onClaimSignupBonus: () => Promise<void>
   onGoTrade: () => void
   profile: UserProfile | null
   setLang: (lang: Lang) => void
@@ -105,6 +107,8 @@ export default function AppViewRouter({
   onRenameAccount,
   onTopUpDemo,
   onWithdrawDemo,
+  signupBonus,
+  onClaimSignupBonus,
   onGoTrade,
   profile,
   setLang,
@@ -189,6 +193,8 @@ export default function AppViewRouter({
         onRenameAccount={onRenameAccount}
         onTopUpDemo={onTopUpDemo}
         onWithdrawDemo={onWithdrawDemo}
+        signupBonus={signupBonus}
+        onClaimSignupBonus={onClaimSignupBonus}
         onCloseAll={onCloseAll}
         onGoTrade={onGoTrade}
       />

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Plus } from "lucide-react"
+import { Gift, Plus, X } from "lucide-react"
+import type { SignupBonusStatus } from "../../api"
 import type { Metrics, TradingAccount } from "../../types"
 import ActiveAccountCard from "../../components/accounts/ActiveAccountCard"
 import AccountsSwitcherSheet from "../../components/accounts/AccountsSwitcherSheet"
@@ -23,6 +24,8 @@ interface AccountsPageProps {
   onRenameAccount: (accountId: string, name: string) => Promise<void>
   onTopUpDemo: (amount: string) => Promise<void>
   onWithdrawDemo: (amount: string) => Promise<void>
+  signupBonus: SignupBonusStatus | null
+  onClaimSignupBonus: () => Promise<void>
   onCloseAll: () => Promise<void>
   onGoTrade: () => void
 }
@@ -42,6 +45,8 @@ export default function AccountsPage({
   onRenameAccount,
   onTopUpDemo,
   onWithdrawDemo,
+  signupBonus,
+  onClaimSignupBonus,
   onCloseAll,
   onGoTrade
 }: AccountsPageProps) {
@@ -72,6 +77,12 @@ export default function AccountsPage({
   const [fundingAmount, setFundingAmount] = useState("1000")
   const [fundingBusy, setFundingBusy] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [bonusModalOpen, setBonusModalOpen] = useState(false)
+  const [bonusAccepted, setBonusAccepted] = useState(false)
+  const [bonusBusy, setBonusBusy] = useState(false)
+
+  const showSignupBonus = !!signupBonus && !signupBonus.claimed && signupBonus.can_claim
+  const signupBonusAmount = signupBonus?.amount || "10.00"
 
   const switcherSnapshots = useMemo(() => {
     if (!activeAccount || !activeSnapshot) return snapshots
@@ -119,6 +130,30 @@ export default function AccountsPage({
           <Plus size={20} />
         </button>
       </div>
+
+      {showSignupBonus && (
+        <section className="accounts-bonus-card">
+          <div className="accounts-bonus-head">
+            <div className="accounts-bonus-chip">
+              <Gift size={14} />
+              <span>Welcome bonus</span>
+            </div>
+          </div>
+          <div className="accounts-bonus-body">
+            <div className="accounts-bonus-amount">+${signupBonusAmount}</div>
+            <p className="accounts-bonus-text">
+              One-time reward to your real account.
+            </p>
+            <button
+              type="button"
+              className="accounts-bonus-claim-btn"
+              onClick={() => setBonusModalOpen(true)}
+            >
+              Claim bonus
+            </button>
+          </div>
+        </section>
+      )}
 
       <ActiveAccountCard
         account={activeAccount}
@@ -188,6 +223,74 @@ export default function AccountsPage({
         onClose={() => setCreateModalOpen(false)}
         onCreate={onCreate}
       />
+
+      {bonusModalOpen && (
+        <div className="accounts-bonus-modal" onClick={() => {
+          if (bonusBusy) return
+          setBonusModalOpen(false)
+          setBonusAccepted(false)
+        }}>
+          <div className="accounts-bonus-backdrop" />
+          <div className="accounts-bonus-sheet" onClick={e => e.stopPropagation()}>
+            <div className="accounts-bonus-sheet-head">
+              <h3>Claim welcome bonus</h3>
+              <button
+                type="button"
+                className="accounts-bonus-close"
+                onClick={() => {
+                  if (bonusBusy) return
+                  setBonusModalOpen(false)
+                  setBonusAccepted(false)
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="accounts-bonus-sheet-body">
+              <p className="accounts-bonus-sheet-text">
+                You will receive <strong>${signupBonusAmount}</strong> to your real account once.
+              </p>
+              <ul className="accounts-bonus-terms">
+                <li>Bonus is available only once per user.</li>
+                <li>Bonus funds are tradable after claim.</li>
+                <li>The bonus cannot be claimed again after activation.</li>
+              </ul>
+              <label className="accounts-bonus-agree">
+                <input
+                  type="checkbox"
+                  checked={bonusAccepted}
+                  onChange={e => setBonusAccepted(e.target.checked)}
+                  disabled={bonusBusy}
+                />
+                <span>I agree with the project terms.</span>
+              </label>
+            </div>
+            <div className="accounts-bonus-sheet-foot">
+              <button
+                type="button"
+                className="accounts-bonus-submit"
+                disabled={!bonusAccepted || bonusBusy}
+                onClick={async () => {
+                  if (!bonusAccepted || bonusBusy) return
+                  setBonusBusy(true)
+                  try {
+                    await onClaimSignupBonus()
+                    toast.success("Bonus claimed")
+                    setBonusModalOpen(false)
+                    setBonusAccepted(false)
+                  } catch (err: any) {
+                    toast.error(err?.message || "Failed to claim bonus")
+                  } finally {
+                    setBonusBusy(false)
+                  }
+                }}
+              >
+                {bonusBusy ? "Claiming..." : "Claim $10 bonus"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

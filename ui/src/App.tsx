@@ -12,7 +12,7 @@ import { calcDisplayedOrderProfit } from "./utils/trading"
 import { useMarketWebSocket } from "./hooks/useMarketWebSocket"
 
 // API
-import { createApiClient, type UserProfile } from "./api"
+import { createApiClient, type SignupBonusStatus, type UserProfile } from "./api"
 
 // Components
 import BottomNav from "./components/BottomNav"
@@ -114,6 +114,7 @@ export default function App() {
   const [authFlowMode, setAuthFlowMode] = useState<"development" | "production" | null>(null)
   const [telegramAuthError, setTelegramAuthError] = useState("")
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [signupBonus, setSignupBonus] = useState<SignupBonusStatus | null>(null)
   const telegramRedirectedRef = useRef(false)
 
   const logout = useCallback(() => {
@@ -125,6 +126,7 @@ export default function App() {
     setAccounts([])
     setOpenOrders([])
     setOrderHistory([])
+    setSignupBonus(null)
     setHistoryAccountId("")
     setMetricsAccountId("")
     setOrdersAccountId("")
@@ -379,6 +381,19 @@ export default function App() {
     }
   }, [api, token, activeAccountId])
 
+  const refreshSignupBonus = useCallback(async () => {
+    if (!token) {
+      setSignupBonus(null)
+      return
+    }
+    try {
+      const status = await api.signupBonusStatus()
+      setSignupBonus(status || null)
+    } catch {
+      setSignupBonus(null)
+    }
+  }, [api, token])
+
   const refreshAccountSnapshots = useCallback(async (sourceAccounts?: TradingAccount[]) => {
     if (!token) return
     const list = sourceAccounts || accounts
@@ -428,6 +443,7 @@ export default function App() {
       setActiveAccountId("")
       setOpenOrders([])
       setOrderHistory([])
+      setSignupBonus(null)
       setHistoryAccountId("")
       setMetricsAccountId("")
       setOrdersAccountId("")
@@ -445,6 +461,14 @@ export default function App() {
     }
     refreshAccounts().catch(() => { })
   }, [token, refreshAccounts])
+
+  useEffect(() => {
+    if (!token) {
+      setSignupBonus(null)
+      return
+    }
+    refreshSignupBonus().catch(() => { })
+  }, [token, activeAccountId, refreshSignupBonus])
 
   useEffect(() => {
     let cancelled = false
@@ -870,6 +894,7 @@ export default function App() {
       refreshOrders().catch(() => { })
     ])
     refreshAccountSnapshots().catch(() => { })
+    refreshSignupBonus().catch(() => { })
   }
 
   const handleUpdateAccountLeverage = async (accountID: string, leverage: number) => {
@@ -902,6 +927,20 @@ export default function App() {
       refreshOrders().catch(() => { })
     ])
     refreshAccountSnapshots().catch(() => { })
+    refreshSignupBonus().catch(() => { })
+  }
+
+  const handleClaimSignupBonus = async () => {
+    const claimed = await api.claimSignupBonus({ accept_terms: true })
+    setSignupBonus(claimed || null)
+    await refreshAccounts(activeAccountId || claimed?.trading_account_id || "")
+    await Promise.all([
+      refreshMetrics().catch(() => { }),
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { })
+    ])
+    refreshAccountSnapshots().catch(() => { })
+    refreshSignupBonus().catch(() => { })
   }
 
   const handleTopUpDemo = async (amount: string) => {
@@ -995,6 +1034,8 @@ export default function App() {
           onRenameAccount={handleRenameAccount}
           onTopUpDemo={handleTopUpDemo}
           onWithdrawDemo={handleWithdrawDemo}
+          signupBonus={signupBonus}
+          onClaimSignupBonus={handleClaimSignupBonus}
           onGoTrade={() => setView("chart")}
           profile={profile}
           setLang={setLang}

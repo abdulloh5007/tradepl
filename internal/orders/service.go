@@ -1385,6 +1385,8 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		ticket := formatLedgerTicket(accountMode, eventType, sequence, entryID)
 		if eventType == string(types.LedgerEntryTypeDeposit) && isSystemNegativeCoverRef(txRef) {
 			ticket = formatSystemCoverTicket(accountMode, sequence, entryID)
+		} else if eventType == string(types.LedgerEntryTypeDeposit) && isSignupRewardRef(txRef) {
+			ticket = formatRewardTicket(accountMode, sequence, entryID)
 		}
 
 		closeTime := createdAt
@@ -1594,7 +1596,13 @@ func formatSwapTicket(accountMode string, sequence int64, seed string) string {
 func formatSystemCoverTicket(accountMode string, sequence int64, seed string) string {
 	digits := normalizeTicketNumber(sequence, seed)
 	letters := ticketSeedLetters(fmt.Sprintf("cash:system_cover:%d:%s", sequence, seed))
-	return modeTicketPrefix(accountMode) + "BXdepstm" + digits + letters
+	return modeTicketPrefix(accountMode) + "BXdepstm-" + digits + letters
+}
+
+func formatRewardTicket(accountMode string, sequence int64, seed string) string {
+	digits := normalizeTicketNumber(sequence, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("cash:signup_reward:%d:%s", sequence, seed))
+	return modeTicketPrefix(accountMode) + "BXrew" + digits + letters
 }
 
 func isUndefinedTableError(err error) bool {
@@ -1605,6 +1613,11 @@ func isUndefinedTableError(err error) bool {
 func isSystemNegativeCoverRef(ref string) bool {
 	ref = strings.ToLower(strings.TrimSpace(ref))
 	return strings.HasPrefix(ref, "system_negative_cover")
+}
+
+func isSignupRewardRef(ref string) bool {
+	ref = strings.ToLower(strings.TrimSpace(ref))
+	return strings.HasPrefix(ref, "signup_reward")
 }
 
 func (s *Service) CloseOrdersByScope(ctx context.Context, userID, accountID, scope string) (CloseOrdersResult, error) {
