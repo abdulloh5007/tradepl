@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { X } from "lucide-react"
+import { toast } from "sonner"
 import type { TradingAccount } from "../../types"
 import type { AccountSnapshot } from "./types"
 import { accountShortNumericId, formatPercent, formatUsd, getLeverage, leverageLabel, leverageOptions } from "./utils"
@@ -31,30 +32,41 @@ export default function AccountDetailsModal({
   const [savingName, setSavingName] = useState(false)
   const [savingLev, setSavingLev] = useState(false)
   const [closingAll, setClosingAll] = useState(false)
+  const [unlimitedConfirmOpen, setUnlimitedConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (!account) return
     setNameDraft(account.name || "")
     setLevDraft(getLeverage(account))
+    setUnlimitedConfirmOpen(false)
   }, [account, open])
 
   const statRows = useMemo(() => {
     const m = snapshot?.metrics
-    return [
+    const rows = [
       { label: "Balance", value: `${formatUsd(m?.balance || 0)} USD` },
       { label: "Equity", value: `${formatUsd(m?.equity || 0)} USD` },
       { label: "Floating P/L", value: `${snapshot ? `${snapshot.pl >= 0 ? "+" : ""}${formatUsd(snapshot.pl)} USD` : "0.00 USD"}` },
-      { label: "Margin", value: `${formatUsd(m?.margin || 0)} USD` },
-      { label: "Free Margin", value: `${formatUsd(m?.free_margin || 0)} USD` },
-      { label: "Margin Level", value: `${formatPercent(m?.margin_level || 0)}` },
       { label: "Leverage", value: account ? leverageLabel(getLeverage(account)) : "—" }
     ]
+    const isUnlimited = account ? getLeverage(account) === 0 : false
+    if (!isUnlimited) {
+      rows.splice(3, 0,
+        { label: "Margin", value: `${formatUsd(m?.margin || 0)} USD` },
+        { label: "Free Margin", value: `${formatUsd(m?.free_margin || 0)} USD` },
+        { label: "Margin Level", value: `${formatPercent(m?.margin_level || 0)}` },
+      )
+    }
+    return rows
   }, [snapshot, account])
 
   const leverageItems = useMemo(() => {
     return leverageOptions.map(value => ({ value, label: leverageLabel(value) }))
   }, [])
   const hasOpenOrders = (snapshot?.openCount || 0) > 0
+  const rawBalance = Number(snapshot?.metrics?.balance ?? account?.balance ?? 0)
+  const accountBalance = Number.isFinite(rawBalance) ? rawBalance : 0
+  const unlimitedBlockedByBalance = levDraft === 0 && account && getLeverage(account) !== 0 && accountBalance > 1000
 
   if (!open || !account) return null
 
@@ -158,14 +170,29 @@ export default function AccountDetailsModal({
                   menuClassName="acm-dropdown-menu"
                 />
               </label>
+              {unlimitedBlockedByBalance && (
+                <div className="acm-note" style={{ textAlign: "left", color: "#f59e0b" }}>
+                  Unlimited is unavailable when balance is above 1000 USD.
+                </div>
+              )}
               <button
                 type="button"
                 className="acm-submit-btn"
-                disabled={savingLev || levDraft === getLeverage(account)}
+                disabled={savingLev || levDraft === getLeverage(account) || unlimitedBlockedByBalance}
                 onClick={async () => {
+                  if (unlimitedBlockedByBalance) {
+                    toast.error("Unlimited is unavailable when balance is above 1000 USD")
+                    return
+                  }
+                  if (levDraft === 0 && getLeverage(account) !== 0) {
+                    setUnlimitedConfirmOpen(true)
+                    return
+                  }
                   setSavingLev(true)
                   try {
                     await onUpdateLeverage(account.id, levDraft)
+                  } catch (err: any) {
+                    toast.error(err?.message || "Failed to update leverage")
                   } finally {
                     setSavingLev(false)
                   }
@@ -176,6 +203,57 @@ export default function AccountDetailsModal({
             </div>
           )}
         </div>
+
+        {unlimitedConfirmOpen && (
+          <div className="acm-confirm-overlay" role="dialog" aria-modal="true">
+            <div className="acm-confirm-backdrop" onClick={() => setUnlimitedConfirmOpen(false)} />
+            <div className="acm-confirm-card">
+              <h3 className="acm-confirm-title">Enable Unlimited Leverage?</h3>
+              <p className="acm-confirm-text">
+                Read and confirm system rules:
+              </p>
+              <p className="acm-confirm-rule">
+                1. If balance becomes greater than 1000 USD, leverage will be auto-changed to 1:2000.
+              </p>
+              <p className="acm-confirm-rule">
+                2. If equity drops below 0, system will auto-close all orders and reset account balance to 0.
+              </p>
+              <div className="acm-confirm-actions">
+                <button
+                  type="button"
+                  className="acm-submit-btn ghost"
+                  onClick={() => setUnlimitedConfirmOpen(false)}
+                  disabled={savingLev}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="acm-submit-btn"
+                  disabled={savingLev || accountBalance > 1000}
+                  onClick={async () => {
+                    if (accountBalance > 1000) {
+                      toast.error("Unlimited is unavailable when balance is above 1000 USD")
+                      setUnlimitedConfirmOpen(false)
+                      return
+                    }
+                    setSavingLev(true)
+                    try {
+                      await onUpdateLeverage(account.id, 0)
+                      setUnlimitedConfirmOpen(false)
+                    } catch (err: any) {
+                      toast.error(err?.message || "Failed to update leverage")
+                    } finally {
+                      setSavingLev(false)
+                    }
+                  }}
+                >
+                  {savingLev ? "Saving..." : "Enable Unlimited"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

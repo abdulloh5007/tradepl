@@ -60,6 +60,7 @@ export interface Metrics {
     free_margin: string
     margin_level: string
     pl: string
+    system_notice?: string
 }
 
 export interface MarketConfig {

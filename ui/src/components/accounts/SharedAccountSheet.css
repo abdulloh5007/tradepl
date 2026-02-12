@@ -350,3 +350,58 @@
 .acm-danger-btn:hover {
     background-color: rgba(239, 68, 68, 0.2);
 }
+
+.acm-confirm-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 12;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 12px;
+}
+
+.acm-confirm-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.62);
+}
+
+.acm-confirm-card {
+    position: relative;
+    width: 100%;
+    background: linear-gradient(180deg, #1b1e27 0%, #151821 100%);
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    border-radius: 16px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.48);
+    padding: 14px;
+}
+
+.acm-confirm-title {
+    margin: 0;
+    font-size: 17px;
+    line-height: 1.2;
+    font-weight: 700;
+    color: #fff;
+}
+
+.acm-confirm-text {
+    margin: 10px 0 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #d1d5db;
+}
+
+.acm-confirm-rule {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #f3f4f6;
+}
+
+.acm-confirm-actions {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}

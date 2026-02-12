@@ -45,12 +45,13 @@ type wsControlMessage struct {
 }
 
 type accountMetricsWS struct {
-	Balance     string `json:"balance"`
-	Equity      string `json:"equity"`
-	Margin      string `json:"margin"`
-	FreeMargin  string `json:"free_margin"`
-	MarginLevel string `json:"margin_level"`
-	PL          string `json:"pl"`
+	Balance      string `json:"balance"`
+	Equity       string `json:"equity"`
+	Margin       string `json:"margin"`
+	FreeMargin   string `json:"free_margin"`
+	MarginLevel  string `json:"margin_level"`
+	PL           string `json:"pl"`
+	SystemNotice string `json:"system_notice,omitempty"`
 }
 
 type accountSnapshotWS struct {
@@ -89,12 +90,13 @@ func (h *WSHandler) collectAccountSnapshots(ctx context.Context, userID string) 
 		if metricsErr == nil {
 			entry.PL = metrics.PnL.String()
 			entry.Metrics = &accountMetricsWS{
-				Balance:     metrics.Balance.String(),
-				Equity:      metrics.Equity.String(),
-				Margin:      metrics.Margin.String(),
-				FreeMargin:  metrics.FreeMargin.String(),
-				MarginLevel: metrics.MarginLevel.String(),
-				PL:          metrics.PnL.String(),
+				Balance:      metrics.Balance.String(),
+				Equity:       metrics.Equity.String(),
+				Margin:       metrics.Margin.String(),
+				FreeMargin:   metrics.FreeMargin.String(),
+				MarginLevel:  metrics.MarginLevel.String(),
+				PL:           metrics.PnL.String(),
+				SystemNotice: metrics.SystemNotice,
 			}
 		}
 

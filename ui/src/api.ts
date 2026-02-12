@@ -131,7 +131,7 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       if (before) url += `&before=${before}`
       return request<Candle[]>(url, "GET")
     },
-    metrics: () => request<{ balance: string; equity: string; margin: string; free_margin: string; margin_level: string; pl: string }>("/v1/metrics", "GET", undefined, true),
+    metrics: () => request<{ balance: string; equity: string; margin: string; free_margin: string; margin_level: string; pl: string; system_notice?: string }>("/v1/metrics", "GET", undefined, true),
     orders: () => request<Array<{
       id: string
       ticket?: string

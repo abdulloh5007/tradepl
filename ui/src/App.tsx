@@ -103,6 +103,7 @@ export default function App() {
   const wsConnectionRef = useRef<WebSocket | null>(null)
   const historyAccountIdRef = useRef("")
   const activeAccountIdRef = useRef("")
+  const systemNoticeByAccountRef = useRef<Record<string, string>>({})
 
   // Auth form state
   const [email, setEmail] = useState("")
@@ -135,6 +136,7 @@ export default function App() {
     })
     setCookie("lv_token", "")
     setCookie("lv_account_id", "")
+    systemNoticeByAccountRef.current = {}
   }, [])
 
   // Verify session on page load - check if user exists in DB
@@ -333,6 +335,19 @@ export default function App() {
     if (activeAccountIdRef.current !== requestAccountId) return
     setMetrics(m)
     setMetricsAccountId(requestAccountId)
+    const notice = String(m?.system_notice || "").trim()
+    if (notice) {
+      const prevNotice = systemNoticeByAccountRef.current[requestAccountId] || ""
+      if (prevNotice !== notice) {
+        toast.message(notice)
+        systemNoticeByAccountRef.current[requestAccountId] = notice
+        if (notice.includes("changed leverage to 1:2000")) {
+          setAccounts(prev => prev.map(acc => (
+            acc.id === requestAccountId ? { ...acc, leverage: 2000 } : acc
+          )))
+        }
+      }
+    }
   }, [api, activeAccountId])
 
   const refreshAccounts = useCallback(async (preferredID?: string) => {
@@ -983,6 +998,7 @@ export default function App() {
           onMetricsUpdate={setMetrics}
           token={token}
           onLoginRequired={() => setView("api")}
+          isUnlimitedLeverage={activeTradingAccount?.leverage === 0}
         />
       </main>
 

@@ -18,6 +18,7 @@ interface PositionsPageProps {
     onCloseLoss: () => void
     bulkClosing: boolean
     lang: Lang
+    isUnlimitedLeverage: boolean
 }
 
 export default function PositionsPage({
@@ -32,7 +33,8 @@ export default function PositionsPage({
     onCloseProfit,
     onCloseLoss,
     bulkClosing,
-    lang
+    lang,
+    isUnlimitedLeverage
 }: PositionsPageProps) {
     const [menuOpen, setMenuOpen] = useState(false)
     const menuRef = useRef<HTMLDivElement | null>(null)
@@ -80,8 +82,8 @@ export default function PositionsPage({
                 <div className="pos-stats">
                     <StatRow label="Balance:" value={formatValue(metrics.balance)} />
                     <StatRow label="Equity:" value={formatValue(metrics.equity)} />
-                    <StatRow label="Margin:" value={formatValue(metrics.margin)} />
-                    <StatRow label="Free Margin:" value={formatValue(metrics.free_margin)} />
+                    {!isUnlimitedLeverage && <StatRow label="Margin:" value={formatValue(metrics.margin)} />}
+                    {!isUnlimitedLeverage && <StatRow label="Free Margin:" value={formatValue(metrics.free_margin)} />}
                     <StatRow
                         label="Margin Level (%):"
                         value={metrics.margin_level ? formatNumber(parseFloat(metrics.margin_level), 2, 2) : "0.00"}

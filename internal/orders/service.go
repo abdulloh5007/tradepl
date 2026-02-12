@@ -94,6 +94,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 	contractSize := pairContractSize(pair)
 	spreadMultiplier := 1.0
 	commissionRate := 0.0
+	accountLeverage := 100
 	effectiveLeverage := decimal.NewFromInt(100)
 	if s.accountSvc != nil {
 		acc, accErr := s.accountSvc.Resolve(ctx, req.UserID, req.AccountID)
@@ -101,6 +102,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 			return PlaceOrderResult{}, accErr
 		}
 		if acc != nil {
+			accountLeverage = acc.Leverage
 			if acc.Plan.SpreadMultiplier > 0 {
 				spreadMultiplier = acc.Plan.SpreadMultiplier
 			}
@@ -110,15 +112,31 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 			effectiveLeverage = resolveEffectiveLeverage(acc.Leverage, riskCfg)
 		}
 	}
+	unlimitedLeverage := accountLeverage == 0
 
 	currentMetrics, openPositions, metricsErr := s.computeAccountMetricsByAccount(ctx, req.UserID, req.AccountID)
 	if metricsErr != nil {
 		return PlaceOrderResult{}, fmt.Errorf("failed to evaluate margin risk: %w", metricsErr)
 	}
+	if unlimitedLeverage {
+		switched, switchErr := s.autoDowngradeUnlimitedLeverage(ctx, req.UserID, req.AccountID, currentMetrics.Balance)
+		if switchErr != nil {
+			return PlaceOrderResult{}, fmt.Errorf("failed to apply leverage guardrail: %w", switchErr)
+		}
+		if switched {
+			unlimitedLeverage = false
+			accountLeverage = 2000
+			effectiveLeverage = decimal.NewFromInt(2000)
+			currentMetrics, openPositions, metricsErr = s.computeAccountMetricsByAccount(ctx, req.UserID, req.AccountID)
+			if metricsErr != nil {
+				return PlaceOrderResult{}, fmt.Errorf("failed to evaluate margin risk: %w", metricsErr)
+			}
+		}
+	}
 	if len(openPositions) >= riskCfg.MaxOpenPositions {
 		return PlaceOrderResult{}, fmt.Errorf("max open positions reached (%d)", riskCfg.MaxOpenPositions)
 	}
-	if currentMetrics.Margin.GreaterThan(decimal.Zero) {
+	if !unlimitedLeverage && currentMetrics.Margin.GreaterThan(decimal.Zero) {
 		if currentMetrics.MarginLevel.LessThanOrEqual(riskCfg.StopOutLevelPercent) {
 			return PlaceOrderResult{}, errors.New("stop out active: margin level is too low, reduce exposure first")
 		}
@@ -216,11 +234,9 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 	if estimatedQty.GreaterThan(riskCfg.MaxOrderLots) {
 		return PlaceOrderResult{}, fmt.Errorf("max lots per order is %s", riskCfg.MaxOrderLots.String())
 	}
-	if estimatedNotional.GreaterThan(riskCfg.MaxOrderNotionalUSD) {
-		return PlaceOrderResult{}, fmt.Errorf("max notional per order is %s USD", riskCfg.MaxOrderNotionalUSD.String())
-	}
-	requiredMargin := estimatedNotional
-	if effectiveLeverage.GreaterThan(decimal.Zero) {
+	requiredMargin := decimal.Zero
+	if !unlimitedLeverage && effectiveLeverage.GreaterThan(decimal.Zero) {
+		requiredMargin = estimatedNotional
 		requiredMargin = estimatedNotional.Div(effectiveLeverage)
 		if !currentMetrics.FreeMargin.GreaterThan(decimal.Zero) || requiredMargin.GreaterThan(currentMetrics.FreeMargin) {
 			return PlaceOrderResult{}, errors.New("insufficient free margin for this order size")
@@ -252,24 +268,27 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		reservedAssetID = pair.BaseAssetID
 		reservedAmount = *req.Qty
 	}
-	availableAccount, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, reservedAssetID, types.AccountKindAvailable)
-	if err != nil {
-		return PlaceOrderResult{}, err
-	}
-	reservedAccount, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, reservedAssetID, types.AccountKindReserved)
-	if err != nil {
-		return PlaceOrderResult{}, err
-	}
-	balance, err := s.ledger.GetBalance(ctx, tx, availableAccount)
-	if err != nil {
-		return PlaceOrderResult{}, err
-	}
-	if balance.LessThan(reservedAmount) {
-		return PlaceOrderResult{}, errors.New("insufficient free margin for this order size")
-	}
-	_, err = s.ledger.Transfer(ctx, tx, availableAccount, reservedAccount, reservedAmount, types.LedgerEntryTypeReserve, req.ClientRef)
-	if err != nil {
-		return PlaceOrderResult{}, err
+	var availableAccount string
+	var reservedAccount string
+	if reservedAmount.GreaterThan(decimal.Zero) {
+		availableAccount, err = s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, reservedAssetID, types.AccountKindAvailable)
+		if err != nil {
+			return PlaceOrderResult{}, err
+		}
+		reservedAccount, err = s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, reservedAssetID, types.AccountKindReserved)
+		if err != nil {
+			return PlaceOrderResult{}, err
+		}
+		balance, balErr := s.ledger.GetBalance(ctx, tx, availableAccount)
+		if balErr != nil {
+			return PlaceOrderResult{}, balErr
+		}
+		if balance.LessThan(reservedAmount) {
+			return PlaceOrderResult{}, errors.New("insufficient free margin for this order size")
+		}
+		if _, err = s.ledger.Transfer(ctx, tx, availableAccount, reservedAccount, reservedAmount, types.LedgerEntryTypeReserve, req.ClientRef); err != nil {
+			return PlaceOrderResult{}, err
+		}
 	}
 	order := model.Order{
 		UserID:           req.UserID,
@@ -437,12 +456,13 @@ func (s *Service) finalizeOrder(ctx context.Context, tx pgx.Tx, order model.Orde
 }
 
 type AccountMetrics struct {
-	Balance     decimal.Decimal `json:"balance"`
-	Equity      decimal.Decimal `json:"equity"`
-	Margin      decimal.Decimal `json:"margin"`
-	FreeMargin  decimal.Decimal `json:"free_margin"`
-	MarginLevel decimal.Decimal `json:"margin_level"`
-	PnL         decimal.Decimal `json:"pl"`
+	Balance      decimal.Decimal `json:"balance"`
+	Equity       decimal.Decimal `json:"equity"`
+	Margin       decimal.Decimal `json:"margin"`
+	FreeMargin   decimal.Decimal `json:"free_margin"`
+	MarginLevel  decimal.Decimal `json:"margin_level"`
+	PnL          decimal.Decimal `json:"pl"`
+	SystemNotice string          `json:"system_notice,omitempty"`
 }
 
 type positionRisk struct {
@@ -468,6 +488,10 @@ var defaultRiskConfig = RiskConfig{
 	UnlimitedEffectiveLeverage: decimal.NewFromInt(3000),
 }
 
+var unlimitedBalanceGuardrail = decimal.NewFromInt(1000)
+
+const autoDowngradedLeverage = 2000
+
 func (s *Service) GetAccountMetrics(ctx context.Context, userID string) (AccountMetrics, error) {
 	// 1. Get all balances
 	return s.GetAccountMetricsByAccount(ctx, userID, "")
@@ -478,9 +502,48 @@ func (s *Service) GetAccountMetricsByAccount(ctx context.Context, userID, accoun
 	if riskErr != nil {
 		return AccountMetrics{}, riskErr
 	}
+	leveragedAccount := 100
+	if s.accountSvc != nil {
+		acc, accErr := s.accountSvc.Resolve(ctx, userID, accountID)
+		if accErr == nil && acc != nil {
+			leveragedAccount = acc.Leverage
+		}
+	}
+
 	metrics, positions, err := s.computeAccountMetricsByAccount(ctx, userID, accountID)
 	if err != nil {
 		return AccountMetrics{}, err
+	}
+	if leveragedAccount == 0 {
+		switched, switchErr := s.autoDowngradeUnlimitedLeverage(ctx, userID, accountID, metrics.Balance)
+		if switchErr != nil {
+			return AccountMetrics{}, switchErr
+		}
+		if switched {
+			refreshed, refreshedPositions, refreshErr := s.computeAccountMetricsByAccount(ctx, userID, accountID)
+			if refreshErr != nil {
+				return AccountMetrics{}, refreshErr
+			}
+			metrics = refreshed
+			positions = refreshedPositions
+			leveragedAccount = autoDowngradedLeverage
+			metrics.SystemNotice = "System changed leverage to 1:2000 because balance exceeded 1000 USD."
+		}
+	}
+
+	if leveragedAccount == 0 && metrics.Equity.LessThan(decimal.Zero) && len(positions) > 0 {
+		liquidated, liqErr := s.autoLiquidateUnlimitedAccount(ctx, userID, accountID)
+		if liqErr != nil {
+			return AccountMetrics{}, liqErr
+		}
+		if liquidated {
+			refreshed, _, refreshErr := s.computeAccountMetricsByAccount(ctx, userID, accountID)
+			if refreshErr != nil {
+				return AccountMetrics{}, refreshErr
+			}
+			metrics = refreshed
+			metrics.SystemNotice = "System auto-closed all orders: equity dropped below 0 in unlimited mode. Balance reset to 0."
+		}
 	}
 
 	if metrics.Margin.GreaterThan(decimal.Zero) && metrics.MarginLevel.LessThanOrEqual(riskCfg.StopOutLevelPercent) {
@@ -488,6 +551,7 @@ func (s *Service) GetAccountMetricsByAccount(ctx context.Context, userID, accoun
 		if stopErr == nil && changed {
 			refreshed, _, refreshErr := s.computeAccountMetricsByAccount(ctx, userID, accountID)
 			if refreshErr == nil {
+				refreshed.SystemNotice = metrics.SystemNotice
 				return refreshed, nil
 			}
 		}
@@ -508,6 +572,7 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 	var positionMargin decimal.Decimal
 	positions := make([]positionRisk, 0, 8)
 	spreadMultiplier := 1.0
+	unlimitedLeverage := false
 	leverage := decimal.NewFromInt(100)
 	riskCfg, riskErr := s.GetRiskConfig(ctx)
 	if riskErr != nil {
@@ -520,6 +585,7 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 			if acc.Plan.SpreadMultiplier > 0 {
 				spreadMultiplier = acc.Plan.SpreadMultiplier
 			}
+			unlimitedLeverage = acc.Leverage == 0
 			leverage = resolveEffectiveLeverage(acc.Leverage, riskCfg)
 		}
 	}
@@ -587,7 +653,7 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 		}
 
 		notional := entryForMargin.Mul(filledQty).Mul(contractSize)
-		if leverage.GreaterThan(decimal.Zero) {
+		if !unlimitedLeverage && leverage.GreaterThan(decimal.Zero) {
 			positionMargin = positionMargin.Add(notional.Div(leverage))
 		}
 		orderPnL := calculateOrderPnL(pair.Symbol, o.Side, entryRaw, markRaw, filledQty, pairPnLContractSize(pair))
@@ -603,9 +669,15 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 	if positionMargin.GreaterThan(margin) {
 		margin = positionMargin
 	}
+	if unlimitedLeverage {
+		margin = decimal.Zero
+	}
 	freeMargin := equity.Sub(margin)
+	if unlimitedLeverage {
+		freeMargin = equity
+	}
 	var marginLevel decimal.Decimal
-	if margin.GreaterThan(decimal.Zero) {
+	if !unlimitedLeverage && margin.GreaterThan(decimal.Zero) {
 		marginLevel = equity.Div(margin).Mul(decimal.NewFromInt(100))
 	}
 
@@ -651,6 +723,93 @@ func (s *Service) applyStopOut(ctx context.Context, userID, accountID string, po
 	}
 
 	return closedAny, nil
+}
+
+func (s *Service) autoDowngradeUnlimitedLeverage(ctx context.Context, userID, accountID string, balance decimal.Decimal) (bool, error) {
+	if strings.TrimSpace(accountID) == "" {
+		return false, nil
+	}
+	if !balance.GreaterThan(unlimitedBalanceGuardrail) {
+		return false, nil
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE trading_accounts
+		SET leverage = $1, updated_at = NOW()
+		WHERE id = $2 AND user_id = $3 AND leverage = 0
+	`, autoDowngradedLeverage, accountID, userID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+func (s *Service) autoLiquidateUnlimitedAccount(ctx context.Context, userID, accountID string) (bool, error) {
+	if strings.TrimSpace(accountID) == "" {
+		return false, nil
+	}
+	res, err := s.CloseOrdersByScope(ctx, userID, accountID, "all")
+	if err != nil {
+		return false, err
+	}
+	if res.Closed == 0 {
+		return false, nil
+	}
+	if err := s.resetAccountUSDBalance(ctx, userID, accountID); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func (s *Service) resetAccountUSDBalance(ctx context.Context, userID, accountID string) error {
+	usd, err := s.market.GetAssetBySymbol(ctx, "USD")
+	if err != nil {
+		return err
+	}
+
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	availableID, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, usd.ID, types.AccountKindAvailable)
+	if err != nil {
+		return err
+	}
+	reservedID, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, usd.ID, types.AccountKindReserved)
+	if err != nil {
+		return err
+	}
+
+	availableBalance, err := s.ledger.GetBalance(ctx, tx, availableID)
+	if err != nil {
+		return err
+	}
+	if availableBalance.GreaterThan(decimal.Zero) {
+		if _, err := s.ledger.DebitAccount(ctx, tx, availableID, availableBalance, types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
+			return err
+		}
+	} else if availableBalance.LessThan(decimal.Zero) {
+		if _, err := s.ledger.CreditAccount(ctx, tx, availableID, availableBalance.Abs(), types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
+			return err
+		}
+	}
+
+	reservedBalance, err := s.ledger.GetBalance(ctx, tx, reservedID)
+	if err != nil {
+		return err
+	}
+	if reservedBalance.GreaterThan(decimal.Zero) {
+		if _, err := s.ledger.DebitAccount(ctx, tx, reservedID, reservedBalance, types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
+			return err
+		}
+	} else if reservedBalance.LessThan(decimal.Zero) {
+		if _, err := s.ledger.CreditAccount(ctx, tx, reservedID, reservedBalance.Abs(), types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (s *Service) ListOpenOrders(ctx context.Context, userID string) ([]model.Order, error) {
@@ -1317,12 +1476,9 @@ func parseRiskDecimal(raw string) (decimal.Decimal, bool) {
 	return v, true
 }
 
-func resolveEffectiveLeverage(configured int, cfg RiskConfig) decimal.Decimal {
+func resolveEffectiveLeverage(configured int, _ RiskConfig) decimal.Decimal {
 	if configured == 0 {
-		if cfg.UnlimitedEffectiveLeverage.GreaterThan(decimal.Zero) {
-			return cfg.UnlimitedEffectiveLeverage
-		}
-		return defaultRiskConfig.UnlimitedEffectiveLeverage
+		return decimal.Zero
 	}
 	if configured > 0 {
 		return decimal.NewFromInt(int64(configured))

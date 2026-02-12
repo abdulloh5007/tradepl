@@ -196,6 +196,7 @@ export function useMarketWebSocket({
                 free_margin: String((rawMetrics as any).free_margin || "0"),
                 margin_level: String((rawMetrics as any).margin_level || "0"),
                 pl: String((rawMetrics as any).pl || "0"),
+                system_notice: String((rawMetrics as any).system_notice || ""),
               }
               : null
 

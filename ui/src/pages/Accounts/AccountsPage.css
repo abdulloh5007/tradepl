@@ -29,18 +29,12 @@
   border: none;
   border-radius: 9999px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s ease;
   box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.2);
 }
 
 .add-account-btn:hover {
-  background-color: #f59e0b;
-  transform: translateY(-2px);
-}
-
-.add-account-btn:hover {
-  background: rgba(59, 130, 246, 0.2);
-  transform: translateY(-2px);
+  background-color: #f7b733;
 }
 
 .acc-note {

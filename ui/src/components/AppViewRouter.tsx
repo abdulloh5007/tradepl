@@ -59,6 +59,7 @@ interface AppViewRouterProps {
   onMetricsUpdate: (metrics: Metrics) => void
   token: string
   onLoginRequired: () => void
+  isUnlimitedLeverage: boolean
 }
 
 export default function AppViewRouter({
@@ -113,6 +114,7 @@ export default function AppViewRouter({
   onMetricsUpdate,
   token,
   onLoginRequired,
+  isUnlimitedLeverage,
 }: AppViewRouterProps) {
   if (view === "chart") {
     return (
@@ -154,6 +156,7 @@ export default function AppViewRouter({
         onCloseLoss={onCloseLoss}
         bulkClosing={bulkClosing}
         lang={lang}
+        isUnlimitedLeverage={isUnlimitedLeverage}
       />
     )
   }
