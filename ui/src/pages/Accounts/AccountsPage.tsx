@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import type { Metrics, TradingAccount } from "../../types"
@@ -15,7 +15,9 @@ interface AccountsPageProps {
   activeAccountId: string
   metrics: Metrics
   activeOpenOrdersCount: number
+  liveDataReady: boolean
   snapshots: Record<string, AccountSnapshot>
+  snapshotPulse?: number
   onRefreshSnapshots: () => Promise<void>
   onSwitch: (accountId: string) => Promise<void>
   onCreate: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => Promise<void>
@@ -34,7 +36,9 @@ export default function AccountsPage({
   activeAccountId,
   metrics,
   activeOpenOrdersCount,
+  liveDataReady,
   snapshots,
+  snapshotPulse = 0,
   onRefreshSnapshots,
   onSwitch,
   onCreate,
@@ -52,15 +56,19 @@ export default function AccountsPage({
   const activeSnapshot = useMemo<AccountSnapshot | null>(() => {
     if (!activeAccount) return null
     const fromMap = snapshots[activeAccount.id] || null
+    const useLive = liveDataReady
     const livePl = Number(metrics.pl || 0)
-    const safeLivePl = Number.isFinite(livePl) ? livePl : (fromMap?.pl || 0)
-    const liveOpenCount = Number.isFinite(activeOpenOrdersCount) ? activeOpenOrdersCount : (fromMap?.openCount || 0)
+    const safeLivePl = Number.isFinite(livePl) ? livePl : 0
+    const pl = useLive ? safeLivePl : (fromMap?.pl ?? safeLivePl)
+    const openCount = useLive
+      ? (Number.isFinite(activeOpenOrdersCount) ? activeOpenOrdersCount : 0)
+      : (fromMap?.openCount ?? (Number.isFinite(activeOpenOrdersCount) ? activeOpenOrdersCount : 0))
     return {
-      pl: safeLivePl,
-      openCount: liveOpenCount,
-      metrics: metrics || fromMap?.metrics || null
+      pl,
+      openCount,
+      metrics: useLive ? metrics : (fromMap?.metrics || null)
     }
-  }, [activeAccount, snapshots, metrics, activeOpenOrdersCount])
+  }, [activeAccount, snapshots, metrics, activeOpenOrdersCount, liveDataReady])
 
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -68,27 +76,43 @@ export default function AccountsPage({
   const [fundingAmount, setFundingAmount] = useState("1000")
   const [fundingBusy, setFundingBusy] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const refreshingSnapshotsRef = useRef(false)
+  const queuedRefreshRef = useRef(false)
+  const lastPulseRef = useRef<number>(0)
+
+  const runSnapshotsRefresh = async () => {
+    if (refreshingSnapshotsRef.current) {
+      queuedRefreshRef.current = true
+      return
+    }
+    refreshingSnapshotsRef.current = true
+    try {
+      for (;;) {
+        queuedRefreshRef.current = false
+        await onRefreshSnapshots()
+        if (!queuedRefreshRef.current) break
+      }
+    } finally {
+      refreshingSnapshotsRef.current = false
+    }
+  }
 
   useEffect(() => {
     if (!switcherOpen) return
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | null = null
-
-    const run = async () => {
-      if (cancelled) return
-      try {
-        await onRefreshSnapshots()
-      } finally {
-        if (!cancelled) timer = setTimeout(run, 2500)
-      }
-    }
-
-    run().catch(() => { })
+    runSnapshotsRefresh().catch(() => { })
     return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
+      queuedRefreshRef.current = false
     }
-  }, [switcherOpen, onRefreshSnapshots])
+  }, [switcherOpen])
+
+  useEffect(() => {
+    if (!switcherOpen) return
+    const pulse = Number(snapshotPulse || 0)
+    if (!Number.isFinite(pulse) || pulse <= 0) return
+    if (pulse === lastPulseRef.current) return
+    lastPulseRef.current = pulse
+    runSnapshotsRefresh().catch(() => { })
+  }, [switcherOpen, snapshotPulse])
 
   const switcherSnapshots = useMemo(() => {
     if (!activeAccount || !activeSnapshot) return snapshots
@@ -140,6 +164,7 @@ export default function AccountsPage({
       <ActiveAccountCard
         account={activeAccount}
         snapshot={activeSnapshot || { pl: 0, openCount: 0, metrics: null }}
+        loadingBalance={!liveDataReady && !activeSnapshot?.metrics}
         switcherOpen={switcherOpen}
         onToggleSwitcher={() => setSwitcherOpen(v => !v)}
         onTrade={onGoTrade}

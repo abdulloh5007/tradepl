@@ -97,10 +97,18 @@ const hashTicketFromID = (id: string) => {
     return 1000000 + hash
 }
 
+const isCashFlowOrder = (order: Order) => {
+    const side = String(order.side || "").toLowerCase()
+    const type = String(order.type || "").toLowerCase()
+    return side === "deposit" || side === "withdraw" || type === "balance"
+}
+
 const formatTicket = (order: Order) => {
+    const direct = String(order.ticket || "").trim()
+    if (direct) return `#${direct}`
     const fromServer = Number(order.ticket_no)
     const value = Number.isFinite(fromServer) && fromServer > 0 ? Math.trunc(fromServer) : hashTicketFromID(order.id || "")
-    return `#bx-${String(value).padStart(7, "0")}`
+    return `#BX-${String(value).padStart(7, "0")}`
 }
 
 export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore }: HistoryPageProps) {
@@ -143,7 +151,11 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
 
     const totals = useMemo(() => {
         return filteredOrders.reduce((acc, order) => {
-            acc.profit += toNumber(order.profit)
+            if (isCashFlowOrder(order)) {
+                acc.deposit += toNumber(order.profit)
+            } else {
+                acc.profit += toNumber(order.profit)
+            }
             acc.commission += toNumber(order.commission)
             acc.swap += toNumber(order.swap)
             return acc
@@ -253,6 +265,8 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                         filteredOrders.map(order => {
                             const profit = toNumber(order.profit)
                             const isProfit = profit >= 0
+                            const isCashFlow = isCashFlowOrder(order)
+                            const cashLabel = String(order.side || "").toLowerCase() === "withdraw" ? "Withdraw" : "Deposit"
                             const displaySymbol = resolveOrderSymbol(order)
                             const derivedRawPrice = deriveRawPriceFromSpent(order)
                             const openPrice = resolveDisplayPrice(displaySymbol, order.price, Number.isFinite(derivedRawPrice) ? derivedRawPrice : order.close_price)
@@ -261,7 +275,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                                 <div key={order.id} className="history-item" onClick={() => setSelectedOrder(order)}>
                                     <div className="h-row">
                                         <div className="h-symbol-group">
-                                            <span className="h-symbol">{displaySymbol}</span>
+                                            <span className="h-symbol">{isCashFlow ? "USD" : displaySymbol}</span>
                                             <span className={`h-side ${order.side}`}>{order.side}</span>
                                             <span className={`h-qty h-side ${order.side}`}>{order.qty}</span>
                                         </div>
@@ -270,11 +284,17 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                                         </div>
                                     </div>
                                     <div className="h-row">
-                                        <div className="h-price-row">
-                                            <span>{formatPriceOrDash(openPrice)}</span>
-                                            <span>→</span>
-                                            <span>{formatPriceOrDash(closePrice)}</span>
-                                        </div>
+                                        {isCashFlow ? (
+                                            <div className="h-price-row">
+                                                <span>{cashLabel}</span>
+                                            </div>
+                                        ) : (
+                                            <div className="h-price-row">
+                                                <span>{formatPriceOrDash(openPrice)}</span>
+                                                <span>→</span>
+                                                <span>{formatPriceOrDash(closePrice)}</span>
+                                            </div>
+                                        )}
                                         <div className="h-date">{formatDate(order.close_time || order.created_at)}</div>
                                     </div>
                                 </div>

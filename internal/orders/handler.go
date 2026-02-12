@@ -165,7 +165,7 @@ func (h *Handler) OrderHistory(w http.ResponseWriter, r *http.Request, userID st
 		before = &parsed
 	}
 
-	orders, err := h.svc.ListOrderHistoryByAccount(r.Context(), userID, account.ID, before, limit)
+	orders, err := h.svc.ListOrderHistoryByAccount(r.Context(), userID, account.ID, account.Mode, before, limit)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return

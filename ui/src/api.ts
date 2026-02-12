@@ -105,6 +105,7 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     return data as T
   }
   return {
+    authMode: () => request<{ mode: "development" | "production" }>("/v1/auth/mode", "GET"),
     register: (email: string, password: string) => request<{ user_id: string; access_token: string }>("/v1/auth/register", "POST", { email, password }),
     login: (email: string, password: string) => request<{ access_token: string }>("/v1/auth/login", "POST", { email, password }),
     telegramAuth: (initData: string) => request<{ access_token: string; user: UserProfile }>("/v1/auth/telegram", "POST", { init_data: initData }),
@@ -133,6 +134,7 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     metrics: () => request<{ balance: string; equity: string; margin: string; free_margin: string; margin_level: string; pl: string }>("/v1/metrics", "GET", undefined, true),
     orders: () => request<Array<{
       id: string
+      ticket?: string
       ticket_no?: number
       user_id?: string
       trading_account_id?: string
@@ -166,6 +168,7 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       if (q.length > 0) url += `?${q.join("&")}`
       return request<Array<{
       id: string
+      ticket?: string
       ticket_no?: number
       user_id?: string
       trading_account_id?: string

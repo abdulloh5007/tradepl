@@ -52,7 +52,7 @@ func main() {
 	authSvc := auth.NewService(pool, cfg.JWTIssuer, []byte(cfg.JWTSecret), cfg.JWTTTL)
 	authSvc.SetTelegramBotToken(cfg.TelegramBotToken)
 	authSvc.SetAccountService(accountSvc)
-	authHandler := auth.NewHandler(authSvc)
+	authHandler := auth.NewHandler(authSvc, cfg.ProfectMode)
 	faucetMax, err := decimal.NewFromString(cfg.FaucetMax)
 	if err != nil {
 		log.Fatal(err)
@@ -101,6 +101,7 @@ func main() {
 
 	log.Printf("server listening on %s", cfg.HTTPAddr)
 	log.Printf("health endpoint: http://localhost%s/health", cfg.HTTPAddr)
+	log.Printf("auth mode: %s", cfg.ProfectMode)
 	if cfg.UIDist != "" {
 		log.Printf("ui dist: %s", cfg.UIDist)
 	}

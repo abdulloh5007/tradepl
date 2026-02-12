@@ -10,6 +10,7 @@ import (
 
 type Order struct {
 	ID               string            `json:"id"`
+	Ticket           string            `json:"ticket,omitempty"`
 	TicketNo         int64             `json:"ticket_no,omitempty"`
 	UserID           string            `json:"user_id"`
 	TradingAccountID string            `json:"trading_account_id"`

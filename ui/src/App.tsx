@@ -90,6 +90,9 @@ export default function App() {
   const [orderHistory, setOrderHistory] = useState<Order[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyHasMore, setHistoryHasMore] = useState(true)
+  const [historyAccountId, setHistoryAccountId] = useState("")
+  const [metricsAccountId, setMetricsAccountId] = useState("")
+  const [ordersAccountId, setOrdersAccountId] = useState("")
   const [metrics, setMetrics] = useState<Metrics>({
     balance: "0",
     equity: "0",
@@ -115,6 +118,8 @@ export default function App() {
   const historyFailureRef = useRef(0)
   const historyRetryAtRef = useRef(0)
   const orderHistoryRef = useRef<Order[]>([])
+  const historyAccountIdRef = useRef("")
+  const activeAccountIdRef = useRef("")
 
   // Auth form state
   const [email, setEmail] = useState("")
@@ -122,17 +127,23 @@ export default function App() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login")
   const [authLoading, setAuthLoading] = useState(false)
   const [autoAuthChecked, setAutoAuthChecked] = useState(false)
+  const [authFlowMode, setAuthFlowMode] = useState<"development" | "production" | null>(null)
+  const [telegramAuthError, setTelegramAuthError] = useState("")
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const telegramRedirectedRef = useRef(false)
 
   const logout = useCallback(() => {
     setToken("")
     setProfile(null)
+    setTelegramAuthError("")
     telegramRedirectedRef.current = false
     setActiveAccountId("")
     setAccounts([])
     setOpenOrders([])
     setOrderHistory([])
+    setHistoryAccountId("")
+    setMetricsAccountId("")
+    setOrdersAccountId("")
     setAccountSnapshots({})
     setHistoryHasMore(true)
     setPollBackoff({
@@ -189,14 +200,29 @@ export default function App() {
       return Number.isFinite(n) ? n : 0
     }
 
-    const baseBalance = toSafe(metrics.balance)
-    const baseMargin = Math.max(0, toSafe(metrics.margin))
+    const hasFreshMetrics = metricsAccountId !== "" && metricsAccountId === activeAccountId
+    const hasFreshOrders = ordersAccountId !== "" && ordersAccountId === activeAccountId
+    const fallbackBalance = Number(activeTradingAccount?.balance || 0)
+    const metricsSource = hasFreshMetrics
+      ? metrics
+      : {
+        balance: String(Number.isFinite(fallbackBalance) ? fallbackBalance : 0),
+        equity: String(Number.isFinite(fallbackBalance) ? fallbackBalance : 0),
+        margin: "0",
+        free_margin: String(Number.isFinite(fallbackBalance) ? fallbackBalance : 0),
+        margin_level: "0",
+        pl: "0"
+      }
+    const ordersSource = hasFreshOrders ? openOrders : []
+
+    const baseBalance = toSafe(metricsSource.balance)
+    const baseMargin = Math.max(0, toSafe(metricsSource.margin))
 
     let livePl = 0
-    for (const order of openOrders) {
+    for (const order of ordersSource) {
       livePl += calcDisplayedOrderProfit(order, bidDisplay, askDisplay, marketPair, marketConfig)
     }
-    if (!Number.isFinite(livePl)) livePl = toSafe(metrics.pl)
+    if (!Number.isFinite(livePl)) livePl = toSafe(metricsSource.pl)
     if (Math.abs(livePl) < 0.000000000001) livePl = 0
 
     const equity = baseBalance + livePl
@@ -214,7 +240,18 @@ export default function App() {
       margin_level: String(marginLevel),
       pl: String(livePl)
     }
-  }, [metrics.balance, metrics.margin, metrics.pl, openOrders, bidDisplay, askDisplay, marketPair, marketConfig])
+  }, [
+    metrics,
+    metricsAccountId,
+    ordersAccountId,
+    activeAccountId,
+    activeTradingAccount?.balance,
+    openOrders,
+    bidDisplay,
+    askDisplay,
+    marketPair,
+    marketConfig
+  ])
 
   const isLiveTradingView = view === "chart" || view === "positions" || view === "accounts"
 
@@ -243,20 +280,36 @@ export default function App() {
     orderHistoryRef.current = orderHistory
   }, [orderHistory])
 
+  useEffect(() => {
+    historyAccountIdRef.current = historyAccountId
+  }, [historyAccountId])
+
+  useEffect(() => {
+    activeAccountIdRef.current = activeAccountId
+  }, [activeAccountId])
+
   const fetchOrderHistory = useCallback(async (reset = true) => {
     if (!token) return
+    const requestAccountId = activeAccountId
     if (historyLoadingRef.current) return
     if (Date.now() < historyRetryAtRef.current) return
 
     historyLoadingRef.current = true
     setHistoryLoading(true)
     try {
-      const lastOrder = orderHistoryRef.current[orderHistoryRef.current.length - 1]
-      const before = reset ? undefined : (lastOrder?.close_time || lastOrder?.created_at)
+      const accountChanged = historyAccountIdRef.current !== requestAccountId
+      const shouldReset = reset || accountChanged
+      const lastOrder = shouldReset ? undefined : orderHistoryRef.current[orderHistoryRef.current.length - 1]
+      const before = lastOrder ? (lastOrder.close_time || lastOrder.created_at) : undefined
       const page = (await api.orderHistory({ limit: historyPageLimit, before })) || []
 
-      if (reset) {
+      if (activeAccountIdRef.current !== requestAccountId) {
+        return
+      }
+
+      if (shouldReset) {
         setOrderHistory(page)
+        setHistoryAccountId(requestAccountId)
       } else if (page.length > 0) {
         setOrderHistory(prev => {
           const seen = new Set(prev.map(o => o.id))
@@ -281,17 +334,23 @@ export default function App() {
       historyLoadingRef.current = false
       setHistoryLoading(false)
     }
-  }, [api, token])
+  }, [api, token, activeAccountId])
 
   const refreshOrders = useCallback(async () => {
+    const requestAccountId = activeAccountId
     const orders = (await api.orders()) || []
+    if (activeAccountIdRef.current !== requestAccountId) return
     setOpenOrders(orders)
-  }, [api])
+    setOrdersAccountId(requestAccountId)
+  }, [api, activeAccountId])
 
   const refreshMetrics = useCallback(async () => {
+    const requestAccountId = activeAccountId
     const m = await api.metrics()
+    if (activeAccountIdRef.current !== requestAccountId) return
     setMetrics(m)
-  }, [api])
+    setMetricsAccountId(requestAccountId)
+  }, [api, activeAccountId])
 
   const refreshAccounts = useCallback(async (preferredID?: string) => {
     if (!token) return
@@ -365,6 +424,9 @@ export default function App() {
       setActiveAccountId("")
       setOpenOrders([])
       setOrderHistory([])
+      setHistoryAccountId("")
+      setMetricsAccountId("")
+      setOrdersAccountId("")
       setAccountSnapshots({})
       setHistoryHasMore(true)
       setHistoryLoading(false)
@@ -381,7 +443,30 @@ export default function App() {
   }, [token, refreshAccounts])
 
   useEffect(() => {
+    let cancelled = false
+    publicApi.authMode()
+      .then((res) => {
+        if (cancelled) return
+        const mode = res?.mode === "production" ? "production" : "development"
+        setAuthFlowMode(mode)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAuthFlowMode("development")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [publicApi])
+
+  useEffect(() => {
+    if (!authFlowMode) return
     if (token) {
+      setAutoAuthChecked(true)
+      return
+    }
+
+    if (authFlowMode !== "production") {
       setAutoAuthChecked(true)
       return
     }
@@ -397,6 +482,7 @@ export default function App() {
     window.Telegram?.WebApp?.ready?.()
     ; (async () => {
       try {
+        setTelegramAuthError("")
         const res = await publicApi.telegramAuth(initData)
         if (cancelled) return
         setToken(res.access_token)
@@ -405,8 +491,9 @@ export default function App() {
         setCookie("lv_account_id", "")
         setActiveAccountId("")
         setView("accounts")
-      } catch {
+      } catch (err: any) {
         if (cancelled) return
+        setTelegramAuthError(err?.message || "Telegram authentication failed")
         setCookie("lv_token", "")
       } finally {
         if (!cancelled) {
@@ -419,7 +506,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [token, publicApi])
+  }, [token, publicApi, authFlowMode])
 
   useEffect(() => {
     if (!token) {
@@ -433,10 +520,11 @@ export default function App() {
 
   useEffect(() => {
     if (telegramRedirectedRef.current) return
+    if (authFlowMode !== "production") return
     if (!token || !isTelegramMiniApp()) return
     setView("accounts")
     telegramRedirectedRef.current = true
-  }, [token])
+  }, [token, authFlowMode])
 
   // Persist preferences
   useEffect(() => {
@@ -674,9 +762,27 @@ export default function App() {
 
   useEffect(() => {
     if (!token || view !== "history") return
-    if (orderHistoryRef.current.length > 0) return
+    if (historyAccountIdRef.current === activeAccountId && orderHistoryRef.current.length > 0) return
     fetchOrderHistory(true).catch(() => { })
-  }, [token, view, fetchOrderHistory])
+  }, [token, view, fetchOrderHistory, activeAccountId])
+
+  useEffect(() => {
+    if (!token) return
+    setOpenOrders([])
+    setOrdersAccountId("")
+    setMetricsAccountId("")
+  }, [activeAccountId, token])
+
+  useEffect(() => {
+    if (!token) return
+    setOrderHistory([])
+    setHistoryAccountId(activeAccountId)
+    setHistoryHasMore(true)
+    setHistoryLoading(false)
+    historyLoadingRef.current = false
+    historyFailureRef.current = 0
+    historyRetryAtRef.current = 0
+  }, [activeAccountId, token])
 
   useEffect(() => {
     if (!token || view !== "accounts" || accounts.length === 0) return
@@ -921,8 +1027,7 @@ export default function App() {
     await refreshAccounts(accountID)
     await Promise.all([
       refreshMetrics().catch(() => { }),
-      refreshOrders().catch(() => { }),
-      fetchOrderHistory(true).catch(() => { })
+      refreshOrders().catch(() => { })
     ])
     refreshAccountSnapshots().catch(() => { })
   }
@@ -954,8 +1059,7 @@ export default function App() {
     await refreshAccounts(nextID)
     await Promise.all([
       refreshMetrics().catch(() => { }),
-      refreshOrders().catch(() => { }),
-      fetchOrderHistory(true).catch(() => { })
+      refreshOrders().catch(() => { })
     ])
     refreshAccountSnapshots().catch(() => { })
   }
@@ -980,16 +1084,62 @@ export default function App() {
 
   // Show login form if not authenticated
   if (!token) {
-    if (!autoAuthChecked) {
+    if (!authFlowMode || !autoAuthChecked) {
       return (
         <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)", alignItems: "center", justifyContent: "center", gap: 10 }}>
           <Toaster position="top-right" />
           <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-base)" }}>
-            {isTelegramMiniApp() ? "Connecting Telegram..." : "Loading..."}
+            {authFlowMode === "production" && isTelegramMiniApp() ? "Connecting Telegram..." : "Loading..."}
           </div>
         </div>
       )
     }
+
+    if (authFlowMode === "production") {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <Toaster position="top-right" />
+          <div style={{ background: "var(--card-bg)", padding: 24, borderRadius: 12, width: 360, textAlign: "center" }}>
+            <h2 style={{ marginBottom: 12 }}>LV Trade</h2>
+            {!isTelegramMiniApp() ? (
+              <p style={{ color: "var(--text-muted)", margin: 0 }}>
+                Open this app from Telegram Mini App to continue.
+              </p>
+            ) : (
+              <>
+                <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
+                  Telegram authentication failed.
+                </p>
+                {telegramAuthError && (
+                  <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                    {telegramAuthError}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  style={{
+                    marginTop: 10,
+                    width: "100%",
+                    padding: "12px 0",
+                    background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    fontSize: 15,
+                    cursor: "pointer"
+                  }}
+                >
+                  Retry
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)", alignItems: "center", justifyContent: "center" }}>
         <Toaster position="top-right" />
@@ -1135,7 +1285,9 @@ export default function App() {
             activeAccountId={activeAccountId}
             metrics={liveMetrics}
             activeOpenOrdersCount={openOrders.filter(o => o.status === "filled").length}
+            liveDataReady={metricsAccountId === activeAccountId && ordersAccountId === activeAccountId}
             snapshots={accountSnapshots}
+            snapshotPulse={Number(quote?.ts || 0)}
             onRefreshSnapshots={refreshAccountSnapshots}
             onSwitch={handleSwitchAccount}
             onCreate={handleCreateAccount}

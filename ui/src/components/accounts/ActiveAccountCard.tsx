@@ -7,6 +7,7 @@ import "./ActiveAccountCard.css"
 interface ActiveAccountCardProps {
   account: TradingAccount
   snapshot: AccountSnapshot
+  loadingBalance?: boolean
   switcherOpen: boolean
   onToggleSwitcher: () => void
   onTrade: () => void
@@ -18,6 +19,7 @@ interface ActiveAccountCardProps {
 export default function ActiveAccountCard({
   account,
   snapshot,
+  loadingBalance = false,
   switcherOpen,
   onToggleSwitcher,
   onTrade,
@@ -48,7 +50,11 @@ export default function ActiveAccountCard({
       </div>
 
       <div className="acc-pl-block" style={{ color: plColor }}>
-        {formatUsd(snapshot.metrics?.equity || snapshot.metrics?.balance || 0)} USD
+        {loadingBalance ? (
+          <span className="acc-balance-skeleton" aria-hidden="true" />
+        ) : (
+          `${formatUsd(snapshot.metrics?.equity || snapshot.metrics?.balance || 0)} USD`
+        )}
       </div>
 
       <div className="acc-action-row">

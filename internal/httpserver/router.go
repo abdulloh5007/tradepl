@@ -64,6 +64,7 @@ func NewRouter(d RouterDeps) http.Handler {
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	r.Route("/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
+			r.Get("/mode", d.AuthHandler.Mode)
 			r.Post("/register", d.AuthHandler.Register)
 			r.Post("/login", d.AuthHandler.Login)
 			r.Post("/telegram", d.AuthHandler.LoginTelegram)

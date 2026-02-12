@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type Config struct {
 	JWTTTL           time.Duration
 	InternalToken    string
 	WebSocketOrigin  string
+	ProfectMode      string
 	TelegramBotToken string
 	UIDist           string
 	FaucetEnabled    bool
@@ -59,7 +61,17 @@ func Load() (Config, error) {
 	if c.WebSocketOrigin == "" {
 		missing = append(missing, "WS_ORIGIN")
 	}
+	c.ProfectMode = strings.ToLower(strings.TrimSpace(os.Getenv("PROFECT_MODE")))
+	if c.ProfectMode == "" {
+		c.ProfectMode = "development"
+	}
+	if c.ProfectMode != "development" && c.ProfectMode != "production" {
+		return c, errors.New("invalid PROFECT_MODE: use development or production")
+	}
 	c.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
+	if c.ProfectMode == "production" && c.TelegramBotToken == "" {
+		missing = append(missing, "TELEGRAM_BOT_TOKEN")
+	}
 	c.UIDist = os.Getenv("UI_DIST")
 	c.MarketDataDir = os.Getenv("MARKETDATA_DIR")
 	faucetEnabled := os.Getenv("FAUCET_ENABLED")

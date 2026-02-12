@@ -219,8 +219,9 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 	if estimatedNotional.GreaterThan(riskCfg.MaxOrderNotionalUSD) {
 		return PlaceOrderResult{}, fmt.Errorf("max notional per order is %s USD", riskCfg.MaxOrderNotionalUSD.String())
 	}
+	requiredMargin := estimatedNotional
 	if effectiveLeverage.GreaterThan(decimal.Zero) {
-		requiredMargin := estimatedNotional.Div(effectiveLeverage)
+		requiredMargin = estimatedNotional.Div(effectiveLeverage)
 		if !currentMetrics.FreeMargin.GreaterThan(decimal.Zero) || requiredMargin.GreaterThan(currentMetrics.FreeMargin) {
 			return PlaceOrderResult{}, errors.New("insufficient free margin for this order size")
 		}
@@ -236,47 +237,20 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 	var reservedAssetID string
 	var reservedAmount decimal.Decimal
 
-	if req.Side == types.OrderSideBuy {
+	if req.Type == types.OrderTypeMarket {
 		reservedAssetID = pair.QuoteAssetID
-		if req.Type == types.OrderTypeMarket {
-			if req.Qty != nil {
-				// Broker Style Buy: Qty specified. Need to estimate cost.
-				entryPrice := marketAsk
-				if invertedDisplayPair {
-					// For inverted display pairs, preserve visual spread direction:
-					// BUY opens at upper side in displayed prices.
-					entryPrice = marketBid
-				}
-				askPrice := decimal.NewFromFloat(entryPrice)
-				// Reserve cost = lots * contract_size * Ask
-				reservedAmount = orderNotional(pair.Symbol, askPrice, *req.Qty, contractSize)
-				if commissionRate > 0 {
-					reservedAmount = reservedAmount.Add(reservedAmount.Mul(decimal.NewFromFloat(commissionRate)))
-				}
-			} else {
-				// Exchange Style Buy: Spend fixed amount
-				reservedAmount = *req.QuoteAmount
-			}
-		} else {
-			// Limit Buy
-			reservedAmount = orderNotional(pair.Symbol, *req.Price, *req.Qty, contractSize)
+		reservedAmount = requiredMargin
+		if commissionRate > 0 && estimatedNotional.GreaterThan(decimal.Zero) {
+			openCommission := estimatedNotional.Mul(decimal.NewFromFloat(commissionRate))
+			reservedAmount = reservedAmount.Add(openCommission)
 		}
+	} else if req.Side == types.OrderSideBuy {
+		reservedAssetID = pair.QuoteAssetID
+		// Limit Buy
+		reservedAmount = orderNotional(pair.Symbol, *req.Price, *req.Qty, contractSize)
 	} else {
-		if req.Type == types.OrderTypeMarket {
-			reservedAssetID = pair.QuoteAssetID
-			entryPrice := marketBid
-			if invertedDisplayPair {
-				entryPrice = marketAsk
-			}
-			bidPrice := decimal.NewFromFloat(entryPrice)
-			reservedAmount = orderNotional(pair.Symbol, bidPrice, *req.Qty, contractSize)
-			if commissionRate > 0 {
-				reservedAmount = reservedAmount.Add(reservedAmount.Mul(decimal.NewFromFloat(commissionRate)))
-			}
-		} else {
-			reservedAssetID = pair.BaseAssetID
-			reservedAmount = *req.Qty
-		}
+		reservedAssetID = pair.BaseAssetID
+		reservedAmount = *req.Qty
 	}
 	availableAccount, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, reservedAssetID, types.AccountKindAvailable)
 	if err != nil {
@@ -291,7 +265,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 		return PlaceOrderResult{}, err
 	}
 	if balance.LessThan(reservedAmount) {
-		return PlaceOrderResult{}, errors.New("insufficient balance")
+		return PlaceOrderResult{}, errors.New("insufficient free margin for this order size")
 	}
 	_, err = s.ledger.Transfer(ctx, tx, availableAccount, reservedAccount, reservedAmount, types.LedgerEntryTypeReserve, req.ClientRef)
 	if err != nil {
@@ -361,40 +335,20 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 			execQty = *req.Qty
 		}
 
-		quoteAmount := orderNotional(pair.Symbol, execPrice, execQty, contractSize)
-		commissionAmount := decimal.Zero
-		if commissionRate > 0 {
-			commissionAmount = quoteAmount.Mul(decimal.NewFromFloat(commissionRate))
-		}
-
-		// Execute the trade: Transfer funds
-		if req.Side == types.OrderSideBuy {
-			// Buyer: Reserved USD -> "Market" (burn), Receive Base Asset
-			reservedQuote, _ := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, pair.QuoteAssetID, types.AccountKindReserved)
-			availableBase, _ := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, pair.BaseAssetID, types.AccountKindAvailable)
-
-			// Deduct USD from Reserved
-			_, err := s.ledger.DebitAccount(ctx, tx, reservedQuote, quoteAmount.Add(commissionAmount), types.LedgerEntryTypeTrade, "market_buy")
-			if err != nil {
-				return PlaceOrderResult{}, fmt.Errorf("failed to debit quote: %w", err)
-			}
-			// Credit Base Asset to Available (Mint from Market)
-			_, err = s.ledger.CreditAccount(ctx, tx, availableBase, execQty, types.LedgerEntryTypeTrade, "market_buy")
-			if err != nil {
-				return PlaceOrderResult{}, fmt.Errorf("failed to credit base: %w", err)
-			}
-		} else {
-			// Seller (short): lock/debit reserved USD notional at open.
-			reservedQuote, _ := s.ledger.EnsureAccountForTradingAccount(ctx, tx, req.UserID, req.AccountID, pair.QuoteAssetID, types.AccountKindReserved)
-			_, err := s.ledger.DebitAccount(ctx, tx, reservedQuote, quoteAmount.Add(commissionAmount), types.LedgerEntryTypeTrade, "market_sell")
-			if err != nil {
-				return PlaceOrderResult{}, fmt.Errorf("failed to debit quote: %w", err)
+		// CFD-style margin position:
+		// - keep required margin locked on reserved account,
+		// - charge open commission immediately (if any),
+		// - do not move base asset balances.
+		openCommission := reservedAmount.Sub(requiredMargin)
+		if openCommission.GreaterThan(decimal.Zero) {
+			if _, err := s.ledger.DebitAccount(ctx, tx, reservedAccount, openCommission, types.LedgerEntryTypeTrade, "open_commission"); err != nil {
+				return PlaceOrderResult{}, fmt.Errorf("failed to apply open commission: %w", err)
 			}
 		}
 
 		// Update order to Filled
 		order.Status = types.OrderStatusFilled
-		order.SpentAmount = quoteAmount
+		order.SpentAmount = requiredMargin
 		order.Qty = execQty
 		order.RemainingQty = decimal.Zero
 		order.RemainingQuote = nil
@@ -552,7 +506,6 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 	var pendingMargin decimal.Decimal
 	var floatingPnL decimal.Decimal
 	var positionMargin decimal.Decimal
-	var positionPrincipal decimal.Decimal
 	positions := make([]positionRisk, 0, 8)
 	spreadMultiplier := 1.0
 	leverage := decimal.NewFromInt(100)
@@ -624,10 +577,9 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 		}
 		bid, ask = applySpreadMultiplier(bid, ask, spreadMultiplier)
 		entryRaw := *o.Price
-		markRaw := decimal.NewFromFloat(bid)
-		if o.Side == types.OrderSideSell {
-			markRaw = decimal.NewFromFloat(ask)
-		}
+		bidRaw := decimal.NewFromFloat(bid)
+		askRaw := decimal.NewFromFloat(ask)
+		markRaw := markRawForSide(pair.Symbol, o.Side, bidRaw, askRaw)
 
 		entryForMargin, ok := effectivePriceForPair(pair.Symbol, entryRaw)
 		if !ok {
@@ -635,7 +587,6 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 		}
 
 		notional := entryForMargin.Mul(filledQty).Mul(contractSize)
-		positionPrincipal = positionPrincipal.Add(notional)
 		if leverage.GreaterThan(decimal.Zero) {
 			positionMargin = positionMargin.Add(notional.Div(leverage))
 		}
@@ -646,9 +597,12 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 		}
 	}
 
-	brokerBalance := balance.Add(positionPrincipal)
+	brokerBalance := balance
 	equity := brokerBalance.Add(floatingPnL)
-	margin := pendingMargin.Add(positionMargin)
+	margin := pendingMargin
+	if positionMargin.GreaterThan(margin) {
+		margin = positionMargin
+	}
 	freeMargin := equity.Sub(margin)
 	var marginLevel decimal.Decimal
 	if margin.GreaterThan(decimal.Zero) {
@@ -813,10 +767,7 @@ func (s *Service) ListOpenOrdersByAccount(ctx context.Context, userID, accountID
 				}
 			}
 			if ok {
-				mark := qm.bid
-				if o.Side == types.OrderSideSell {
-					mark = qm.ask
-				}
+				mark := markRawForSide(pair.Symbol, o.Side, qm.bid, qm.ask)
 				pnl := calculateOrderPnL(pair.Symbol, o.Side, *o.Price, mark, filledQty, pairPnLContractSize(pair))
 				o.UnrealizedPnL = &pnl
 			}
@@ -827,15 +778,23 @@ func (s *Service) ListOpenOrdersByAccount(ctx context.Context, userID, accountID
 	return orders, nil
 }
 
-func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, accountID string, before *time.Time, limit int) ([]model.Order, error) {
+func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, accountID, accountMode string, before *time.Time, limit int) ([]model.Order, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if limit > 200 {
 		limit = 200
 	}
+	// Fetch extra records from each source to keep mixed timeline pagination stable.
+	fetchLimit := limit * 2
+	if fetchLimit < limit {
+		fetchLimit = limit
+	}
+	if fetchLimit > 400 {
+		fetchLimit = 400
+	}
 
-	query := `
+	orderQuery := `
 		SELECT id,
 		       coalesce(ticket_no, 0),
 		       user_id,
@@ -866,7 +825,7 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		ORDER BY coalesce(close_time, updated_at, created_at) DESC, created_at DESC
 		LIMIT $4
 	`
-	rows, err := s.pool.Query(ctx, query, userID, accountID, before, limit)
+	rows, err := s.pool.Query(ctx, orderQuery, userID, accountID, before, fetchLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -905,6 +864,7 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		o.Profit = &realizedPnL
 		o.Commission = &realizedCommission
 		o.Swap = &realizedSwap
+		o.Ticket = formatOrderTicket(accountMode, o.TicketNo, o.ID)
 
 		pair, hasPair := resolvePair(o.PairID)
 		if hasPair && pair.Symbol != "" {
@@ -928,7 +888,168 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 
 		orders = append(orders, o)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	cashFlowQuery := `
+		SELECT le.id,
+		       le.sequence,
+		       le.entry_type,
+		       le.amount,
+		       le.created_at
+		FROM ledger_entries le
+		JOIN accounts a ON a.id = le.account_id
+		WHERE a.owner_type = 'user'
+		  AND a.owner_user_id = $1
+		  AND ($2 = '' OR coalesce(a.trading_account_id::text, '') = $2)
+		  AND ($3::timestamptz IS NULL OR le.created_at < $3)
+		  AND le.entry_type IN ('deposit', 'withdraw', 'faucet')
+		ORDER BY le.created_at DESC, le.sequence DESC
+		LIMIT $4
+	`
+	cashRows, err := s.pool.Query(ctx, cashFlowQuery, userID, accountID, before, fetchLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer cashRows.Close()
+
+	for cashRows.Next() {
+		var entryID string
+		var sequence int64
+		var entryType string
+		var amount decimal.Decimal
+		var createdAt time.Time
+		if err := cashRows.Scan(&entryID, &sequence, &entryType, &amount, &createdAt); err != nil {
+			return nil, err
+		}
+
+		side := types.OrderSide("deposit")
+		if amount.IsNegative() || entryType == string(types.LedgerEntryTypeWithdraw) {
+			side = types.OrderSide("withdraw")
+		}
+		qty := amount.Abs()
+		profit := amount
+		commission := decimal.Zero
+		swap := decimal.Zero
+
+		eventType := strings.ToLower(strings.TrimSpace(entryType))
+		if eventType == string(types.LedgerEntryTypeFaucet) {
+			eventType = string(types.LedgerEntryTypeDeposit)
+		}
+
+		closeTime := createdAt
+		orders = append(orders, model.Order{
+			ID:               entryID,
+			Ticket:           formatLedgerTicket(accountMode, eventType, sequence, entryID),
+			UserID:           userID,
+			TradingAccountID: accountID,
+			PairID:           "USD-USD",
+			Symbol:           "USD-USD",
+			Side:             side,
+			Type:             types.OrderType("balance"),
+			Status:           types.OrderStatusClosed,
+			Qty:              qty,
+			RemainingQty:     decimal.Zero,
+			ReservedAmount:   decimal.Zero,
+			SpentAmount:      decimal.Zero,
+			Profit:           &profit,
+			Commission:       &commission,
+			Swap:             &swap,
+			CloseTime:        &closeTime,
+			CreatedAt:        createdAt,
+		})
+	}
+	if err := cashRows.Err(); err != nil {
+		return nil, err
+	}
+
+	sort.SliceStable(orders, func(i, j int) bool {
+		li := historyEventTime(orders[i])
+		rj := historyEventTime(orders[j])
+		if li.Equal(rj) {
+			if orders[i].CreatedAt.Equal(orders[j].CreatedAt) {
+				return orders[i].ID > orders[j].ID
+			}
+			return orders[i].CreatedAt.After(orders[j].CreatedAt)
+		}
+		return li.After(rj)
+	})
+
+	if len(orders) > limit {
+		orders = orders[:limit]
+	}
 	return orders, nil
+}
+
+func historyEventTime(o model.Order) time.Time {
+	if o.CloseTime != nil && !o.CloseTime.IsZero() {
+		return o.CloseTime.UTC()
+	}
+	return o.CreatedAt.UTC()
+}
+
+func modeTicketPrefix(mode string) string {
+	if strings.EqualFold(strings.TrimSpace(mode), "demo") {
+		return "d-"
+	}
+	return ""
+}
+
+func normalizeTicketNumber(value int64, seed string) string {
+	v := value
+	if v < 0 {
+		v = -v
+	}
+	if v <= 0 {
+		v = int64(ticketSeedNumber(seed))
+	}
+	v = v % 10000000
+	if v <= 0 {
+		v = int64(ticketSeedNumber(seed))
+		v = v % 10000000
+	}
+	if v < 1000000 {
+		v += 1000000
+	}
+	return fmt.Sprintf("%07d", v)
+}
+
+func ticketSeedNumber(seed string) int {
+	h := 0
+	for _, ch := range seed {
+		h = (h*33 + int(ch)) % 9000000
+	}
+	if h < 1000000 {
+		h += 1000000
+	}
+	return h
+}
+
+func ticketSeedLetters(seed string) string {
+	h := 0
+	for _, ch := range seed {
+		h = (h*131 + int(ch)) % (26 * 26)
+	}
+	first := byte('a' + ((h / 26) % 26))
+	second := byte('a' + (h % 26))
+	return string([]byte{first, second})
+}
+
+func formatOrderTicket(accountMode string, ticketNo int64, seed string) string {
+	digits := normalizeTicketNumber(ticketNo, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("ord:%d:%s", ticketNo, seed))
+	return modeTicketPrefix(accountMode) + "BX-" + digits + letters
+}
+
+func formatLedgerTicket(accountMode, eventType string, sequence int64, seed string) string {
+	digits := normalizeTicketNumber(sequence, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("cash:%s:%d:%s", eventType, sequence, seed))
+	base := "BXdep"
+	if strings.EqualFold(strings.TrimSpace(eventType), string(types.LedgerEntryTypeWithdraw)) {
+		base = "BXwit"
+	}
+	return modeTicketPrefix(accountMode) + base + digits + letters
 }
 
 func (s *Service) CloseOrdersByScope(ctx context.Context, userID, accountID, scope string) (CloseOrdersResult, error) {
@@ -1038,46 +1159,79 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 	qty := order.Qty
 	contractSize := pairContractSize(pair)
 
-	exitPrice = decimal.NewFromFloat(bid)
-	if order.Side == types.OrderSideSell {
-		exitPrice = decimal.NewFromFloat(ask)
-	}
+	bidRaw := decimal.NewFromFloat(bid)
+	askRaw := decimal.NewFromFloat(ask)
+	exitPrice = markRawForSide(pair.Symbol, order.Side, bidRaw, askRaw)
 	pnl = calculateOrderPnL(pair.Symbol, order.Side, entryPrice, exitPrice, qty, pairPnLContractSize(pair))
 
 	// 7. Update user's USD balance
-	// Get the user's available USD account
+	// Get the user's available/reserved USD accounts.
 	usdAvailable, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, pair.QuoteAssetID, types.AccountKindAvailable)
 	if err != nil {
 		return fmt.Errorf("failed to get USD account: %w", err)
 	}
+	usdReserved, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, pair.QuoteAssetID, types.AccountKindReserved)
+	if err != nil {
+		return fmt.Errorf("failed to get USD reserved account: %w", err)
+	}
 
-	// Calculate total return: original investment + P/L
-	// For a buy: we spent order.SpentAmount (USD), now we get it back + P/L
-	closeAmount := order.SpentAmount.Add(pnl)
+	// Release locked margin first.
+	releasedMargin := decimal.Zero
+	if order.SpentAmount.GreaterThan(decimal.Zero) {
+		reservedBalance, balErr := s.ledger.GetBalance(ctx, tx, usdReserved)
+		if balErr != nil {
+			return fmt.Errorf("failed to read reserved balance: %w", balErr)
+		}
+		releaseAmount := order.SpentAmount
+		if releaseAmount.GreaterThan(reservedBalance) {
+			releaseAmount = reservedBalance
+		}
+		if releaseAmount.GreaterThan(decimal.Zero) {
+			if _, err = s.ledger.Transfer(ctx, tx, usdReserved, usdAvailable, releaseAmount, types.LedgerEntryTypeRelease, "release_margin_close"); err != nil {
+				return fmt.Errorf("failed to release margin: %w", err)
+			}
+			releasedMargin = releaseAmount
+		}
+	}
+	// Backward compatibility for legacy positions opened before margin-lock logic.
+	if releasedMargin.LessThan(order.SpentAmount) {
+		shortfall := order.SpentAmount.Sub(releasedMargin)
+		if shortfall.GreaterThan(decimal.Zero) {
+			if _, err = s.ledger.CreditAccount(ctx, tx, usdAvailable, shortfall, types.LedgerEntryTypeTrade, "legacy_margin_return"); err != nil {
+				return fmt.Errorf("failed to return legacy margin: %w", err)
+			}
+		}
+	}
+
 	closeCommission := decimal.Zero
 	if commissionRate > 0 {
 		closeNotional := orderNotional(pair.Symbol, exitPrice, qty, contractSize)
 		if closeNotional.GreaterThan(decimal.Zero) {
 			closeCommission = closeNotional.Mul(decimal.NewFromFloat(commissionRate))
-			closeAmount = closeAmount.Sub(closeCommission)
 		}
 	}
+	openCommission := order.ReservedAmount.Sub(order.SpentAmount)
+	if openCommission.LessThan(decimal.Zero) {
+		openCommission = decimal.Zero
+	}
 
-	if closeAmount.GreaterThan(decimal.Zero) {
-		// Credit the return to available balance
-		_, err = s.ledger.CreditAccount(ctx, tx, usdAvailable, closeAmount, types.LedgerEntryTypeTrade, "close_position")
+	netPnL := pnl.Sub(closeCommission)
+	realizedPnL := decimal.Zero
+	if netPnL.GreaterThan(decimal.Zero) {
+		_, err = s.ledger.CreditAccount(ctx, tx, usdAvailable, netPnL, types.LedgerEntryTypeTrade, "close_position_pnl")
 		if err != nil {
-			return fmt.Errorf("failed to credit balance: %w", err)
+			return fmt.Errorf("failed to credit pnl: %w", err)
 		}
+		realizedPnL = netPnL
 	} else {
 		// Negative balance protection: never debit beyond available balance.
-		lossBeyondReserved := closeAmount.Abs()
+		lossAmount := netPnL.Abs()
 		availableBalance, balErr := s.ledger.GetBalance(ctx, tx, usdAvailable)
 		if balErr != nil {
 			return fmt.Errorf("failed to read available balance: %w", balErr)
 		}
 		if availableBalance.GreaterThan(decimal.Zero) {
-			debitAmount := lossBeyondReserved
+			debitAmount := lossAmount
 			if debitAmount.GreaterThan(availableBalance) {
 				debitAmount = availableBalance
 			}
@@ -1086,26 +1240,14 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 				if err != nil {
 					return fmt.Errorf("failed to debit balance: %w", err)
 				}
+				realizedPnL = debitAmount.Neg()
 			}
 		}
 	}
 
-	// 8. If it was a buy order, we also need to remove the base asset
-	if order.Side == types.OrderSideBuy {
-		baseAvailable, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, pair.BaseAssetID, types.AccountKindAvailable)
-		if err != nil {
-			return fmt.Errorf("failed to get base account: %w", err)
-		}
-		// Debit the base asset (we're selling it)
-		_, err = s.ledger.DebitAccount(ctx, tx, baseAvailable, qty, types.LedgerEntryTypeTrade, "close_position")
-		if err != nil {
-			return fmt.Errorf("failed to debit base asset: %w", err)
-		}
-	}
-
-	// 9. Mark order as closed position with a persisted close snapshot for history/details.
+	// 8. Mark order as closed position with a persisted close snapshot for history/details.
 	closeTime := time.Now().UTC()
-	realizedPnL := closeAmount.Sub(order.SpentAmount)
+	realizedCommission := closeCommission.Add(openCommission)
 	if err := s.store.CloseOrderWithSnapshot(
 		ctx,
 		tx,
@@ -1114,13 +1256,13 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 		exitPrice,
 		closeTime,
 		realizedPnL,
-		closeCommission,
+		realizedCommission,
 		decimal.Zero,
 	); err != nil {
 		return fmt.Errorf("failed to update order status: %w", err)
 	}
 
-	// 10. Commit transaction
+	// 9. Commit transaction
 	return tx.Commit(ctx)
 }
 
@@ -1202,6 +1344,24 @@ func applySpreadMultiplier(bid, ask, multiplier float64) (float64, float64) {
 	}
 	half := spread / 2.0
 	return mid - half, mid + half
+}
+
+func markRawForSide(symbol string, side types.OrderSide, bidRaw, askRaw decimal.Decimal) decimal.Decimal {
+	inverted := marketdata.IsDisplayInverted(symbol)
+	switch side {
+	case types.OrderSideBuy:
+		if inverted {
+			return askRaw
+		}
+		return bidRaw
+	case types.OrderSideSell:
+		if inverted {
+			return bidRaw
+		}
+		return askRaw
+	default:
+		return bidRaw
+	}
 }
 
 func effectivePriceForPair(symbol string, raw decimal.Decimal) (decimal.Decimal, bool) {

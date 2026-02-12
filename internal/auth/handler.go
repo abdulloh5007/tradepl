@@ -7,11 +7,16 @@ import (
 )
 
 type Handler struct {
-	svc *Service
+	svc         *Service
+	profectMode string
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, profectMode string) *Handler {
+	mode := profectMode
+	if mode == "" {
+		mode = "development"
+	}
+	return &Handler{svc: svc, profectMode: mode}
 }
 
 type registerRequest struct {
@@ -29,6 +34,10 @@ type telegramLoginRequest struct {
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	if h.profectMode == "production" {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "email auth is disabled in production mode"})
+		return
+	}
 	var req registerRequest
 	if err := httputil.ReadJSON(r, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
@@ -48,6 +57,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	if h.profectMode == "production" {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "email auth is disabled in production mode"})
+		return
+	}
 	var req loginRequest
 	if err := httputil.ReadJSON(r, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
@@ -62,6 +75,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) LoginTelegram(w http.ResponseWriter, r *http.Request) {
+	if h.profectMode != "production" {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "telegram auth is available only in production mode"})
+		return
+	}
 	var req telegramLoginRequest
 	if err := httputil.ReadJSON(r, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
@@ -82,6 +99,10 @@ func (h *Handler) LoginTelegram(w http.ResponseWriter, r *http.Request) {
 			"avatar_url":   user.AvatarURL,
 		},
 	})
+}
+
+func (h *Handler) Mode(w http.ResponseWriter, _ *http.Request) {
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"mode": h.profectMode})
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request, userID string) {
