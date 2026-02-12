@@ -146,19 +146,25 @@ func (s *Service) List(ctx context.Context, userID string) ([]TradingAccount, er
 	rows, err := s.pool.Query(ctx, `
 		SELECT
 			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
-			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.commission_per_lot, p.swap_long_per_lot, p.swap_short_per_lot, p.is_swap_free, p.leverage,
-			COALESCE(SUM(
-				CASE WHEN ast.symbol = 'USD' AND a.kind = 'available' THEN le.amount ELSE 0 END
-			), 0) AS balance
+			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate,
+			COALESCE((to_jsonb(p)->>'commission_per_lot')::double precision, 0.0) AS commission_per_lot,
+			COALESCE((to_jsonb(p)->>'swap_long_per_lot')::double precision, 0.0) AS swap_long_per_lot,
+			COALESCE((to_jsonb(p)->>'swap_short_per_lot')::double precision, 0.0) AS swap_short_per_lot,
+			COALESCE((to_jsonb(p)->>'is_swap_free')::boolean, FALSE) AS is_swap_free,
+			p.leverage,
+			COALESCE(bal.balance, 0) AS balance
 		FROM trading_accounts ta
 		JOIN account_plans p ON p.id = ta.plan_id
-		LEFT JOIN accounts a ON a.trading_account_id = ta.id
-		LEFT JOIN assets ast ON ast.id = a.asset_id
-		LEFT JOIN ledger_entries le ON le.account_id = a.id
+		LEFT JOIN LATERAL (
+			SELECT COALESCE(SUM(le.amount), 0) AS balance
+			FROM accounts a
+			JOIN assets ast ON ast.id = a.asset_id
+			LEFT JOIN ledger_entries le ON le.account_id = a.id
+			WHERE a.trading_account_id = ta.id
+			  AND ast.symbol = 'USD'
+			  AND a.kind = 'available'
+		) bal ON TRUE
 		WHERE ta.user_id = $1
-		GROUP BY
-			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
-			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.commission_per_lot, p.swap_long_per_lot, p.swap_short_per_lot, p.is_swap_free, p.leverage
 		ORDER BY ta.created_at ASC
 	`, userID)
 	if err != nil {
@@ -190,7 +196,12 @@ func (s *Service) getByID(ctx context.Context, tx pgx.Tx, userID, accountID stri
 	err := tx.QueryRow(ctx, `
 		SELECT
 			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
-			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.commission_per_lot, p.swap_long_per_lot, p.swap_short_per_lot, p.is_swap_free, p.leverage
+			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate,
+			COALESCE((to_jsonb(p)->>'commission_per_lot')::double precision, 0.0) AS commission_per_lot,
+			COALESCE((to_jsonb(p)->>'swap_long_per_lot')::double precision, 0.0) AS swap_long_per_lot,
+			COALESCE((to_jsonb(p)->>'swap_short_per_lot')::double precision, 0.0) AS swap_short_per_lot,
+			COALESCE((to_jsonb(p)->>'is_swap_free')::boolean, FALSE) AS is_swap_free,
+			p.leverage
 		FROM trading_accounts ta
 		JOIN account_plans p ON p.id = ta.plan_id
 		WHERE ta.id = $1 AND ta.user_id = $2
