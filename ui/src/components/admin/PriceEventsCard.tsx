@@ -16,10 +16,35 @@ interface PriceEventsCardProps {
     customDateTo: Date | null
 
     // Actions
-    onCreate: (direction: string, duration: number) => Promise<void>
+    onCreate: (direction: string, duration: number, scheduledAt: string) => Promise<void>
     onCancel: (id: number) => Promise<void>
     onLoadMore: () => void
     onFilterChange: (type: FilterType, from?: Date, to?: Date) => void
+}
+
+const toLocalInputValue = (date: Date) => {
+    const d = new Date(date)
+    d.setSeconds(0, 0)
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const yyyy = d.getFullYear()
+    const mm = pad(d.getMonth() + 1)
+    const dd = pad(d.getDate())
+    const hh = pad(d.getHours())
+    const min = pad(d.getMinutes())
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`
+}
+
+const defaultScheduleInput = () => {
+    const now = new Date()
+    now.setMinutes(now.getMinutes() + 5)
+    return toLocalInputValue(now)
+}
+
+const formatScheduledAt = (raw: string) => {
+    const d = new Date(raw)
+    if (Number.isNaN(d.getTime())) return "—"
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default function PriceEventsCard({
@@ -31,6 +56,7 @@ export default function PriceEventsCard({
     const [showFilterModal, setShowFilterModal] = useState(false)
     const [newDirection, setNewDirection] = useState<"up" | "down">("up")
     const [newDuration, setNewDuration] = useState("60")
+    const [newScheduledAt, setNewScheduledAt] = useState(defaultScheduleInput)
     const [isCreating, setIsCreating] = useState(false)
 
     // Check if mobile (simple check)
@@ -47,8 +73,10 @@ export default function PriceEventsCard({
     if (!canAccess) return null
 
     const handleCreate = async () => {
+        const scheduled = newScheduledAt ? new Date(newScheduledAt) : new Date()
+        const scheduledISO = Number.isNaN(scheduled.getTime()) ? new Date().toISOString() : scheduled.toISOString()
         setIsCreating(true)
-        await onCreate(newDirection, parseInt(newDuration))
+        await onCreate(newDirection, parseInt(newDuration), scheduledISO)
         setIsCreating(false)
     }
 
@@ -107,9 +135,17 @@ export default function PriceEventsCard({
                             <span>sec</span>
                         </div>
                     </div>
+                    <div className="event-field">
+                        <label>Start Time</label>
+                        <input
+                            type="datetime-local"
+                            value={newScheduledAt}
+                            onChange={e => setNewScheduledAt(e.target.value)}
+                        />
+                    </div>
                     <button className="add-event-btn" onClick={handleCreate} disabled={loading || isCreating}>
                         {isCreating ? <Loader2 className="spin" /> : <Plus size={18} />}
-                        <span>Start Event</span>
+                        <span>Schedule Event</span>
                     </button>
                 </div>
             </div>
@@ -141,9 +177,16 @@ export default function PriceEventsCard({
                                 <Clock size={14} />
                                 {evt.duration_seconds}s
                             </span>
+                            <span className="event-duration event-scheduled">
+                                <Calendar size={14} />
+                                {formatScheduledAt(evt.scheduled_at)}
+                            </span>
                             <span className={`event-status ${evt.status}`}>{evt.status}</span>
+                            {evt.source === "auto" && (
+                                <span className="event-status pending">auto</span>
+                            )}
                         </div>
-                        {evt.status === "pending" && (
+                        {evt.status === "pending" && evt.source !== "auto" && evt.id > 0 && (
                             <button className="cancel-event-btn" onClick={() => onCancel(evt.id)}>
                                 <X size={16} />
                             </button>

@@ -23,6 +23,7 @@ export type PriceEvent = {
     duration_seconds: number
     scheduled_at: string
     status: string
+    source?: string
     created_at: string
 }
 

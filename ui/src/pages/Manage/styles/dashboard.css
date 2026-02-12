@@ -404,6 +404,10 @@
   width: 120px;
 }
 
+.event-field input[type="datetime-local"] {
+  width: 190px;
+}
+
 .direction-btns {
   display: flex;
   gap: 6px;
@@ -535,6 +539,10 @@
   gap: 4px;
   font-size: 13px;
   color: var(--muted);
+}
+
+.event-duration.event-scheduled {
+  font-variant-numeric: tabular-nums;
 }
 
 .event-status {

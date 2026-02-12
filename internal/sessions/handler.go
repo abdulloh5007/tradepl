@@ -3,7 +3,10 @@ package sessions
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"lv-tradepl/internal/httputil"
@@ -242,7 +245,7 @@ func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	// Date range (default: today)
 	now := time.Now()
 	dateFrom := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	dateTo := now
+	dateTo := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, int(time.Second-time.Nanosecond), now.Location())
 
 	if df := q.Get("date_from"); df != "" {
 		if parsed, err := time.Parse(time.RFC3339, df); err == nil {
@@ -255,15 +258,50 @@ func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.store.GetEventsPaginated(r.Context(), limit, offset, dateFrom, dateTo)
+	autoEvents := extractAutoPendingEvents(getTrendStateSnapshot(), dateFrom, dateTo)
+	autoCount := len(autoEvents)
+
+	autoFrom := 0
+	autoTo := 0
+	remainingLimit := limit
+	dbOffset := 0
+
+	if offset < autoCount {
+		autoFrom = offset
+		autoTo = autoFrom + limit
+		if autoTo > autoCount {
+			autoTo = autoCount
+		}
+		remainingLimit = limit - (autoTo - autoFrom)
+		dbOffset = 0
+	} else {
+		remainingLimit = limit
+		dbOffset = offset - autoCount
+	}
+
+	dbLimit := remainingLimit
+	if dbLimit <= 0 {
+		dbLimit = 1 // still fetch DB total count
+	}
+
+	result, err := h.store.GetEventsPaginated(r.Context(), dbLimit, dbOffset, dateFrom, dateTo)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
-	if result.Events == nil {
-		result.Events = []PriceEvent{}
+
+	combined := make([]PriceEvent, 0, limit)
+	if autoTo > autoFrom {
+		combined = append(combined, autoEvents[autoFrom:autoTo]...)
 	}
-	httputil.WriteJSON(w, http.StatusOK, result)
+	if remainingLimit > 0 && len(result.Events) > 0 {
+		combined = append(combined, result.Events...)
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, EventsResult{
+		Events: combined,
+		Total:  result.Total + autoCount,
+	})
 }
 
 // GetActiveEvent returns the current active event state
@@ -282,6 +320,131 @@ func (h *Handler) GetActiveEvent(w http.ResponseWriter, r *http.Request) {
 // Callback for getting event state from marketdata package
 var getEventStateFn func() interface{}
 var getTrendStateFn func() interface{}
+
+func getTrendStateSnapshot() interface{} {
+	if getTrendStateFn == nil {
+		return nil
+	}
+	return getTrendStateFn()
+}
+
+func extractAutoPendingEvents(state interface{}, dateFrom, dateTo time.Time) []PriceEvent {
+	if state == nil {
+		return nil
+	}
+	rv := reflect.ValueOf(state)
+	if !rv.IsValid() {
+		return nil
+	}
+	if rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return nil
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return nil
+	}
+
+	upcoming := rv.FieldByName("UpcomingEvents")
+	if !upcoming.IsValid() || upcoming.Kind() != reflect.Slice {
+		return nil
+	}
+
+	out := make([]PriceEvent, 0, upcoming.Len())
+	for i := 0; i < upcoming.Len(); i++ {
+		item := upcoming.Index(i)
+		if item.Kind() == reflect.Pointer {
+			if item.IsNil() {
+				continue
+			}
+			item = item.Elem()
+		}
+		if item.Kind() != reflect.Struct {
+			continue
+		}
+
+		status := strings.ToLower(strings.TrimSpace(reflectStringField(item, "Status")))
+		if status == "" {
+			status = "pending"
+		}
+		if status != "pending" {
+			continue
+		}
+
+		direction := strings.ToLower(strings.TrimSpace(reflectStringField(item, "Direction")))
+		if direction != "up" && direction != "down" {
+			continue
+		}
+
+		scheduledMs := reflectInt64Field(item, "ScheduledAt")
+		if scheduledMs <= 0 {
+			continue
+		}
+		scheduledAt := time.UnixMilli(scheduledMs).UTC()
+		if scheduledAt.Before(dateFrom) || scheduledAt.After(dateTo) {
+			continue
+		}
+
+		duration := int(reflectInt64Field(item, "DurationSeconds"))
+		if duration <= 0 {
+			duration = 300
+		}
+
+		id := syntheticAutoEventID(scheduledMs, direction, duration, i)
+		out = append(out, PriceEvent{
+			ID:              id,
+			Pair:            "UZS-USD",
+			TargetPrice:     0,
+			Direction:       direction,
+			DurationSeconds: duration,
+			ScheduledAt:     scheduledAt,
+			Status:          "pending",
+			Source:          "auto",
+			CreatedAt:       scheduledAt,
+		})
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ScheduledAt.Before(out[j].ScheduledAt)
+	})
+	return out
+}
+
+func reflectStringField(v reflect.Value, field string) string {
+	f := v.FieldByName(field)
+	if !f.IsValid() || f.Kind() != reflect.String {
+		return ""
+	}
+	return f.String()
+}
+
+func reflectInt64Field(v reflect.Value, field string) int64 {
+	f := v.FieldByName(field)
+	if !f.IsValid() {
+		return 0
+	}
+	switch f.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return f.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return int64(f.Uint())
+	default:
+		return 0
+	}
+}
+
+func syntheticAutoEventID(scheduledMs int64, direction string, duration, index int) int {
+	seed := scheduledMs + int64(duration*31) + int64(index+1)*7919
+	if direction == "down" {
+		seed += 104729
+	}
+	if seed < 0 {
+		seed = -seed
+	}
+	seed = seed%1000000000 + 1
+	return -int(seed)
+}
 
 // SetEventStateCallback sets the callback function to get current event state
 func SetEventStateCallback(fn func() interface{}) {
@@ -319,10 +482,14 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		req.Pair = "UZS-USD"
 	}
 
-	scheduledAt, err := time.Parse(time.RFC3339, req.ScheduledAt)
-	if err != nil {
-		// If parsing fails, schedule for now
-		scheduledAt = time.Now()
+	scheduledAt := time.Now().UTC()
+	if strings.TrimSpace(req.ScheduledAt) != "" {
+		parsed, err := time.Parse(time.RFC3339, req.ScheduledAt)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "scheduled_at must be RFC3339"})
+			return
+		}
+		scheduledAt = parsed.UTC()
 	}
 
 	event, err := h.store.CreateEvent(r.Context(), req.Pair, req.TargetPrice, req.Direction, req.DurationSeconds, scheduledAt)

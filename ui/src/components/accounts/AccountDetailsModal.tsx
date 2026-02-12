@@ -54,6 +54,7 @@ export default function AccountDetailsModal({
   const leverageItems = useMemo(() => {
     return leverageOptions.map(value => ({ value, label: leverageLabel(value) }))
   }, [])
+  const hasOpenOrders = (snapshot?.openCount || 0) > 0
 
   if (!open || !account) return null
 
@@ -72,7 +73,7 @@ export default function AccountDetailsModal({
           <div className="acm-spacer" />
         </div>
 
-        <div className="acm-content">
+        <div className="acm-content acm-details-content">
           <div className="acm-tabs-container">
             <div className="acm-tabs">
               <button className={`acm-tab ${tab === "stats" ? "active" : ""}`} onClick={() => setTab("stats")}>Stats</button>
@@ -89,23 +90,25 @@ export default function AccountDetailsModal({
                 </div>
               ))}
 
-              <button
-                type="button"
-                className="acm-danger-btn"
-                disabled={closingAll}
-                onClick={async () => {
-                  const ok = window.confirm("Close all open orders for this account?")
-                  if (!ok) return
-                  setClosingAll(true)
-                  try {
-                    await onCloseAll()
-                  } finally {
-                    setClosingAll(false)
-                  }
-                }}
-              >
-                <X size={14} /> {closingAll ? "Closing..." : "Close All Orders"}
-              </button>
+              {hasOpenOrders && (
+                <button
+                  type="button"
+                  className="acm-danger-btn"
+                  disabled={closingAll}
+                  onClick={async () => {
+                    const ok = window.confirm("Close all open orders for this account?")
+                    if (!ok) return
+                    setClosingAll(true)
+                    try {
+                      await onCloseAll()
+                    } finally {
+                      setClosingAll(false)
+                    }
+                  }}
+                >
+                  <X size={14} /> {closingAll ? "Closing..." : "Close All Orders"}
+                </button>
+              )}
             </div>
           ) : (
             <div className="acm-form">

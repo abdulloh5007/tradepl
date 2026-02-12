@@ -33,18 +33,19 @@ interface ManagePanelProps {
 const getDateRange = (type: FilterType, customFrom?: Date, customTo?: Date) => {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
 
     switch (type) {
         case "1d":
-            return { from: today, to: now }
+            return { from: today, to: endOfToday }
         case "3d":
-            return { from: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000), to: now }
+            return { from: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000), to: endOfToday }
         case "1w":
-            return { from: new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000), to: now }
+            return { from: new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000), to: endOfToday }
         case "1m":
-            return { from: new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000), to: now }
+            return { from: new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000), to: endOfToday }
         case "custom":
-            return { from: customFrom || today, to: customTo || now }
+            return { from: customFrom || today, to: customTo || endOfToday }
     }
 }
 
@@ -563,13 +564,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(false)
     }
 
-    const createEvent = async (direction: string, duration: number) => {
+    const createEvent = async (direction: string, duration: number, scheduledAt: string) => {
         if (!canAccess("events")) return
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/events`, {
                 method: "POST", headers,
-                body: JSON.stringify({ direction, duration_seconds: duration })
+                body: JSON.stringify({ direction, duration_seconds: duration, scheduled_at: scheduledAt })
             })
             fetchEvents(true)
         } catch (e) { setError(String(e)) }

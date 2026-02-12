@@ -96,6 +96,10 @@
     flex-direction: column;
 }
 
+.acm-details-content {
+    padding-bottom: 14px;
+}
+
 /* Tabs */
 .acm-tabs-container {
     padding: 16px 16px 8px;

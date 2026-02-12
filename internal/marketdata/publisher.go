@@ -36,19 +36,29 @@ type EventState struct {
 var currentEventState = &EventState{Active: false}
 
 type AutoTrendStatus struct {
-	Active       bool   `json:"active"`
-	Trend        string `json:"trend"`
-	SessionID    string `json:"session_id"`
-	NextSwitchAt int64  `json:"next_switch_at"`
-	RemainingSec int64  `json:"remaining_sec"`
+	Active         bool             `json:"active"`
+	Trend          string           `json:"trend"`
+	SessionID      string           `json:"session_id"`
+	NextSwitchAt   int64            `json:"next_switch_at"`
+	RemainingSec   int64            `json:"remaining_sec"`
+	UpcomingEvents []AutoTrendEvent `json:"upcoming_events,omitempty"`
+}
+
+type AutoTrendEvent struct {
+	Direction       string `json:"direction"`
+	DurationSeconds int    `json:"duration_seconds"`
+	ScheduledAt     int64  `json:"scheduled_at"`
+	Status          string `json:"status"`
+	SessionID       string `json:"session_id"`
 }
 
 var currentAutoTrendState = &AutoTrendStatus{
-	Active:       false,
-	Trend:        "random",
-	SessionID:    "",
-	NextSwitchAt: 0,
-	RemainingSec: 0,
+	Active:         false,
+	Trend:          "random",
+	SessionID:      "",
+	NextSwitchAt:   0,
+	RemainingSec:   0,
+	UpcomingEvents: nil,
 }
 
 type trendDynamics struct {
@@ -369,6 +379,7 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 				}
 				if trendMode == "auto" && activeEvent == nil {
 					targetTrend, nextSwitchAt, trendSessionID, hasSchedule := resolveAutoTrend(now, pair, currentPrice, priceSamples, autoTrend, trendDyn)
+					syncCompletedAutoEvents(sessStore, pair, now, autoTrend.impulses)
 					if targetTrend != config.TrendBias {
 						config.TrendBias = targetTrend
 						_ = sessStore.SetSetting(context.Background(), sessions.SettingCurrentTrend, targetTrend)
@@ -386,37 +397,48 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 						}
 						nextSwitchUnix = nextSwitchAt.UnixMilli()
 					}
+					upcoming := buildAutoTrendEvents(now, autoTrend.impulses)
 					currentAutoTrendState = &AutoTrendStatus{
-						Active:       hasSchedule,
-						Trend:        config.TrendBias,
-						SessionID:    trendSessionID,
-						NextSwitchAt: nextSwitchUnix,
-						RemainingSec: remaining,
+						Active:         hasSchedule,
+						Trend:          config.TrendBias,
+						SessionID:      trendSessionID,
+						NextSwitchAt:   nextSwitchUnix,
+						RemainingSec:   remaining,
+						UpcomingEvents: upcoming,
 					}
 				} else {
+					upcoming := []AutoTrendEvent(nil)
+					if trendMode == "auto" {
+						upcoming = buildAutoTrendEvents(now, autoTrend.impulses)
+					}
 					currentAutoTrendState = &AutoTrendStatus{
-						Active:       false,
-						Trend:        config.TrendBias,
-						SessionID:    activeSessionID,
-						NextSwitchAt: 0,
-						RemainingSec: 0,
+						Active:         false,
+						Trend:          config.TrendBias,
+						SessionID:      activeSessionID,
+						NextSwitchAt:   0,
+						RemainingSec:   0,
+						UpcomingEvents: upcoming,
 					}
 				}
 			}
 
 		case <-eventTicker.C:
-			// Check for pending events - start immediately (no price target)
+			// Check scheduled pending events and start only when their scheduled_at time is reached.
 			if pool != nil && activeEvent == nil {
 				sessStore := sessions.NewStore(pool)
 				ctx := context.Background()
 				events, err := sessStore.GetPendingEvents(ctx)
 				if err == nil && len(events) > 0 {
+					now := time.Now().UTC()
 					for _, evt := range events {
 						if evt.Status != "pending" {
 							continue
 						}
+						if evt.ScheduledAt.After(now) {
+							continue
+						}
 
-						// Start this event IMMEDIATELY
+						// Start event at or after scheduled time.
 						log.Printf("[Publisher] Starting price event: direction=%s, duration=%ds",
 							evt.Direction, evt.DurationSeconds)
 						sessStore.MarkEventActive(ctx, evt.ID)
@@ -717,6 +739,7 @@ func buildDailyImpulsePlan(dayStart time.Time, pair string) []scheduledImpulse {
 	seedBase := dayStart.UnixNano() + int64(len(pair))*7919
 	target := pickImpulseCount(seedBase)
 	impulses := make([]scheduledImpulse, 0, target)
+	minGap := 5 * time.Minute
 
 	for attempt := 0; attempt < 300 && len(impulses) < target; attempt++ {
 		seed := seedBase + int64(attempt+1)*104729
@@ -740,7 +763,7 @@ func buildDailyImpulsePlan(dayStart time.Time, pair string) []scheduledImpulse {
 		if rand01(seed^0x6A09E667) >= 0.5 {
 			imp.trend = "bearish"
 		}
-		if hasImpulseOverlap(impulses, imp) {
+		if hasImpulseConflict(impulses, imp, minGap) {
 			continue
 		}
 		impulses = append(impulses, imp)
@@ -821,9 +844,11 @@ func pickRandomSessionStart(dayStart time.Time, sessionID string, duration time.
 	return time.Time{}, false
 }
 
-func hasImpulseOverlap(existing []scheduledImpulse, candidate scheduledImpulse) bool {
+func hasImpulseConflict(existing []scheduledImpulse, candidate scheduledImpulse, minGap time.Duration) bool {
 	for _, imp := range existing {
-		if candidate.start.Before(imp.end) && imp.start.Before(candidate.end) {
+		windowStart := imp.start.Add(-minGap)
+		windowEnd := imp.end.Add(minGap)
+		if candidate.start.Before(windowEnd) && windowStart.Before(candidate.end) {
 			return true
 		}
 	}
@@ -840,6 +865,67 @@ func nextImpulseStart(impulses []scheduledImpulse, now time.Time) (time.Time, st
 		}
 	}
 	return next, sessionID
+}
+
+func buildAutoTrendEvents(now time.Time, impulses []scheduledImpulse) []AutoTrendEvent {
+	if len(impulses) == 0 {
+		return nil
+	}
+	items := make([]AutoTrendEvent, 0, len(impulses))
+	for _, imp := range impulses {
+		direction := "up"
+		if imp.trend == "bearish" {
+			direction = "down"
+		}
+
+		status := "completed"
+		if now.Before(imp.start) {
+			status = "pending"
+		} else if now.Before(imp.end) {
+			status = "active"
+		}
+
+		duration := int(imp.end.Sub(imp.start).Seconds())
+		if duration <= 0 {
+			duration = 60
+		}
+
+		items = append(items, AutoTrendEvent{
+			Direction:       direction,
+			DurationSeconds: duration,
+			ScheduledAt:     imp.start.UnixMilli(),
+			Status:          status,
+			SessionID:       imp.sessionID,
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ScheduledAt < items[j].ScheduledAt
+	})
+	return items
+}
+
+func syncCompletedAutoEvents(store *sessions.Store, pair string, now time.Time, impulses []scheduledImpulse) {
+	if store == nil || len(impulses) == 0 {
+		return
+	}
+	ctx := context.Background()
+	for _, imp := range impulses {
+		if imp.end.After(now) {
+			continue
+		}
+		direction := "up"
+		if imp.trend == "bearish" {
+			direction = "down"
+		}
+		duration := int(imp.end.Sub(imp.start).Seconds())
+		if duration <= 0 {
+			duration = 60
+		}
+		if err := store.EnsureAutoCompletedEvent(ctx, pair, direction, duration, imp.start.UTC(), imp.end.UTC()); err != nil {
+			log.Printf("[Publisher] EnsureAutoCompletedEvent failed: %v", err)
+		}
+	}
 }
 
 func sidewaysHoldDuration(impulseDuration time.Duration, seed int64) time.Duration {

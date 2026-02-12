@@ -31,6 +31,7 @@ type PriceEvent struct {
 	StartedAt       *time.Time `json:"started_at,omitempty"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty"`
 	Status          string     `json:"status"` // pending, active, completed, cancelled
+	Source          string     `json:"source,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 }
 
@@ -126,7 +127,7 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 // GetPendingEvents returns all pending price events
 func (s *Store) GetPendingEvents(ctx context.Context) ([]PriceEvent, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, created_at
+		SELECT id, pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, source, created_at
 		FROM price_events WHERE status IN ('pending', 'active') ORDER BY scheduled_at ASC
 	`)
 	if err != nil {
@@ -137,7 +138,7 @@ func (s *Store) GetPendingEvents(ctx context.Context) ([]PriceEvent, error) {
 	var events []PriceEvent
 	for rows.Next() {
 		var pe PriceEvent
-		if err := rows.Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.StartedAt, &pe.CompletedAt, &pe.Status, &pe.CreatedAt); err != nil {
+		if err := rows.Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.StartedAt, &pe.CompletedAt, &pe.Status, &pe.Source, &pe.CreatedAt); err != nil {
 			return nil, err
 		}
 		events = append(events, pe)
@@ -148,7 +149,7 @@ func (s *Store) GetPendingEvents(ctx context.Context) ([]PriceEvent, error) {
 // GetAllEvents returns all price events (for history)
 func (s *Store) GetAllEvents(ctx context.Context) ([]PriceEvent, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, created_at
+		SELECT id, pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, source, created_at
 		FROM price_events ORDER BY created_at DESC LIMIT 50
 	`)
 	if err != nil {
@@ -159,7 +160,7 @@ func (s *Store) GetAllEvents(ctx context.Context) ([]PriceEvent, error) {
 	var events []PriceEvent
 	for rows.Next() {
 		var pe PriceEvent
-		if err := rows.Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.StartedAt, &pe.CompletedAt, &pe.Status, &pe.CreatedAt); err != nil {
+		if err := rows.Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.StartedAt, &pe.CompletedAt, &pe.Status, &pe.Source, &pe.CreatedAt); err != nil {
 			return nil, err
 		}
 		events = append(events, pe)
@@ -187,7 +188,7 @@ func (s *Store) GetEventsPaginated(ctx context.Context, limit, offset int, dateF
 
 	// Get paginated events
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, created_at
+		SELECT id, pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, source, created_at
 		FROM price_events
 		WHERE created_at >= $1 AND created_at <= $2
 		ORDER BY created_at DESC
@@ -201,7 +202,7 @@ func (s *Store) GetEventsPaginated(ctx context.Context, limit, offset int, dateF
 	var events []PriceEvent
 	for rows.Next() {
 		var pe PriceEvent
-		if err := rows.Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.StartedAt, &pe.CompletedAt, &pe.Status, &pe.CreatedAt); err != nil {
+		if err := rows.Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.StartedAt, &pe.CompletedAt, &pe.Status, &pe.Source, &pe.CreatedAt); err != nil {
 			return nil, err
 		}
 		events = append(events, pe)
@@ -217,11 +218,28 @@ func (s *Store) GetEventsPaginated(ctx context.Context, limit, offset int, dateF
 func (s *Store) CreateEvent(ctx context.Context, pair string, targetPrice float64, direction string, durationSecs int, scheduledAt time.Time) (*PriceEvent, error) {
 	var pe PriceEvent
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO price_events (pair, target_price, direction, duration_seconds, scheduled_at)
+		INSERT INTO price_events (pair, target_price, direction, duration_seconds, scheduled_at, source)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, pair, target_price, direction, duration_seconds, scheduled_at, status, created_at
-	`, pair, targetPrice, direction, durationSecs, scheduledAt).Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.Status, &pe.CreatedAt)
+		RETURNING id, pair, target_price, direction, duration_seconds, scheduled_at, status, source, created_at
+	`, pair, targetPrice, direction, durationSecs, scheduledAt, "manual").Scan(&pe.ID, &pe.Pair, &pe.TargetPrice, &pe.Direction, &pe.DurationSeconds, &pe.ScheduledAt, &pe.Status, &pe.Source, &pe.CreatedAt)
 	return &pe, err
+}
+
+// EnsureAutoCompletedEvent inserts completed auto event into history once.
+func (s *Store) EnsureAutoCompletedEvent(ctx context.Context, pair, direction string, durationSecs int, scheduledAt, completedAt time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO price_events (pair, target_price, direction, duration_seconds, scheduled_at, started_at, completed_at, status, source, created_at)
+		SELECT $1, 0, $2, $3, $4, $4, $5, 'completed', 'auto', $4
+		WHERE NOT EXISTS (
+			SELECT 1 FROM price_events
+			WHERE source = 'auto'
+			  AND pair = $1
+			  AND direction = $2
+			  AND duration_seconds = $3
+			  AND scheduled_at = $4
+		)
+	`, pair, direction, durationSecs, scheduledAt, completedAt)
+	return err
 }
 
 // CancelEvent cancels a price event
