@@ -155,6 +155,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
 
     const totals = useMemo(() => {
         return filteredOrders.reduce((acc, order) => {
+            const orderType = String(order.type || "").toLowerCase()
             if (isCashFlowOrder(order)) {
                 const amount = toNumber(order.profit)
                 if (String(order.side || "").toLowerCase() === "withdraw") {
@@ -162,11 +163,13 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                 } else {
                     acc.deposit += amount
                 }
+            } else if (orderType === "swap") {
+                acc.swap += toNumber(order.swap, toNumber(order.profit))
             } else {
                 acc.profit += toNumber(order.profit)
+                acc.commission += toNumber(order.commission)
+                acc.swap += toNumber(order.swap)
             }
-            acc.commission += toNumber(order.commission)
-            acc.swap += toNumber(order.swap)
             return acc
         }, { profit: 0, commission: 0, swap: 0, deposit: 0, withdraw: 0 })
     }, [filteredOrders])

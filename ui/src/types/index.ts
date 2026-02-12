@@ -84,6 +84,10 @@ export interface AccountPlan {
     description: string
     spread_multiplier: number
     commission_rate: number
+    commission_per_lot: number
+    swap_long_per_lot: number
+    swap_short_per_lot: number
+    is_swap_free: boolean
     leverage: number
 }
 

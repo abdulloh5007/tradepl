@@ -48,6 +48,7 @@ const (
 	LedgerEntryTypeDeposit  LedgerEntryType = "deposit"
 	LedgerEntryTypeWithdraw LedgerEntryType = "withdraw"
 	LedgerEntryTypeTrade    LedgerEntryType = "trade"
+	LedgerEntryTypeSwap     LedgerEntryType = "swap"
 	LedgerEntryTypeReserve  LedgerEntryType = "reserve"
 	LedgerEntryTypeRelease  LedgerEntryType = "release"
 	LedgerEntryTypeFaucet   LedgerEntryType = "faucet"

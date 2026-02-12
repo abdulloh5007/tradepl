@@ -16,6 +16,7 @@ import (
 	"lv-tradepl/internal/types"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 )
@@ -58,6 +59,26 @@ type CloseOrdersResult struct {
 	Failed int    `json:"failed"`
 }
 
+type swapChargeCandidate struct {
+	OrderID          string
+	UserID           string
+	TradingAccountID string
+	PairID           string
+	QuoteAssetID     string
+	Side             types.OrderSide
+	Qty              decimal.Decimal
+	RemainingQty     decimal.Decimal
+	RatePerLot       decimal.Decimal
+}
+
+var tashkentLocation = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Tashkent")
+	if err != nil {
+		return time.FixedZone("Asia/Tashkent", 5*60*60)
+	}
+	return loc
+}()
+
 func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceOrderResult, error) {
 	if req.UserID == "" || req.PairSymbol == "" || req.AccountID == "" {
 		return PlaceOrderResult{}, errors.New("missing user or pair")
@@ -93,7 +114,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 	}
 	contractSize := pairContractSize(pair)
 	spreadMultiplier := 1.0
-	commissionRate := 0.0
+	commissionPerLot := decimal.Zero
 	accountLeverage := 100
 	effectiveLeverage := decimal.NewFromInt(100)
 	if s.accountSvc != nil {
@@ -106,8 +127,8 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 			if acc.Plan.SpreadMultiplier > 0 {
 				spreadMultiplier = acc.Plan.SpreadMultiplier
 			}
-			if acc.Plan.CommissionRate > 0 {
-				commissionRate = acc.Plan.CommissionRate
+			if acc.Plan.CommissionPerLot > 0 {
+				commissionPerLot = decimal.NewFromFloat(acc.Plan.CommissionPerLot)
 			}
 			effectiveLeverage = resolveEffectiveLeverage(acc.Leverage, riskCfg)
 		}
@@ -256,8 +277,8 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceO
 	if req.Type == types.OrderTypeMarket {
 		reservedAssetID = pair.QuoteAssetID
 		reservedAmount = requiredMargin
-		if commissionRate > 0 && estimatedNotional.GreaterThan(decimal.Zero) {
-			openCommission := estimatedNotional.Mul(decimal.NewFromFloat(commissionRate))
+		if commissionPerLot.GreaterThan(decimal.Zero) && estimatedQty.GreaterThan(decimal.Zero) {
+			openCommission := estimatedQty.Mul(commissionPerLot)
 			reservedAmount = reservedAmount.Add(openCommission)
 		}
 	} else if req.Side == types.OrderSideBuy {
@@ -870,6 +891,210 @@ func (s *Service) resetAccountUSDBalance(ctx context.Context, userID, accountID 
 	return tx.Commit(ctx)
 }
 
+// StartSwapRolloverWorker applies daily swap charges (USD/lot/night) at Tashkent rollover.
+// The worker is idempotent: unique(order_id, charge_date) guarantees no duplicate charges.
+func (s *Service) StartSwapRolloverWorker(ctx context.Context) {
+	run := func() {
+		_, _ = s.applySwapChargesForDate(ctx, time.Now().In(tashkentLocation))
+	}
+	run()
+
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
+		}
+	}
+}
+
+func (s *Service) applySwapChargesForDate(ctx context.Context, nowTashkent time.Time) (int, error) {
+	localStart := time.Date(nowTashkent.Year(), nowTashkent.Month(), nowTashkent.Day(), 0, 0, 0, 0, tashkentLocation)
+	rolloverStartUTC := localStart.UTC()
+	chargeDate := localStart.Format("2006-01-02")
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+			o.id,
+			o.user_id,
+			coalesce(o.trading_account_id::text, ''),
+			o.pair_id,
+			tp.quote_asset_id,
+			o.side,
+			o.qty,
+			o.remaining_qty,
+			CASE
+				WHEN o.side = 'buy' THEN p.swap_long_per_lot
+				ELSE p.swap_short_per_lot
+			END AS rate_per_lot
+		FROM orders o
+		JOIN trading_accounts ta ON ta.id = o.trading_account_id
+		JOIN account_plans p ON p.id = ta.plan_id
+		JOIN trading_pairs tp ON tp.id = o.pair_id
+		WHERE o.status = 'filled'
+		  AND o.trading_account_id IS NOT NULL
+		  AND o.created_at < $1
+		  AND p.is_swap_free = FALSE
+	`, rolloverStartUTC)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	applied := 0
+	for rows.Next() {
+		var sideStr string
+		candidate := swapChargeCandidate{}
+		if err := rows.Scan(
+			&candidate.OrderID,
+			&candidate.UserID,
+			&candidate.TradingAccountID,
+			&candidate.PairID,
+			&candidate.QuoteAssetID,
+			&sideStr,
+			&candidate.Qty,
+			&candidate.RemainingQty,
+			&candidate.RatePerLot,
+		); err != nil {
+			return applied, err
+		}
+		candidate.Side = types.OrderSide(sideStr)
+		ok, chargeErr := s.applySwapCharge(ctx, candidate, chargeDate, rolloverStartUTC)
+		if chargeErr != nil {
+			continue
+		}
+		if ok {
+			applied++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return applied, err
+	}
+	return applied, nil
+}
+
+func (s *Service) applySwapCharge(ctx context.Context, c swapChargeCandidate, chargeDate string, rolloverStartUTC time.Time) (bool, error) {
+	filledQty := c.Qty.Sub(c.RemainingQty)
+	if !filledQty.GreaterThan(decimal.Zero) || c.RatePerLot.IsZero() {
+		return false, nil
+	}
+	if strings.TrimSpace(c.TradingAccountID) == "" || strings.TrimSpace(c.UserID) == "" || strings.TrimSpace(c.OrderID) == "" {
+		return false, nil
+	}
+
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	var status string
+	var createdAt time.Time
+	var accountID string
+	if err := tx.QueryRow(ctx, `
+		SELECT status, created_at, coalesce(trading_account_id::text, '')
+		FROM orders
+		WHERE id = $1
+		FOR UPDATE
+	`, c.OrderID).Scan(&status, &createdAt, &accountID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	if status != string(types.OrderStatusFilled) || accountID != c.TradingAccountID || !createdAt.Before(rolloverStartUTC) {
+		return false, nil
+	}
+
+	var chargeID string
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO order_swap_charges (
+			order_id,
+			user_id,
+			trading_account_id,
+			charge_date,
+			lot_qty,
+			rate_per_lot,
+			amount,
+			created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, 0, NOW())
+		ON CONFLICT (order_id, charge_date) DO NOTHING
+		RETURNING id
+	`, c.OrderID, c.UserID, c.TradingAccountID, chargeDate, filledQty, c.RatePerLot).Scan(&chargeID); err != nil {
+		if isUndefinedTableError(err) {
+			return false, nil
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	availableAccount, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, c.UserID, c.TradingAccountID, c.QuoteAssetID, types.AccountKindAvailable)
+	if err != nil {
+		return false, err
+	}
+
+	swapAmount := filledQty.Mul(c.RatePerLot)
+	actualAmount := decimal.Zero
+	ledgerTxID := ""
+	ref := fmt.Sprintf("swap:%s:%s", chargeDate, c.OrderID)
+
+	if swapAmount.GreaterThan(decimal.Zero) {
+		txID, creditErr := s.ledger.CreditAccount(ctx, tx, availableAccount, swapAmount, types.LedgerEntryTypeSwap, ref)
+		if creditErr != nil {
+			return false, creditErr
+		}
+		ledgerTxID = txID
+		actualAmount = swapAmount
+	} else if swapAmount.LessThan(decimal.Zero) {
+		availableBalance, balErr := s.ledger.GetBalance(ctx, tx, availableAccount)
+		if balErr != nil {
+			return false, balErr
+		}
+		if availableBalance.GreaterThan(decimal.Zero) {
+			debitAmount := swapAmount.Abs()
+			if debitAmount.GreaterThan(availableBalance) {
+				debitAmount = availableBalance
+			}
+			if debitAmount.GreaterThan(decimal.Zero) {
+				txID, debitErr := s.ledger.DebitAccount(ctx, tx, availableAccount, debitAmount, types.LedgerEntryTypeSwap, ref)
+				if debitErr != nil {
+					return false, debitErr
+				}
+				ledgerTxID = txID
+				actualAmount = debitAmount.Neg()
+			}
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE order_swap_charges
+		SET amount = $1,
+		    ledger_tx_id = nullif($2, '')::uuid
+		WHERE id = $3
+	`, actualAmount, ledgerTxID, chargeID); err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Service) sumOrderSwapChargesTx(ctx context.Context, tx pgx.Tx, orderID string) (decimal.Decimal, error) {
+	var total decimal.Decimal
+	err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0) FROM order_swap_charges WHERE order_id = $1`, orderID).Scan(&total)
+	if err != nil && isUndefinedTableError(err) {
+		return decimal.Zero, nil
+	}
+	return total, err
+}
+
 func (s *Service) ListOpenOrders(ctx context.Context, userID string) ([]model.Order, error) {
 	return s.ListOpenOrdersByAccount(ctx, userID, "")
 }
@@ -1188,6 +1413,90 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		return nil, err
 	}
 
+	swapRows, err := s.pool.Query(ctx, `
+		SELECT
+			sc.id,
+			sc.sequence,
+			sc.order_id,
+			coalesce(sc.trading_account_id::text, ''),
+			sc.lot_qty,
+			sc.amount,
+			sc.created_at,
+			o.pair_id,
+			o.side,
+			tp.symbol
+		FROM order_swap_charges sc
+		JOIN orders o ON o.id = sc.order_id
+		JOIN trading_pairs tp ON tp.id = o.pair_id
+		WHERE sc.user_id = $1
+		  AND ($2 = '' OR coalesce(sc.trading_account_id::text, '') = $2)
+		  AND ($3::timestamptz IS NULL OR sc.created_at < $3)
+		ORDER BY sc.created_at DESC, sc.sequence DESC
+		LIMIT $4
+	`, userID, accountID, before, fetchLimit)
+	if err != nil {
+		if !isUndefinedTableError(err) {
+			return nil, err
+		}
+	} else {
+		defer swapRows.Close()
+		for swapRows.Next() {
+			var chargeID string
+			var chargeSeq int64
+			var orderID string
+			var swapAccountID string
+			var lotQty decimal.Decimal
+			var amount decimal.Decimal
+			var createdAt time.Time
+			var pairID string
+			var sideStr string
+			var symbol string
+			if err := swapRows.Scan(
+				&chargeID,
+				&chargeSeq,
+				&orderID,
+				&swapAccountID,
+				&lotQty,
+				&amount,
+				&createdAt,
+				&pairID,
+				&sideStr,
+				&symbol,
+			); err != nil {
+				return nil, err
+			}
+
+			profit := amount
+			commission := decimal.Zero
+			swap := amount
+			closeTime := createdAt
+
+			orders = append(orders, model.Order{
+				ID:               chargeID,
+				Ticket:           formatSwapTicket(accountMode, chargeSeq, orderID),
+				UserID:           userID,
+				TradingAccountID: swapAccountID,
+				PairID:           pairID,
+				Symbol:           symbol,
+				Side:             types.OrderSide(sideStr),
+				Type:             types.OrderType("swap"),
+				Status:           types.OrderStatusClosed,
+				Qty:              lotQty,
+				RemainingQty:     decimal.Zero,
+				ReservedAmount:   decimal.Zero,
+				SpentAmount:      decimal.Zero,
+				Profit:           &profit,
+				Commission:       &commission,
+				Swap:             &swap,
+				CloseTime:        &closeTime,
+				CreatedAt:        createdAt,
+			})
+		}
+		if err := swapRows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
 	sort.SliceStable(orders, func(i, j int) bool {
 		li := historyEventTime(orders[i])
 		rj := historyEventTime(orders[j])
@@ -1276,10 +1585,21 @@ func formatLedgerTicket(accountMode, eventType string, sequence int64, seed stri
 	return modeTicketPrefix(accountMode) + base + digits + letters
 }
 
+func formatSwapTicket(accountMode string, sequence int64, seed string) string {
+	digits := normalizeTicketNumber(sequence, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("swap:%d:%s", sequence, seed))
+	return modeTicketPrefix(accountMode) + "BXswp-" + digits + letters
+}
+
 func formatSystemCoverTicket(accountMode string, sequence int64, seed string) string {
 	digits := normalizeTicketNumber(sequence, seed)
 	letters := ticketSeedLetters(fmt.Sprintf("cash:system_cover:%d:%s", sequence, seed))
 	return modeTicketPrefix(accountMode) + "BXdepstm" + digits + letters
+}
+
+func isUndefinedTableError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42P01"
 }
 
 func isSystemNegativeCoverRef(ref string) bool {
@@ -1373,15 +1693,15 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 		return fmt.Errorf("failed to get market price: %w", err)
 	}
 	spreadMultiplier := 1.0
-	commissionRate := 0.0
+	commissionPerLot := decimal.Zero
 	if s.accountSvc != nil {
 		acc, accErr := s.accountSvc.Resolve(ctx, userID, accountID)
 		if accErr == nil && acc != nil {
 			if acc.Plan.SpreadMultiplier > 0 {
 				spreadMultiplier = acc.Plan.SpreadMultiplier
 			}
-			if acc.Plan.CommissionRate > 0 {
-				commissionRate = acc.Plan.CommissionRate
+			if acc.Plan.CommissionPerLot > 0 {
+				commissionPerLot = decimal.NewFromFloat(acc.Plan.CommissionPerLot)
 			}
 		}
 	}
@@ -1392,7 +1712,6 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 	var pnl decimal.Decimal
 	entryPrice := *order.Price
 	qty := order.Qty
-	contractSize := pairContractSize(pair)
 
 	bidRaw := decimal.NewFromFloat(bid)
 	askRaw := decimal.NewFromFloat(ask)
@@ -1439,11 +1758,8 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 	}
 
 	closeCommission := decimal.Zero
-	if commissionRate > 0 {
-		closeNotional := orderNotional(pair.Symbol, exitPrice, qty, contractSize)
-		if closeNotional.GreaterThan(decimal.Zero) {
-			closeCommission = closeNotional.Mul(decimal.NewFromFloat(commissionRate))
-		}
+	if commissionPerLot.GreaterThan(decimal.Zero) && qty.GreaterThan(decimal.Zero) {
+		closeCommission = qty.Mul(commissionPerLot)
 	}
 	openCommission := order.ReservedAmount.Sub(order.SpentAmount)
 	if openCommission.LessThan(decimal.Zero) {
@@ -1482,6 +1798,10 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 	if _, coverErr := s.coverNegativeUSDBalance(ctx, tx, userID, accountID, "system_negative_cover_close"); coverErr != nil {
 		return fmt.Errorf("failed to cover negative balance: %w", coverErr)
 	}
+	realizedSwap, swapErr := s.sumOrderSwapChargesTx(ctx, tx, orderID)
+	if swapErr != nil {
+		return fmt.Errorf("failed to load swap charges: %w", swapErr)
+	}
 
 	// 8. Mark order as closed position with a persisted close snapshot for history/details.
 	closeTime := time.Now().UTC()
@@ -1495,7 +1815,7 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 		closeTime,
 		realizedPnL,
 		realizedCommission,
-		decimal.Zero,
+		realizedSwap,
 	); err != nil {
 		return fmt.Errorf("failed to update order status: %w", err)
 	}

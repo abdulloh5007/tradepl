@@ -151,11 +151,21 @@ export default function AccountDetailsModal({
 
               <div className="acm-list-item" style={{ cursor: "default", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
                 <span className="acm-label">Commission</span>
-                <strong>{((account.plan?.commission_rate || 0) * 100).toFixed(2)}%</strong>
+                <strong>${(account.plan?.commission_per_lot || 0).toFixed(2)} / lot / side</strong>
               </div>
               <div className="acm-list-item" style={{ cursor: "default", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
                 <span className="acm-label">Min Spread</span>
                 <strong>x{(account.plan?.spread_multiplier || 1).toFixed(2)}</strong>
+              </div>
+              <div className="acm-list-item" style={{ cursor: "default", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+                <span className="acm-label">Swap</span>
+                {account.plan?.is_swap_free ? (
+                  <strong>Swap-free</strong>
+                ) : (
+                  <strong>
+                    Long {(account.plan?.swap_long_per_lot || 0).toFixed(2)} / Short {(account.plan?.swap_short_per_lot || 0).toFixed(2)} USD per lot/night
+                  </strong>
+                )}
               </div>
 
               <label className="acm-label">

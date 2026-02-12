@@ -39,6 +39,10 @@ type Plan struct {
 	Description      string  `json:"description"`
 	SpreadMultiplier float64 `json:"spread_multiplier"`
 	CommissionRate   float64 `json:"commission_rate"`
+	CommissionPerLot float64 `json:"commission_per_lot"`
+	SwapLongPerLot   float64 `json:"swap_long_per_lot"`
+	SwapShortPerLot  float64 `json:"swap_short_per_lot"`
+	IsSwapFree       bool    `json:"is_swap_free"`
 	Leverage         int     `json:"leverage"`
 }
 
@@ -142,7 +146,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]TradingAccount, er
 	rows, err := s.pool.Query(ctx, `
 		SELECT
 			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
-			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage,
+			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.commission_per_lot, p.swap_long_per_lot, p.swap_short_per_lot, p.is_swap_free, p.leverage,
 			COALESCE(SUM(
 				CASE WHEN ast.symbol = 'USD' AND a.kind = 'available' THEN le.amount ELSE 0 END
 			), 0) AS balance
@@ -154,7 +158,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]TradingAccount, er
 		WHERE ta.user_id = $1
 		GROUP BY
 			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
-			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage
+			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.commission_per_lot, p.swap_long_per_lot, p.swap_short_per_lot, p.is_swap_free, p.leverage
 		ORDER BY ta.created_at ASC
 	`, userID)
 	if err != nil {
@@ -168,7 +172,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]TradingAccount, er
 		var p Plan
 		if err := rows.Scan(
 			&a.ID, &a.UserID, &a.PlanID, &a.Leverage, &a.Mode, &a.Name, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
-			&p.ID, &p.Name, &p.Description, &p.SpreadMultiplier, &p.CommissionRate, &p.Leverage,
+			&p.ID, &p.Name, &p.Description, &p.SpreadMultiplier, &p.CommissionRate, &p.CommissionPerLot, &p.SwapLongPerLot, &p.SwapShortPerLot, &p.IsSwapFree, &p.Leverage,
 			&a.Balance,
 		); err != nil {
 			return nil, err
@@ -186,13 +190,13 @@ func (s *Service) getByID(ctx context.Context, tx pgx.Tx, userID, accountID stri
 	err := tx.QueryRow(ctx, `
 		SELECT
 			ta.id, ta.user_id, ta.plan_id, ta.leverage, ta.mode, ta.name, ta.is_active, ta.created_at, ta.updated_at,
-			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.leverage
+			p.id, p.name, p.description, p.spread_multiplier, p.commission_rate, p.commission_per_lot, p.swap_long_per_lot, p.swap_short_per_lot, p.is_swap_free, p.leverage
 		FROM trading_accounts ta
 		JOIN account_plans p ON p.id = ta.plan_id
 		WHERE ta.id = $1 AND ta.user_id = $2
 	`, accountID, userID).Scan(
 		&a.ID, &a.UserID, &a.PlanID, &a.Leverage, &a.Mode, &a.Name, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
-		&p.ID, &p.Name, &p.Description, &p.SpreadMultiplier, &p.CommissionRate, &p.Leverage,
+		&p.ID, &p.Name, &p.Description, &p.SpreadMultiplier, &p.CommissionRate, &p.CommissionPerLot, &p.SwapLongPerLot, &p.SwapShortPerLot, &p.IsSwapFree, &p.Leverage,
 	)
 	if err != nil {
 		return nil, err

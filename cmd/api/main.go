@@ -98,6 +98,9 @@ func main() {
 
 	// Start quote/candle publisher with session support
 	marketdata.StartPublisherWithDB(bus, "UZS-USD", cfg.MarketDataDir, pool)
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	go orderSvc.StartSwapRolloverWorker(workerCtx)
 
 	log.Printf("server listening on %s", cfg.HTTPAddr)
 	log.Printf("health endpoint: http://localhost%s/health", cfg.HTTPAddr)
@@ -109,6 +112,7 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-stop
+		workerCancel()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
