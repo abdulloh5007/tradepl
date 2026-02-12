@@ -62,8 +62,14 @@ export default function PositionsPage({
     const shownPl = Math.abs(pl) < 0.000000000001 ? 0 : pl
     const plClass = shownPl >= 0 ? "profit" : "loss"
 
-    const bidDisplay = quote?.bid ? parseFloat(quote.bid) : marketPrice
-    const askDisplay = quote?.ask ? parseFloat(quote.ask) : marketPrice
+    const rawLast = quote?.last ? parseFloat(quote.last) : NaN
+    const rawBid = quote?.bid ? parseFloat(quote.bid) : NaN
+    const rawAsk = quote?.ask ? parseFloat(quote.ask) : NaN
+    const priceDisplay = Number.isFinite(rawLast) && rawLast > 0
+        ? rawLast
+        : (Number.isFinite(rawBid) && rawBid > 0 ? rawBid : marketPrice)
+    const bidDisplay = Number.isFinite(rawBid) && rawBid > 0 ? rawBid : priceDisplay
+    const askDisplay = Number.isFinite(rawAsk) && rawAsk > 0 ? rawAsk : priceDisplay
 
     return (
         <div className="pos-container">
@@ -147,7 +153,7 @@ export default function PositionsPage({
                     orders.map(o => {
                         const displaySymbol = resolveOrderSymbol(o, marketPair)
                         const cfg = marketConfig[displaySymbol] || (displaySymbol === "UZS-USD" ? { invertForApi: true, displayDecimals: 2 } : undefined)
-                        const profit = calcDisplayedOrderProfit(o, bidDisplay, askDisplay, marketPair, marketConfig)
+                        const profit = calcDisplayedOrderProfit(o, bidDisplay, askDisplay, marketPair, marketConfig, priceDisplay)
 
                         // Entry price comes from backend order.price (raw API price). If missing/invalid, show placeholder.
                         const rawEntry = parseFloat(o.price || "0")
@@ -155,8 +161,7 @@ export default function PositionsPage({
                         const entryDisplay = cfg?.invertForApi && rawEntry > 0 ? 1 / rawEntry : rawEntry
                         const hasEntryPrice = Number.isFinite(entryDisplay) && entryDisplay > 0
 
-                        // For current price, we use bid for buy (close sell), ask for sell (close buy)
-                        const currentPrice = o.side === 'buy' ? bidDisplay : askDisplay
+                        const currentPrice = priceDisplay
                         const hasCurrentPrice = Number.isFinite(currentPrice) && currentPrice > 0
 
                         const plClass = profit >= 0 ? "profit" : "loss"

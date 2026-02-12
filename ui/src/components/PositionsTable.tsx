@@ -14,8 +14,14 @@ interface PositionsTableProps {
 }
 
 export default function PositionsTable({ orders, quote, marketPair, marketConfig, marketPrice, onClose, lang }: PositionsTableProps) {
-    const bidDisplay = quote?.bid ? parseFloat(quote.bid) : marketPrice
-    const askDisplay = quote?.ask ? parseFloat(quote.ask) : marketPrice
+    const rawLast = quote?.last ? parseFloat(quote.last) : NaN
+    const rawBid = quote?.bid ? parseFloat(quote.bid) : NaN
+    const rawAsk = quote?.ask ? parseFloat(quote.ask) : NaN
+    const priceDisplay = Number.isFinite(rawLast) && rawLast > 0
+        ? rawLast
+        : (Number.isFinite(rawBid) && rawBid > 0 ? rawBid : marketPrice)
+    const bidDisplay = Number.isFinite(rawBid) && rawBid > 0 ? rawBid : priceDisplay
+    const askDisplay = Number.isFinite(rawAsk) && rawAsk > 0 ? rawAsk : priceDisplay
     const cfg = marketConfig[marketPair] || (marketPair === "UZS-USD" ? { invertForApi: true, displayDecimals: 2 } : undefined)
 
     const safeProfit = (v: number) => {
@@ -57,7 +63,7 @@ export default function PositionsTable({ orders, quote, marketPair, marketConfig
                                 const rawEntry = parseFloat(o.price || "0")
                                 const qty = parseFloat(o.qty || "0")
                                 const entryDisplay = cfg?.invertForApi && rawEntry > 0 ? 1 / rawEntry : rawEntry
-                                const profit = calcOrderProfit(o, bidDisplay, askDisplay, marketPair, marketConfig)
+                                const profit = calcOrderProfit(o, bidDisplay, askDisplay, marketPair, marketConfig, priceDisplay)
 
                                 const shownProfit = safeProfit(profit)
                                 const isPending = o.status === "open"

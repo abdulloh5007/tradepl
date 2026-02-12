@@ -17,7 +17,8 @@ export function calcOrderProfit(
   bidDisplay: number,
   askDisplay: number,
   marketPair: string,
-  marketConfig: Record<string, MarketConfig>
+  marketConfig: Record<string, MarketConfig>,
+  currentDisplay?: number
 ): number {
   const backendPnL = parseFloat(order.unrealized_pnl || "")
   const cfg = marketConfig[marketPair] || (marketPair === "UZS-USD" ? { invertForApi: true, displayDecimals: 2 } : undefined)
@@ -34,7 +35,10 @@ export function calcOrderProfit(
 
   const contractSize = marketPair === "UZS-USD" ? 100 : 1
   const hasLiveQuote = Number.isFinite(bidDisplay) && Number.isFinite(askDisplay) && bidDisplay > 0 && askDisplay > 0
-  if (!hasLiveQuote) return Number.isFinite(backendPnL) ? backendPnL : 0
+  const markDisplay = Number.isFinite(currentDisplay) && (currentDisplay || 0) > 0
+    ? (currentDisplay as number)
+    : (hasLiveQuote ? (bidDisplay + askDisplay) / 2 : 0)
+  if (!Number.isFinite(markDisplay) || markDisplay <= 0) return Number.isFinite(backendPnL) ? backendPnL : 0
 
   const toRaw = (displayPrice: number) => {
     if (!Number.isFinite(displayPrice) || displayPrice <= 0) return 0
@@ -46,17 +50,16 @@ export function calcOrderProfit(
   if (cfg?.invertForApi) {
     const entryDisplay = 1 / entryRaw
     if (!Number.isFinite(entryDisplay) || entryDisplay <= 0) return Number.isFinite(backendPnL) ? backendPnL : 0
-    if (isBuy) return (bidDisplay - entryDisplay) * filledQty * contractSize
-    return (entryDisplay - askDisplay) * filledQty * contractSize
+    if (isBuy) return (markDisplay - entryDisplay) * filledQty * contractSize
+    return (entryDisplay - markDisplay) * filledQty * contractSize
   }
 
-  const rawBid = toRaw(bidDisplay)
-  const rawAsk = toRaw(askDisplay)
-  if (!Number.isFinite(rawBid) || !Number.isFinite(rawAsk) || rawBid <= 0 || rawAsk <= 0) {
+  const rawMark = toRaw(markDisplay)
+  if (!Number.isFinite(rawMark) || rawMark <= 0) {
     return Number.isFinite(backendPnL) ? backendPnL : 0
   }
-  if (isBuy) return (rawBid - entryRaw) * filledQty * contractSize
-  return (entryRaw - rawAsk) * filledQty * contractSize
+  if (isBuy) return (rawMark - entryRaw) * filledQty * contractSize
+  return (entryRaw - rawMark) * filledQty * contractSize
 }
 
 export function calcDisplayedOrderProfit(
@@ -64,12 +67,13 @@ export function calcDisplayedOrderProfit(
   bidDisplay: number,
   askDisplay: number,
   fallbackPair: string,
-  marketConfig: Record<string, MarketConfig>
+  marketConfig: Record<string, MarketConfig>,
+  currentDisplay?: number
 ): number {
   const backendPnL = parseFloat(order.unrealized_pnl || "")
 
   const symbol = resolveOrderSymbol(order, fallbackPair)
-  const calculated = calcOrderProfit(order, bidDisplay, askDisplay, symbol, marketConfig)
+  const calculated = calcOrderProfit(order, bidDisplay, askDisplay, symbol, marketConfig, currentDisplay)
   if (Number.isFinite(calculated)) return Math.abs(calculated) < 1e-12 ? 0 : calculated
 
   if (Number.isFinite(backendPnL)) return Math.abs(backendPnL) < 1e-12 ? 0 : backendPnL

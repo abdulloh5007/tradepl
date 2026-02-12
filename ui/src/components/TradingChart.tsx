@@ -439,9 +439,9 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             askLineRef.current = null
         }
 
-        // Add current-price line
-        if (quote && quote.last) {
-            const currentPrice = parseFloat(quote.last)
+        // Add current price line (main market price / last)
+        if (quote && (quote.last || quote.bid)) {
+            const currentPrice = parseFloat(quote.last || quote.bid)
             if (!isNaN(currentPrice) && currentPrice > 0) {
                 priceLineRef.current = series.createPriceLine({
                     price: currentPrice,

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
 import { CandlestickChart } from "lucide-react"
 import type { TradingPairSpec } from "./types"
-import SmartDropdown from "../ui/SmartDropdown"
 
 interface TradingPairsCardProps {
     pairs: TradingPairSpec[]
@@ -12,11 +11,6 @@ interface TradingPairsCardProps {
 }
 
 type DraftMap = Record<string, TradingPairSpec>
-const statusOptions = [
-    { value: "active", label: "active" },
-    { value: "paused", label: "paused" },
-    { value: "disabled", label: "disabled" }
-]
 
 export default function TradingPairsCard({ pairs, loading, initialLoad, canAccess, onSave }: TradingPairsCardProps) {
     const [drafts, setDrafts] = useState<DraftMap>({})
@@ -33,7 +27,7 @@ export default function TradingPairsCard({ pairs, loading, initialLoad, canAcces
         setDrafts(prev => ({
             ...prev,
             [symbol]: {
-                ...(prev[symbol] || { symbol, contract_size: "", lot_step: "", min_lot: "", max_lot: "", status: "" }),
+                ...(prev[symbol] || { symbol, contract_size: "", lot_step: "0.01", min_lot: "", max_lot: "", status: "active" }),
                 [key]: val
             }
         }))
@@ -56,9 +50,6 @@ export default function TradingPairsCard({ pairs, loading, initialLoad, canAcces
                             <div key={pair.symbol} className="pair-item">
                                 <div className="pair-header">
                                     <strong>{pair.symbol}</strong>
-                                    <span className={`pair-status ${String(d.status).toLowerCase() === "active" ? "active" : "disabled"}`}>
-                                        {d.status || "unknown"}
-                                    </span>
                                 </div>
 
                                 <div className="pair-grid">
@@ -67,26 +58,12 @@ export default function TradingPairsCard({ pairs, loading, initialLoad, canAcces
                                         <input value={d.contract_size} onChange={e => update(pair.symbol, "contract_size", e.target.value)} />
                                     </label>
                                     <label className="risk-field">
-                                        <span>Lot Step</span>
-                                        <input value={d.lot_step} onChange={e => update(pair.symbol, "lot_step", e.target.value)} />
-                                    </label>
-                                    <label className="risk-field">
                                         <span>Min Lot</span>
                                         <input value={d.min_lot} onChange={e => update(pair.symbol, "min_lot", e.target.value)} />
                                     </label>
                                     <label className="risk-field">
                                         <span>Max Lot</span>
                                         <input value={d.max_lot} onChange={e => update(pair.symbol, "max_lot", e.target.value)} />
-                                    </label>
-                                    <label className="risk-field">
-                                        <span>Status</span>
-                                        <SmartDropdown
-                                            value={d.status}
-                                            options={statusOptions}
-                                            onChange={next => update(pair.symbol, "status", String(next))}
-                                            ariaLabel={`Status for ${pair.symbol}`}
-                                            className="risk-dropdown"
-                                        />
                                     </label>
                                 </div>
 
@@ -97,10 +74,8 @@ export default function TradingPairsCard({ pairs, loading, initialLoad, canAcces
                                         onClick={() => {
                                             const payload: Partial<TradingPairSpec> = {
                                                 contract_size: d.contract_size,
-                                                lot_step: d.lot_step,
                                                 min_lot: d.min_lot,
-                                                max_lot: d.max_lot,
-                                                status: d.status
+                                                max_lot: d.max_lot
                                             }
                                             onSave(pair.symbol, payload).catch(() => { })
                                         }}

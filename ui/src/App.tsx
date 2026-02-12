@@ -172,9 +172,14 @@ export default function App() {
   const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token, activeAccountId }, logout), [normalizedBaseUrl, token, activeAccountId, logout])
   const authApi = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token }, logout), [normalizedBaseUrl, token, logout])
   const publicApi = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token: "" }), [normalizedBaseUrl])
-  const marketPrice = quote?.bid ? parseFloat(quote.bid) : marketConfig[marketPair].displayBase
-  const bidDisplay = quote?.bid ? parseFloat(quote.bid) : marketPrice
-  const askDisplay = quote?.ask ? parseFloat(quote.ask) : marketPrice
+  const lastDisplay = quote?.last ? parseFloat(quote.last) : NaN
+  const rawBidDisplay = quote?.bid ? parseFloat(quote.bid) : NaN
+  const rawAskDisplay = quote?.ask ? parseFloat(quote.ask) : NaN
+  const marketPrice = Number.isFinite(lastDisplay) && lastDisplay > 0
+    ? lastDisplay
+    : (Number.isFinite(rawBidDisplay) && rawBidDisplay > 0 ? rawBidDisplay : marketConfig[marketPair].displayBase)
+  const bidDisplay = Number.isFinite(rawBidDisplay) && rawBidDisplay > 0 ? rawBidDisplay : marketPrice
+  const askDisplay = Number.isFinite(rawAskDisplay) && rawAskDisplay > 0 ? rawAskDisplay : marketPrice
   const activeTradingAccount = useMemo(() => {
     return accounts.find(a => a.id === activeAccountId) || accounts.find(a => a.is_active) || null
   }, [accounts, activeAccountId])
@@ -205,7 +210,7 @@ export default function App() {
 
     let livePl = 0
     for (const order of ordersSource) {
-      livePl += calcDisplayedOrderProfit(order, bidDisplay, askDisplay, marketPair, marketConfig)
+      livePl += calcDisplayedOrderProfit(order, bidDisplay, askDisplay, marketPair, marketConfig, marketPrice)
     }
     if (!Number.isFinite(livePl)) livePl = toSafe(metricsSource.pl)
     if (Math.abs(livePl) < 0.000000000001) livePl = 0
@@ -234,6 +239,7 @@ export default function App() {
     openOrders,
     bidDisplay,
     askDisplay,
+    marketPrice,
     marketPair,
     marketConfig
   ])

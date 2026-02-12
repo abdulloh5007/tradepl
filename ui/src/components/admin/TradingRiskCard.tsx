@@ -10,29 +10,46 @@ interface TradingRiskCardProps {
     onSave: (next: TradingRiskConfig) => Promise<void>
 }
 
+const DEFAULT_RISK: TradingRiskConfig = {
+    max_open_positions: 200,
+    max_order_lots: "100",
+    max_order_notional_usd: "50000",
+    margin_call_level_pct: "60",
+    stop_out_level_pct: "20",
+    unlimited_effective_leverage: 3000
+}
+
+const asPositiveNumberString = (value: unknown, fallback: string) => {
+    const raw = String(value ?? "").trim()
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n <= 0) return fallback
+    return raw
+}
+
+const normalizeRisk = (value: TradingRiskConfig | null | undefined): TradingRiskConfig => ({
+    max_open_positions: Number(value?.max_open_positions) > 0 ? Number(value?.max_open_positions) : DEFAULT_RISK.max_open_positions,
+    max_order_lots: asPositiveNumberString(value?.max_order_lots, DEFAULT_RISK.max_order_lots),
+    max_order_notional_usd: asPositiveNumberString(value?.max_order_notional_usd, DEFAULT_RISK.max_order_notional_usd),
+    margin_call_level_pct: asPositiveNumberString(value?.margin_call_level_pct, DEFAULT_RISK.margin_call_level_pct),
+    stop_out_level_pct: asPositiveNumberString(value?.stop_out_level_pct, DEFAULT_RISK.stop_out_level_pct),
+    unlimited_effective_leverage: Number(value?.unlimited_effective_leverage) > 0 ? Number(value?.unlimited_effective_leverage) : DEFAULT_RISK.unlimited_effective_leverage,
+})
+
 export default function TradingRiskCard({ value, loading, initialLoad, canAccess, onSave }: TradingRiskCardProps) {
-    const [draft, setDraft] = useState<TradingRiskConfig | null>(value)
+    const [draft, setDraft] = useState<TradingRiskConfig>(normalizeRisk(value))
 
     useEffect(() => {
-        setDraft(value)
+        setDraft(normalizeRisk(value))
     }, [value])
 
     if (!canAccess) return null
 
-    const update = (key: keyof TradingRiskConfig, val: string) => {
+    const update = (key: "max_open_positions" | "max_order_lots", val: string) => {
         setDraft(prev => {
-            const base = prev || {
-                max_open_positions: 200,
-                max_order_lots: "100",
-                max_order_notional_usd: "50000",
-                margin_call_level_pct: "60",
-                stop_out_level_pct: "20",
-                unlimited_effective_leverage: 3000
+            if (key === "max_open_positions") {
+                return { ...prev, [key]: Number(val || 0) }
             }
-            if (key === "max_open_positions" || key === "unlimited_effective_leverage") {
-                return { ...base, [key]: Number(val || 0) }
-            }
-            return { ...base, [key]: val }
+            return { ...prev, [key]: val }
         })
     }
 
@@ -40,7 +57,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
         <div className="admin-card">
             <div className="admin-card-header">
                 <ShieldAlert size={20} />
-                <h2>Trading Risk</h2>
+                <h2>Order Limits</h2>
             </div>
 
             {initialLoad && !draft ? (
@@ -48,70 +65,38 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
             ) : (
                 <div className="risk-grid">
                     <label className="risk-field">
-                        <span>Max Open Positions</span>
+                        <span>Max Orders</span>
                         <input
                             type="number"
                             min="1"
-                            value={String(draft?.max_open_positions ?? 0)}
+                            value={String(draft.max_open_positions)}
                             onChange={e => update("max_open_positions", e.target.value)}
                         />
                     </label>
 
                     <label className="risk-field">
-                        <span>Max Order Lots</span>
+                        <span>Max Lot Size Per Order</span>
                         <input
                             type="text"
-                            value={draft?.max_order_lots ?? ""}
+                            value={draft.max_order_lots}
                             onChange={e => update("max_order_lots", e.target.value)}
                         />
                     </label>
-
-                    <label className="risk-field">
-                        <span>Max Order Notional (USD)</span>
-                        <input
-                            type="text"
-                            value={draft?.max_order_notional_usd ?? ""}
-                            onChange={e => update("max_order_notional_usd", e.target.value)}
-                        />
-                    </label>
-
-                    <label className="risk-field">
-                        <span>Margin Call %</span>
-                        <input
-                            type="text"
-                            value={draft?.margin_call_level_pct ?? ""}
-                            onChange={e => update("margin_call_level_pct", e.target.value)}
-                        />
-                    </label>
-
-                    <label className="risk-field">
-                        <span>Stop Out %</span>
-                        <input
-                            type="text"
-                            value={draft?.stop_out_level_pct ?? ""}
-                            onChange={e => update("stop_out_level_pct", e.target.value)}
-                        />
-                    </label>
-
-                    <label className="risk-field">
-                        <span>Unlimited Effective Leverage</span>
-                        <input
-                            type="number"
-                            min="1"
-                            value={String(draft?.unlimited_effective_leverage ?? 0)}
-                            onChange={e => update("unlimited_effective_leverage", e.target.value)}
-                        />
-                    </label>
+                    <div className="risk-field">
+                        <span>System</span>
+                        <div className="no-events" style={{ margin: 0, padding: "11px 12px", textAlign: "left" }}>
+                            Margin call, stop out and other limits are auto-managed by system defaults.
+                        </div>
+                    </div>
                 </div>
             )}
 
             <div className="risk-actions">
                 <button
                     className="add-event-btn"
-                    disabled={loading || !draft}
+                    disabled={loading}
                     onClick={() => {
-                        if (!draft) return
-                        onSave(draft).catch(() => { })
+                        onSave(normalizeRisk(draft)).catch(() => { })
                     }}
                 >
                     {loading ? "Saving..." : "Save Risk Config"}

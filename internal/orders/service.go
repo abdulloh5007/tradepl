@@ -645,7 +645,7 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 		entryRaw := *o.Price
 		bidRaw := decimal.NewFromFloat(bid)
 		askRaw := decimal.NewFromFloat(ask)
-		markRaw := markRawForSide(pair.Symbol, o.Side, bidRaw, askRaw)
+		markRaw := markRawPrice(bidRaw, askRaw)
 
 		entryForMargin, ok := effectivePriceForPair(pair.Symbol, entryRaw)
 		if !ok {
@@ -760,6 +760,50 @@ func (s *Service) autoLiquidateUnlimitedAccount(ctx context.Context, userID, acc
 	return true, nil
 }
 
+func (s *Service) coverNegativeUSDBalance(ctx context.Context, tx pgx.Tx, userID, accountID, ref string) (bool, error) {
+	usd, err := s.market.GetAssetBySymbol(ctx, "USD")
+	if err != nil {
+		return false, err
+	}
+	availableID, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, usd.ID, types.AccountKindAvailable)
+	if err != nil {
+		return false, err
+	}
+	reservedID, err := s.ledger.EnsureAccountForTradingAccount(ctx, tx, userID, accountID, usd.ID, types.AccountKindReserved)
+	if err != nil {
+		return false, err
+	}
+	availableBalance, err := s.ledger.GetBalance(ctx, tx, availableID)
+	if err != nil {
+		return false, err
+	}
+	reservedBalance, err := s.ledger.GetBalance(ctx, tx, reservedID)
+	if err != nil {
+		return false, err
+	}
+
+	total := availableBalance.Add(reservedBalance)
+	if !total.LessThan(decimal.Zero) {
+		return false, nil
+	}
+
+	systemAccount, err := s.ledger.EnsureSystemAccount(ctx, tx, usd.ID, types.AccountKindAvailable)
+	if err != nil {
+		return false, err
+	}
+	coverAmount := total.Abs()
+	if !coverAmount.GreaterThan(decimal.Zero) {
+		return false, nil
+	}
+	if strings.TrimSpace(ref) == "" {
+		ref = "system_negative_cover"
+	}
+	if _, err := s.ledger.Transfer(ctx, tx, systemAccount, availableID, coverAmount, types.LedgerEntryTypeDeposit, ref); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Service) resetAccountUSDBalance(ctx context.Context, userID, accountID string) error {
 	usd, err := s.market.GetAssetBySymbol(ctx, "USD")
 	if err != nil {
@@ -780,17 +824,17 @@ func (s *Service) resetAccountUSDBalance(ctx context.Context, userID, accountID 
 	if err != nil {
 		return err
 	}
+	systemAccount, err := s.ledger.EnsureSystemAccount(ctx, tx, usd.ID, types.AccountKindAvailable)
+	if err != nil {
+		return err
+	}
 
 	availableBalance, err := s.ledger.GetBalance(ctx, tx, availableID)
 	if err != nil {
 		return err
 	}
-	if availableBalance.GreaterThan(decimal.Zero) {
-		if _, err := s.ledger.DebitAccount(ctx, tx, availableID, availableBalance, types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
-			return err
-		}
-	} else if availableBalance.LessThan(decimal.Zero) {
-		if _, err := s.ledger.CreditAccount(ctx, tx, availableID, availableBalance.Abs(), types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
+	if availableBalance.LessThan(decimal.Zero) {
+		if _, err := s.ledger.Transfer(ctx, tx, systemAccount, availableID, availableBalance.Abs(), types.LedgerEntryTypeDeposit, "system_negative_cover_reset"); err != nil {
 			return err
 		}
 	}
@@ -799,12 +843,26 @@ func (s *Service) resetAccountUSDBalance(ctx context.Context, userID, accountID 
 	if err != nil {
 		return err
 	}
-	if reservedBalance.GreaterThan(decimal.Zero) {
-		if _, err := s.ledger.DebitAccount(ctx, tx, reservedID, reservedBalance, types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
+	if reservedBalance.LessThan(decimal.Zero) {
+		if _, err := s.ledger.Transfer(ctx, tx, systemAccount, reservedID, reservedBalance.Abs(), types.LedgerEntryTypeDeposit, "system_negative_cover_reset"); err != nil {
 			return err
 		}
-	} else if reservedBalance.LessThan(decimal.Zero) {
-		if _, err := s.ledger.CreditAccount(ctx, tx, reservedID, reservedBalance.Abs(), types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
+	}
+	availableBalance, err = s.ledger.GetBalance(ctx, tx, availableID)
+	if err != nil {
+		return err
+	}
+	if availableBalance.GreaterThan(decimal.Zero) {
+		if _, err := s.ledger.DebitAccount(ctx, tx, availableID, availableBalance, types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
+			return err
+		}
+	}
+	reservedBalance, err = s.ledger.GetBalance(ctx, tx, reservedID)
+	if err != nil {
+		return err
+	}
+	if reservedBalance.GreaterThan(decimal.Zero) {
+		if _, err := s.ledger.DebitAccount(ctx, tx, reservedID, reservedBalance, types.LedgerEntryTypeTrade, "system_unlimited_balance_reset"); err != nil {
 			return err
 		}
 	}
@@ -926,7 +984,7 @@ func (s *Service) ListOpenOrdersByAccount(ctx context.Context, userID, accountID
 				}
 			}
 			if ok {
-				mark := markRawForSide(pair.Symbol, o.Side, qm.bid, qm.ask)
+				mark := markRawPrice(qm.bid, qm.ask)
 				pnl := calculateOrderPnL(pair.Symbol, o.Side, *o.Price, mark, filledQty, pairPnLContractSize(pair))
 				o.UnrealizedPnL = &pnl
 			}
@@ -1056,9 +1114,11 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		       le.sequence,
 		       le.entry_type,
 		       le.amount,
-		       le.created_at
+		       le.created_at,
+		       COALESCE(lt.ref, '')
 		FROM ledger_entries le
 		JOIN accounts a ON a.id = le.account_id
+		LEFT JOIN ledger_txs lt ON lt.id = le.tx_id
 		WHERE a.owner_type = 'user'
 		  AND a.owner_user_id = $1
 		  AND ($2 = '' OR coalesce(a.trading_account_id::text, '') = $2)
@@ -1079,7 +1139,8 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		var entryType string
 		var amount decimal.Decimal
 		var createdAt time.Time
-		if err := cashRows.Scan(&entryID, &sequence, &entryType, &amount, &createdAt); err != nil {
+		var txRef string
+		if err := cashRows.Scan(&entryID, &sequence, &entryType, &amount, &createdAt, &txRef); err != nil {
 			return nil, err
 		}
 
@@ -1096,11 +1157,15 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		if eventType == string(types.LedgerEntryTypeFaucet) {
 			eventType = string(types.LedgerEntryTypeDeposit)
 		}
+		ticket := formatLedgerTicket(accountMode, eventType, sequence, entryID)
+		if eventType == string(types.LedgerEntryTypeDeposit) && isSystemNegativeCoverRef(txRef) {
+			ticket = formatSystemCoverTicket(accountMode, sequence, entryID)
+		}
 
 		closeTime := createdAt
 		orders = append(orders, model.Order{
 			ID:               entryID,
-			Ticket:           formatLedgerTicket(accountMode, eventType, sequence, entryID),
+			Ticket:           ticket,
 			UserID:           userID,
 			TradingAccountID: accountID,
 			PairID:           "USD-USD",
@@ -1209,6 +1274,17 @@ func formatLedgerTicket(accountMode, eventType string, sequence int64, seed stri
 		base = "BXwit"
 	}
 	return modeTicketPrefix(accountMode) + base + digits + letters
+}
+
+func formatSystemCoverTicket(accountMode string, sequence int64, seed string) string {
+	digits := normalizeTicketNumber(sequence, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("cash:system_cover:%d:%s", sequence, seed))
+	return modeTicketPrefix(accountMode) + "BXdepstm" + digits + letters
+}
+
+func isSystemNegativeCoverRef(ref string) bool {
+	ref = strings.ToLower(strings.TrimSpace(ref))
+	return strings.HasPrefix(ref, "system_negative_cover")
 }
 
 func (s *Service) CloseOrdersByScope(ctx context.Context, userID, accountID, scope string) (CloseOrdersResult, error) {
@@ -1320,7 +1396,7 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 
 	bidRaw := decimal.NewFromFloat(bid)
 	askRaw := decimal.NewFromFloat(ask)
-	exitPrice = markRawForSide(pair.Symbol, order.Side, bidRaw, askRaw)
+	exitPrice = markRawPrice(bidRaw, askRaw)
 	pnl = calculateOrderPnL(pair.Symbol, order.Side, entryPrice, exitPrice, qty, pairPnLContractSize(pair))
 
 	// 7. Update user's USD balance
@@ -1402,6 +1478,9 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 				realizedPnL = debitAmount.Neg()
 			}
 		}
+	}
+	if _, coverErr := s.coverNegativeUSDBalance(ctx, tx, userID, accountID, "system_negative_cover_close"); coverErr != nil {
+		return fmt.Errorf("failed to cover negative balance: %w", coverErr)
 	}
 
 	// 8. Mark order as closed position with a persisted close snapshot for history/details.
@@ -1502,22 +1581,17 @@ func applySpreadMultiplier(bid, ask, multiplier float64) (float64, float64) {
 	return mid - half, mid + half
 }
 
-func markRawForSide(symbol string, side types.OrderSide, bidRaw, askRaw decimal.Decimal) decimal.Decimal {
-	inverted := marketdata.IsDisplayInverted(symbol)
-	switch side {
-	case types.OrderSideBuy:
-		if inverted {
-			return askRaw
-		}
-		return bidRaw
-	case types.OrderSideSell:
-		if inverted {
-			return bidRaw
-		}
+func markRawPrice(bidRaw, askRaw decimal.Decimal) decimal.Decimal {
+	if bidRaw.GreaterThan(decimal.Zero) && askRaw.GreaterThan(decimal.Zero) {
+		return bidRaw.Add(askRaw).Div(decimal.NewFromInt(2))
+	}
+	if askRaw.GreaterThan(decimal.Zero) {
 		return askRaw
-	default:
+	}
+	if bidRaw.GreaterThan(decimal.Zero) {
 		return bidRaw
 	}
+	return decimal.Zero
 }
 
 func effectivePriceForPair(symbol string, raw decimal.Decimal) (decimal.Decimal, bool) {
