@@ -3,6 +3,7 @@ import contextlib
 import html
 import json
 import logging
+import signal
 import sys
 import urllib.error
 import urllib.request
@@ -53,6 +54,9 @@ REVIEW_HEALTH = {
     "last_dispatch_kyc_sent": 0,
     "last_dispatch_error": "",
 }
+
+BOT_STOP_EVENT: asyncio.Event | None = None
+SHUTDOWN_IN_PROGRESS = False
 
 
 def utc_now_iso() -> str:
@@ -132,6 +136,29 @@ def parse_chat_id(raw: str):
     except Exception:
         return None
     return value if value != 0 else None
+
+
+def humanize_seconds(total_seconds: int) -> str:
+    seconds = max(0, int(total_seconds))
+    if seconds >= 86400:
+        days = seconds // 86400
+        hours = (seconds % 86400) // 3600
+        if hours > 0:
+            return f"{days}d {hours}h"
+        return f"{days}d"
+    if seconds >= 3600:
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        if minutes > 0:
+            return f"{hours}h {minutes}m"
+        return f"{hours}h"
+    if seconds >= 60:
+        minutes = seconds // 60
+        rem = seconds % 60
+        if rem > 0:
+            return f"{minutes}m {rem}s"
+        return f"{minutes}m"
+    return f"{seconds}s"
 
 
 def format_deposit_review_caption(req: dict, ticket: str) -> str:
@@ -315,8 +342,8 @@ async def dispatch_pending_deposit_reviews() -> int:
             caption = format_deposit_review_caption(req, ticket)
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[[
-                    InlineKeyboardButton(text="✅ Accept", callback_data=f"dep:approve:{request_id}"),
-                    InlineKeyboardButton(text="❌ Reject", callback_data=f"dep:reject:{request_id}"),
+                    InlineKeyboardButton(text="✅ Accept", callback_data=f"dep:approve:{request_id}", style="success"),
+                    InlineKeyboardButton(text="❌ Reject", callback_data=f"dep:reject:{request_id}", style="danger"),
                 ]]
             )
             proof_blob = bytes(req.get("proof_blob") or b"")
@@ -365,8 +392,8 @@ async def dispatch_pending_kyc_reviews() -> int:
             caption = format_kyc_review_caption(req, ticket)
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[[
-                    InlineKeyboardButton(text="✅ Approve KYC", callback_data=f"kyc:approve:{request_id}"),
-                    InlineKeyboardButton(text="❌ Reject KYC", callback_data=f"kyc:reject:{request_id}"),
+                    InlineKeyboardButton(text="✅ Approve KYC", callback_data=f"kyc:approve:{request_id}", style="success"),
+                    InlineKeyboardButton(text="❌ Reject KYC", callback_data=f"kyc:reject:{request_id}", style="danger"),
                 ]]
             )
             proof_blob = bytes(req.get("proof_blob") or b"")
@@ -476,6 +503,46 @@ async def review_listener_loop(stop_event: asyncio.Event, dispatch_event: asynci
             pass
 
 
+async def run_token_cleanup_once():
+    """Remove expired panel access tokens on-demand."""
+    try:
+        removed = await db.delete_expired_tokens()
+        if removed > 0:
+            logger.info("Token cleanup removed %d expired access token(s)", removed)
+    except Exception:
+        logger.exception("Token cleanup failed")
+
+
+async def trigger_shutdown(reason: str):
+    global SHUTDOWN_IN_PROGRESS
+    if SHUTDOWN_IN_PROGRESS:
+        return
+    SHUTDOWN_IN_PROGRESS = True
+    logger.info("Shutdown requested: %s", reason)
+    if BOT_STOP_EVENT is not None and not BOT_STOP_EVENT.is_set():
+        BOT_STOP_EVENT.set()
+    with contextlib.suppress(Exception):
+        await dp.stop_polling()
+
+
+async def terminal_shutdown_loop(stop_event: asyncio.Event):
+    """Allow graceful stop from terminal by typing q/quit/exit + Enter."""
+    if not sys.stdin or not sys.stdin.isatty():
+        return
+    logger.info("Terminal stop enabled: type 'q' and press Enter to stop bot")
+    while not stop_event.is_set():
+        try:
+            line = await asyncio.to_thread(sys.stdin.readline)
+        except Exception:
+            return
+        if line is None:
+            continue
+        cmd = str(line).strip().lower()
+        if cmd in ("q", "quit", "exit", "off", "stop"):
+            await trigger_shutdown(f"terminal command '{cmd}'")
+            return
+
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     """Handle /start command."""
@@ -505,6 +572,7 @@ async def cmd_help(message: types.Message):
             "\n<b>🔐 Owner Commands:</b>\n"
             "/getownerpanel [time] - Get owner panel link\n"
             "/health - Bot review listener health\n"
+            "/off - Graceful shutdown bot\n"
             "  Examples:\n"
             "  • /getownerpanel 600 (600 seconds)\n"
             "  • /getownerpanel 60m (60 minutes)\n"
@@ -624,6 +692,16 @@ async def cmd_health(message: types.Message):
         f"Listener error at: <code>{html.escape(show('last_listener_error_at'))}</code>"
     )
     await message.answer(text, parse_mode="HTML")
+
+
+@dp.message(Command("off"))
+async def cmd_off(message: types.Message):
+    """Owner-only graceful bot shutdown command."""
+    user_id = message.from_user.id
+    if user_id != OWNER_TELEGRAM_ID:
+        return
+    await message.answer("🛑 Shutting down bot...")
+    await trigger_shutdown(f"telegram /off by {user_id}")
 
 
 @dp.callback_query(F.data.startswith("dep:"))
@@ -755,13 +833,26 @@ async def cmd_getownerpanel(message: types.Message):
         # Don't reveal this command exists
         return
 
-    # Parse duration from command arguments
-    args = message.text.split(maxsplit=1)
-    duration_str = args[1] if len(args) > 1 else ""
-    duration_seconds, duration_text = parse_duration(duration_str)
+    await run_token_cleanup_once()
 
-    # Create token
-    token = await db.create_token("owner", user_id, duration_seconds)
+    active = await db.get_active_token("owner", user_id)
+    reused_active = active is not None
+    if reused_active:
+        token = str(active.get("token") or "")
+        expires_at = active.get("expires_at")
+        if not expires_at:
+            remaining_seconds = 0
+        else:
+            if getattr(expires_at, "tzinfo", None) is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            remaining_seconds = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+        duration_text = humanize_seconds(remaining_seconds)
+    else:
+        # Parse duration from command arguments only when new token is needed.
+        args = message.text.split(maxsplit=1)
+        duration_str = args[1] if len(args) > 1 else ""
+        duration_seconds, duration_text = parse_duration(duration_str)
+        token = await db.create_token("owner", user_id, duration_seconds)
 
     # Generate link
     link = f"{SITE_URL}/manage-panel?token={token}"
@@ -772,14 +863,21 @@ async def cmd_getownerpanel(message: types.Message):
     keyboard = None
     if not is_local:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link)]
+            [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link, style="primary")]
         ])
 
-    msg_text = (
-        f"🔐 <b>Owner Panel Access</b>\n\n"
-        f"⏱ <b>Valid for:</b> {duration_text}\n\n"
-        f"⚠️ <i>This link will expire after the specified time.</i>"
-    )
+    if reused_active:
+        msg_text = (
+            f"♻️ <b>Owner Panel Access (active link reused)</b>\n\n"
+            f"⏳ <b>Remaining:</b> {duration_text}\n\n"
+            f"⚠️ <i>New link was not created because previous one is still active.</i>"
+        )
+    else:
+        msg_text = (
+            f"🔐 <b>Owner Panel Access</b>\n\n"
+            f"⏱ <b>Valid for:</b> {duration_text}\n\n"
+            f"⚠️ <i>This link will expire after the specified time.</i>"
+        )
 
     if is_local:
         msg_text += f"\n\n🔗 {link}"
@@ -800,11 +898,25 @@ async def cmd_getadminpanel(message: types.Message):
     if not is_admin:
         return
 
-    args = message.text.split(maxsplit=1)
-    duration_str = args[1] if len(args) > 1 else ""
-    duration_seconds, duration_text = parse_duration(duration_str)
+    await run_token_cleanup_once()
 
-    token = await db.create_token("admin", user_id, duration_seconds)
+    active = await db.get_active_token("admin", user_id)
+    reused_active = active is not None
+    if reused_active:
+        token = str(active.get("token") or "")
+        expires_at = active.get("expires_at")
+        if not expires_at:
+            remaining_seconds = 0
+        else:
+            if getattr(expires_at, "tzinfo", None) is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            remaining_seconds = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+        duration_text = humanize_seconds(remaining_seconds)
+    else:
+        args = message.text.split(maxsplit=1)
+        duration_str = args[1] if len(args) > 1 else ""
+        duration_seconds, duration_text = parse_duration(duration_str)
+        token = await db.create_token("admin", user_id, duration_seconds)
     link = f"{SITE_URL}/manage-panel?token={token}"
 
     rights = await db.get_admin_rights(user_id)
@@ -813,15 +925,23 @@ async def cmd_getadminpanel(message: types.Message):
     is_local = "localhost" in SITE_URL or "127.0.0.1" in SITE_URL
     if not is_local:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link)]
+            [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link, style="primary")]
         ])
 
-    msg_text = (
-        f"👤 <b>Admin Panel Access</b>\n\n"
-        f"⏱ <b>Valid for:</b> {duration_text}\n"
-        f"🔑 <b>Your Rights:</b> {format_rights(rights)}\n\n"
-        f"⚠️ <i>This link will expire after the specified time.</i>"
-    )
+    if reused_active:
+        msg_text = (
+            f"♻️ <b>Admin Panel Access (active link reused)</b>\n\n"
+            f"⏳ <b>Remaining:</b> {duration_text}\n"
+            f"🔑 <b>Your Rights:</b> {format_rights(rights)}\n\n"
+            f"⚠️ <i>New link was not created because previous one is still active.</i>"
+        )
+    else:
+        msg_text = (
+            f"👤 <b>Admin Panel Access</b>\n\n"
+            f"⏱ <b>Valid for:</b> {duration_text}\n"
+            f"🔑 <b>Your Rights:</b> {format_rights(rights)}\n\n"
+            f"⚠️ <i>This link will expire after the specified time.</i>"
+        )
 
     if is_local:
         msg_text += f"\n\n🔗 {link}"
@@ -841,12 +961,15 @@ async def set_bot_commands():
         BotCommand(command="chid", description="Get current chat ID"),
         BotCommand(command="info", description="Get chat/user technical info"),
         BotCommand(command="health", description="Bot review listener health"),
+        BotCommand(command="off", description="Graceful shutdown (owner only)"),
     ]
     await bot.set_my_commands(commands)
 
 
 async def main():
     """Main function to start the bot."""
+    global BOT_STOP_EVENT, SHUTDOWN_IN_PROGRESS
+    SHUTDOWN_IN_PROGRESS = False
     logger.info("Starting bot...")
 
     await db.connect()
@@ -858,25 +981,48 @@ async def main():
         logger.warning("INTERNAL_API_TOKEN is empty. Review callbacks will fail.")
 
     stop_event = asyncio.Event()
+    BOT_STOP_EVENT = stop_event
     dispatch_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
+    def schedule_shutdown(sig_name: str):
+        asyncio.create_task(trigger_shutdown(f"signal {sig_name}"))
+
+    with contextlib.suppress(NotImplementedError):
+        loop.add_signal_handler(signal.SIGINT, schedule_shutdown, "SIGINT")
+    with contextlib.suppress(NotImplementedError):
+        loop.add_signal_handler(signal.SIGTERM, schedule_shutdown, "SIGTERM")
+
     dispatcher_task = asyncio.create_task(review_dispatch_loop(stop_event, dispatch_event))
     listener_task = asyncio.create_task(review_listener_loop(stop_event, dispatch_event, loop))
+    terminal_task = asyncio.create_task(terminal_shutdown_loop(stop_event))
 
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, handle_signals=False, close_bot_session=False)
+    except asyncio.CancelledError:
+        logger.info("Polling cancelled")
     finally:
         stop_event.set()
         dispatcher_task.cancel()
         listener_task.cancel()
-        with contextlib.suppress(Exception):
+        terminal_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
             await dispatcher_task
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(asyncio.CancelledError, Exception):
             await listener_task
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await terminal_task
+        with contextlib.suppress(NotImplementedError, Exception):
+            loop.remove_signal_handler(signal.SIGINT)
+        with contextlib.suppress(NotImplementedError, Exception):
+            loop.remove_signal_handler(signal.SIGTERM)
+        BOT_STOP_EVENT = None
         await db.close()
         await bot.session.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

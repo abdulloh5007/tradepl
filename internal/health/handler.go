@@ -139,6 +139,43 @@ type readinessDBStat struct {
 	TimeoutSec int    `json:"timeout_sec"`
 }
 
+type metricsSnapshot struct {
+	Timestamp string                 `json:"timestamp"`
+	UptimeSec int64                  `json:"uptime_sec"`
+	ProcessUp int                    `json:"process_up"`
+	DBUp      int                    `json:"db_up"`
+	DBPingMs  int64                  `json:"db_ping_ms"`
+	Runtime   metricsRuntimeSnapshot `json:"runtime"`
+	Memory    metricsMemorySnapshot  `json:"memory"`
+	DBPool    metricsDBPoolSnapshot  `json:"db_pool"`
+}
+
+type metricsRuntimeSnapshot struct {
+	Goroutines int    `json:"goroutines"`
+	GOMAXPROCS int    `json:"gomaxprocs"`
+	CPUCount   int    `json:"cpu_count"`
+	NumGC      uint32 `json:"num_gc"`
+}
+
+type metricsMemorySnapshot struct {
+	AllocBytes     uint64 `json:"alloc_bytes"`
+	HeapAllocBytes uint64 `json:"heap_alloc_bytes"`
+	HeapInuseBytes uint64 `json:"heap_inuse_bytes"`
+	SysBytes       uint64 `json:"sys_bytes"`
+}
+
+type metricsDBPoolSnapshot struct {
+	TotalConns      int32 `json:"total_conns"`
+	IdleConns       int32 `json:"idle_conns"`
+	AcquiredConns   int32 `json:"acquired_conns"`
+	Constructing    int32 `json:"constructing_conns"`
+	MaxConns        int32 `json:"max_conns"`
+	NewConnsCount   int64 `json:"new_conns_count"`
+	AcquireCount    int64 `json:"acquire_count"`
+	AcquireMs       int64 `json:"acquire_duration_ms"`
+	EmptyAcquireCnt int64 `json:"empty_acquire_count"`
+}
+
 func (h *Handler) uptime(now time.Time) time.Duration {
 	uptime := now.Sub(h.startedAt)
 	if uptime < 0 {
@@ -267,7 +304,16 @@ func (h *Handler) Full(w http.ResponseWriter, r *http.Request) {
 	if !h.requireInternalToken(w, r) {
 		return
 	}
+	h.fullTrusted(w, r)
+}
 
+// FullTrusted returns full diagnostics and is intended for trusted internal callers
+// (for example owner-only admin routes protected by admin auth).
+func (h *Handler) FullTrusted(w http.ResponseWriter, r *http.Request) {
+	h.fullTrusted(w, r)
+}
+
+func (h *Handler) fullTrusted(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	uptime := h.uptime(now)
 
@@ -361,10 +407,23 @@ func (h *Handler) Metrics(w http.ResponseWriter, r *http.Request) {
 	if !h.requireInternalToken(w, r) {
 		return
 	}
+	h.metricsTrusted(w, r)
+}
 
+// MetricsTrusted returns Prometheus metrics for trusted internal callers.
+func (h *Handler) MetricsTrusted(w http.ResponseWriter, r *http.Request) {
+	h.metricsTrusted(w, r)
+}
+
+// MetricsJSONTrusted returns the same core metrics in JSON format for admin UI.
+func (h *Handler) MetricsJSONTrusted(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusOK, h.buildMetricsSnapshot(r.Context()))
+}
+
+func (h *Handler) buildMetricsSnapshot(ctx context.Context) metricsSnapshot {
 	now := time.Now().UTC()
 	uptime := h.uptime(now)
-	db := h.collectDB(r.Context(), true)
+	db := h.collectDB(ctx, true)
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 
@@ -372,31 +431,66 @@ func (h *Handler) Metrics(w http.ResponseWriter, r *http.Request) {
 	if db.Reachable {
 		dbUp = 1
 	}
+	return metricsSnapshot{
+		Timestamp: now.Format(time.RFC3339),
+		UptimeSec: int64(uptime.Seconds()),
+		ProcessUp: 1,
+		DBUp:      dbUp,
+		DBPingMs:  db.PingMs,
+		Runtime: metricsRuntimeSnapshot{
+			Goroutines: runtime.NumGoroutine(),
+			GOMAXPROCS: runtime.GOMAXPROCS(0),
+			CPUCount:   runtime.NumCPU(),
+			NumGC:      mem.NumGC,
+		},
+		Memory: metricsMemorySnapshot{
+			AllocBytes:     mem.Alloc,
+			HeapAllocBytes: mem.HeapAlloc,
+			HeapInuseBytes: mem.HeapInuse,
+			SysBytes:       mem.Sys,
+		},
+		DBPool: metricsDBPoolSnapshot{
+			TotalConns:      db.Pool.TotalConns,
+			IdleConns:       db.Pool.IdleConns,
+			AcquiredConns:   db.Pool.AcquiredConns,
+			Constructing:    db.Pool.ConstructingConns,
+			MaxConns:        db.Pool.MaxConns,
+			NewConnsCount:   db.Pool.NewConnsCount,
+			AcquireCount:    db.Pool.AcquireCount,
+			AcquireMs:       db.Pool.AcquireDurationMs,
+			EmptyAcquireCnt: db.Pool.EmptyAcquireCount,
+		},
+	}
+}
+
+func (h *Handler) metricsTrusted(w http.ResponseWriter, r *http.Request) {
+	snapshot := h.buildMetricsSnapshot(r.Context())
+	db := h.collectDB(r.Context(), true)
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprintf(w, "# HELP lvtrade_up Service process is running.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE lvtrade_up gauge\n")
-	_, _ = fmt.Fprintf(w, "lvtrade_up 1\n")
+	_, _ = fmt.Fprintf(w, "lvtrade_up %d\n", snapshot.ProcessUp)
 
 	_, _ = fmt.Fprintf(w, "# HELP lvtrade_uptime_seconds Service uptime in seconds.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE lvtrade_uptime_seconds gauge\n")
-	_, _ = fmt.Fprintf(w, "lvtrade_uptime_seconds %d\n", int64(uptime.Seconds()))
+	_, _ = fmt.Fprintf(w, "lvtrade_uptime_seconds %d\n", snapshot.UptimeSec)
 
 	_, _ = fmt.Fprintf(w, "# HELP lvtrade_db_up Database ping status (1=ok,0=down).\n")
 	_, _ = fmt.Fprintf(w, "# TYPE lvtrade_db_up gauge\n")
-	_, _ = fmt.Fprintf(w, "lvtrade_db_up %d\n", dbUp)
-	_, _ = fmt.Fprintf(w, "lvtrade_db_ping_milliseconds %d\n", db.PingMs)
+	_, _ = fmt.Fprintf(w, "lvtrade_db_up %d\n", snapshot.DBUp)
+	_, _ = fmt.Fprintf(w, "lvtrade_db_ping_milliseconds %d\n", snapshot.DBPingMs)
 
 	_, _ = fmt.Fprintf(w, "# HELP lvtrade_go_goroutines Number of goroutines.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE lvtrade_go_goroutines gauge\n")
-	_, _ = fmt.Fprintf(w, "lvtrade_go_goroutines %d\n", runtime.NumGoroutine())
-	_, _ = fmt.Fprintf(w, "lvtrade_go_gomaxprocs %d\n", runtime.GOMAXPROCS(0))
-	_, _ = fmt.Fprintf(w, "lvtrade_go_mem_alloc_bytes %d\n", mem.Alloc)
-	_, _ = fmt.Fprintf(w, "lvtrade_go_mem_heap_alloc_bytes %d\n", mem.HeapAlloc)
-	_, _ = fmt.Fprintf(w, "lvtrade_go_mem_heap_inuse_bytes %d\n", mem.HeapInuse)
-	_, _ = fmt.Fprintf(w, "lvtrade_go_mem_sys_bytes %d\n", mem.Sys)
-	_, _ = fmt.Fprintf(w, "lvtrade_go_gc_count %d\n", mem.NumGC)
+	_, _ = fmt.Fprintf(w, "lvtrade_go_goroutines %d\n", snapshot.Runtime.Goroutines)
+	_, _ = fmt.Fprintf(w, "lvtrade_go_gomaxprocs %d\n", snapshot.Runtime.GOMAXPROCS)
+	_, _ = fmt.Fprintf(w, "lvtrade_go_mem_alloc_bytes %d\n", snapshot.Memory.AllocBytes)
+	_, _ = fmt.Fprintf(w, "lvtrade_go_mem_heap_alloc_bytes %d\n", snapshot.Memory.HeapAllocBytes)
+	_, _ = fmt.Fprintf(w, "lvtrade_go_mem_heap_inuse_bytes %d\n", snapshot.Memory.HeapInuseBytes)
+	_, _ = fmt.Fprintf(w, "lvtrade_go_mem_sys_bytes %d\n", snapshot.Memory.SysBytes)
+	_, _ = fmt.Fprintf(w, "lvtrade_go_gc_count %d\n", snapshot.Runtime.NumGC)
 
 	_, _ = fmt.Fprintf(w, "# HELP lvtrade_db_pool_total_conns Current total DB pool connections.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE lvtrade_db_pool_total_conns gauge\n")

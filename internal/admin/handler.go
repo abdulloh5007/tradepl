@@ -718,7 +718,7 @@ const adminUsernameKey contextKey = "admin_username"
 const adminRoleKey contextKey = "admin_role"
 const adminRightsKey contextKey = "admin_rights"
 
-var allAdminRights = []string{"sessions", "trend", "events", "volatility", "kyc_review"}
+var allAdminRights = []string{"sessions", "trend", "events", "volatility", "kyc_review", "deposit_review"}
 
 func requireOwner(w http.ResponseWriter, r *http.Request) bool {
 	role, _ := r.Context().Value(adminRoleKey).(string)
@@ -745,4 +745,13 @@ func RequireRight(right string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func RequireOwner(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !requireOwner(w, r) {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

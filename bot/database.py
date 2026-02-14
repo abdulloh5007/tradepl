@@ -46,6 +46,33 @@ class Database:
             ''', token, token_type, telegram_id, expires_at)
         
         return token
+
+    async def get_active_token(self, token_type: str, telegram_id: int) -> Optional[Dict[str, Any]]:
+        """Return active access token for telegram user and token type, if any."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                '''
+                SELECT token, expires_at, created_at
+                FROM access_tokens
+                WHERE token_type = $1
+                  AND telegram_id = $2
+                  AND expires_at > NOW()
+                ORDER BY expires_at DESC
+                LIMIT 1
+                ''',
+                token_type,
+                telegram_id,
+            )
+            return dict(row) if row else None
+
+    async def delete_expired_tokens(self) -> int:
+        """Delete expired access tokens and return number of removed rows."""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute('DELETE FROM access_tokens WHERE expires_at < NOW()')
+        try:
+            return int(str(result).split()[-1])
+        except Exception:
+            return 0
     
     async def is_panel_admin(self, telegram_id: int) -> bool:
         """Check if user is a panel admin."""
@@ -216,7 +243,11 @@ class Database:
             return True
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                'SELECT EXISTS(SELECT 1 FROM panel_admins WHERE telegram_id = $1) AS allowed',
+                '''
+                SELECT COALESCE((rights->>'deposit_review')::boolean, FALSE) AS allowed
+                FROM panel_admins
+                WHERE telegram_id = $1
+                ''',
                 telegram_id,
             )
             return bool(row and row["allowed"])

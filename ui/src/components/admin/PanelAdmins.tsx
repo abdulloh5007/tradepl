@@ -9,7 +9,7 @@ interface PanelAdminsProps {
     userRole: string | null
 }
 
-const allRights = ["sessions", "volatility", "trend", "events", "kyc_review"]
+const allRights = ["sessions", "volatility", "trend", "events", "kyc_review", "deposit_review"]
 
 const rightLabel = (value: string) => {
     const normalized = String(value || "").replace(/_/g, " ").trim()

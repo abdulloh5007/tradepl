@@ -48,6 +48,7 @@ Notes
 - `GET /health` and `GET /health/ready` are readiness summary (DB ping; HTTP 503 when DB is unreachable).
 - `GET /health/admin` returns full JSON diagnostics (runtime, memory, DB pool snapshot) and requires `X-Internal-Token`.
 - `GET /metrics` returns Prometheus-style metrics and requires `X-Internal-Token`.
+- Owner panel API proxies: `GET /v1/admin/system/health` and `GET /v1/admin/system/metrics` (owner-auth, no internal token exposed to UI).
 - Market orders are IOC only
 - FOK is rejected
 - WebSocket endpoint is /v1/ws and broadcasts trade events

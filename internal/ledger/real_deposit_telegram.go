@@ -671,12 +671,16 @@ func (h *Handler) isTelegramReviewerAllowed(ctx context.Context, telegramID int6
 	if h.ownerTgID != 0 && h.ownerTgID == telegramID {
 		return true
 	}
-	var exists bool
-	err := h.svc.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM panel_admins WHERE telegram_id = $1)`, telegramID).Scan(&exists)
+	var allowed bool
+	err := h.svc.pool.QueryRow(ctx, `
+		SELECT COALESCE((rights->>'deposit_review')::boolean, FALSE)
+		FROM panel_admins
+		WHERE telegram_id = $1
+	`, telegramID).Scan(&allowed)
 	if err != nil {
 		return false
 	}
-	return exists
+	return allowed
 }
 
 func (h *Handler) applyTelegramDepositReviewDecision(ctx context.Context, requestID, action string, reviewerTelegramID int64) (telegramReviewOutcome, error) {

@@ -344,6 +344,21 @@ func NewRouter(d RouterDeps) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(admin.AdminAuthMiddleware(d.JWTSecret))
 				r.Get("/me", d.AdminHandler.Me)
+				// System diagnostics (owner-only)
+				r.With(admin.RequireOwner).Get("/system/health", func(w http.ResponseWriter, r *http.Request) {
+					if d.HealthHandler == nil {
+						w.WriteHeader(http.StatusServiceUnavailable)
+						return
+					}
+					d.HealthHandler.FullTrusted(w, r)
+				})
+				r.With(admin.RequireOwner).Get("/system/metrics", func(w http.ResponseWriter, r *http.Request) {
+					if d.HealthHandler == nil {
+						w.WriteHeader(http.StatusServiceUnavailable)
+						return
+					}
+					d.HealthHandler.MetricsJSONTrusted(w, r)
+				})
 				// Sessions
 				r.With(admin.RequireRight("sessions")).Get("/sessions", d.SessionsHandler.GetSessions)
 				r.With(admin.RequireRight("sessions")).Get("/sessions/active", d.SessionsHandler.GetActiveSession)

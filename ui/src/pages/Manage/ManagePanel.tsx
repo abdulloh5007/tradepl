@@ -11,6 +11,7 @@ import PriceEventsCard from "../../components/admin/PriceEventsCard"
 import PanelAdmins from "../../components/admin/PanelAdmins"
 import TradingRiskCard from "../../components/admin/TradingRiskCard"
 import TradingPairsCard from "../../components/admin/TradingPairsCard"
+import SystemHealthCard from "../../components/admin/SystemHealthCard"
 
 // Types
 import {
@@ -758,6 +759,12 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     baseUrl={baseUrl}
                     headers={headers}
                     userRole={userRole}
+                />
+
+                <SystemHealthCard
+                    baseUrl={baseUrl}
+                    headers={headers}
+                    canAccess={userRole === "owner"}
                 />
             </div>
         </div>

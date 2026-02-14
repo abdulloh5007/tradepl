@@ -56,7 +56,9 @@ def format_rights(rights: dict) -> str:
         "sessions": "📊 Sessions",
         "trend": "📈 Trend",
         "events": "🎯 Events",
-        "volatility": "📉 Volatility"
+        "volatility": "📉 Volatility",
+        "kyc_review": "🛂 KYC Review",
+        "deposit_review": "💳 Deposit Review",
     }
     
     active = [names.get(k, k) for k, v in rights.items() if v]

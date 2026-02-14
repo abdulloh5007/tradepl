@@ -127,6 +127,10 @@
     grid-template-columns: 1fr;
   }
 
+  .system-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .risk-actions {
     justify-content: stretch;
   }
@@ -211,6 +215,10 @@
   .session-grid,
   .volatility-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .system-health-grid {
+    grid-template-columns: 1fr;
   }
 
   .direction-btns {
