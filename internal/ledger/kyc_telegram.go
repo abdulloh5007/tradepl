@@ -200,6 +200,12 @@ func formatTelegramKYCReviewCaption(req pendingTelegramKYCReview, ticket string)
 }
 
 func (h *Handler) telegramSendKYCReviewDocument(ctx context.Context, chatID string, req pendingTelegramKYCReview, caption string, withStyle bool) (telegramSentMessage, error) {
+	if !h.telegramRuntimeEnabled() {
+		return telegramSentMessage{}, errors.New("telegram runtime is disabled for api server")
+	}
+	if strings.TrimSpace(h.tgBotToken) == "" {
+		return telegramSentMessage{}, errors.New("telegram bot token is not configured")
+	}
 	markup := telegramInlineKeyboardMarkup{InlineKeyboard: [][]telegramInlineKeyboardButton{{
 		{Text: "✅ Approve KYC", CallbackData: "kyc:approve:" + req.ID, Style: styleIf(withStyle, "success")},
 		{Text: "❌ Reject KYC", CallbackData: "kyc:reject:" + req.ID, Style: styleIf(withStyle, "danger")},

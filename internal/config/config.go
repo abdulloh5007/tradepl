@@ -17,6 +17,7 @@ type Config struct {
 	InternalToken    string
 	WebSocketOrigin  string
 	ProfectMode      string
+	TelegramMode     string
 	TelegramBotToken string
 	TelegramBotName  string
 	OwnerTelegramID  int64
@@ -69,6 +70,13 @@ func Load() (Config, error) {
 	}
 	if c.ProfectMode != "development" && c.ProfectMode != "production" {
 		return c, errors.New("invalid PROFECT_MODE: use development or production")
+	}
+	c.TelegramMode = strings.ToLower(strings.TrimSpace(os.Getenv("TELEGRAM_RUNTIME_MODE")))
+	if c.TelegramMode == "" {
+		c.TelegramMode = "internal"
+	}
+	if c.TelegramMode != "internal" && c.TelegramMode != "external" {
+		return c, errors.New("invalid TELEGRAM_RUNTIME_MODE: use internal or external")
 	}
 	c.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	c.TelegramBotName = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME"))

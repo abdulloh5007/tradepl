@@ -430,6 +430,7 @@ func (h *Handler) RequestKYC(w http.ResponseWriter, r *http.Request, userID stri
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
+	enqueueReviewDispatchTx(r.Context(), tx, "kyc", requestID)
 
 	if err := tx.Commit(r.Context()); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})

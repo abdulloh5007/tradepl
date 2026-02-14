@@ -268,6 +268,12 @@ func formatTelegramDepositReviewCaption(req pendingTelegramDepositReview, ticket
 }
 
 func (h *Handler) telegramSendDepositReviewDocument(ctx context.Context, chatID string, req pendingTelegramDepositReview, caption string, withStyle bool) (telegramSentMessage, error) {
+	if !h.telegramRuntimeEnabled() {
+		return telegramSentMessage{}, errors.New("telegram runtime is disabled for api server")
+	}
+	if strings.TrimSpace(h.tgBotToken) == "" {
+		return telegramSentMessage{}, errors.New("telegram bot token is not configured")
+	}
 	markup := telegramInlineKeyboardMarkup{InlineKeyboard: [][]telegramInlineKeyboardButton{{
 		{Text: "✅ Accept", CallbackData: "dep:approve:" + req.ID, Style: styleIf(withStyle, "success")},
 		{Text: "❌ Reject", CallbackData: "dep:reject:" + req.ID, Style: styleIf(withStyle, "danger")},
@@ -1012,6 +1018,9 @@ func (h *Handler) saveTelegramDepositUpdateOffset(ctx context.Context, offset in
 }
 
 func (h *Handler) telegramCallJSON(ctx context.Context, method string, payload interface{}, out interface{}) error {
+	if !h.telegramRuntimeEnabled() {
+		return errors.New("telegram runtime is disabled for api server")
+	}
 	if strings.TrimSpace(h.tgBotToken) == "" {
 		return errors.New("telegram bot token is not configured")
 	}

@@ -23,6 +23,9 @@ func (h *Handler) telegramBotUsername(ctx context.Context) string {
 	if cached != "" {
 		return cached
 	}
+	if !h.telegramRuntimeEnabled() {
+		return ""
+	}
 	if strings.TrimSpace(h.tgBotToken) == "" {
 		return ""
 	}

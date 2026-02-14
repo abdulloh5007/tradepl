@@ -8,6 +8,7 @@ import (
 	"lv-tradepl/internal/accounts"
 	"lv-tradepl/internal/admin"
 	"lv-tradepl/internal/auth"
+	"lv-tradepl/internal/health"
 	"lv-tradepl/internal/httputil"
 	"lv-tradepl/internal/ledger"
 	"lv-tradepl/internal/marketdata"
@@ -27,6 +28,7 @@ type RouterDeps struct {
 	SessionsHandler   *sessions.Handler
 	VolatilityHandler *volatility.Handler
 	AdminHandler      *admin.Handler
+	HealthHandler     *health.Handler
 	AuthService       *auth.Service
 	InternalToken     string
 	JWTSecret         string
@@ -61,7 +63,41 @@ func NewRouter(d RouterDeps) http.Handler {
 	r.Use(SecurityHeaders)
 	r.Use(RateLimitMiddleware)
 
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		if d.HealthHandler == nil {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		d.HealthHandler.Get(w, r)
+	})
+	r.Get("/health/live", func(w http.ResponseWriter, r *http.Request) {
+		if d.HealthHandler == nil {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		d.HealthHandler.Live(w, r)
+	})
+	r.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+		if d.HealthHandler == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		d.HealthHandler.Ready(w, r)
+	})
+	r.Get("/health/admin", func(w http.ResponseWriter, r *http.Request) {
+		if d.HealthHandler == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		d.HealthHandler.Full(w, r)
+	})
+	r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if d.HealthHandler == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		d.HealthHandler.Metrics(w, r)
+	})
 	r.Route("/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.Get("/mode", d.AuthHandler.Mode)
@@ -294,6 +330,8 @@ func NewRouter(d RouterDeps) http.Handler {
 			r.Use(InternalAuth(d.InternalToken))
 			r.Post("/internal/deposits", d.LedgerHandler.Deposit)
 			r.Post("/internal/withdrawals", d.LedgerHandler.Withdraw)
+			r.Post("/internal/telegram/reviews/deposit/decision", d.LedgerHandler.InternalTelegramDepositDecision)
+			r.Post("/internal/telegram/reviews/kyc/decision", d.LedgerHandler.InternalTelegramKYCDecision)
 		})
 		// Admin routes
 		r.Route("/admin", func(r chi.Router) {

@@ -20,6 +20,7 @@ type Handler struct {
 	faucetEnabled         bool
 	faucetMax             decimal.Decimal
 	tgBotToken            string
+	telegramRuntimeMode   string
 	tgBotUsername         string
 	tgBotUsernameMu       sync.RWMutex
 	ownerTgID             int64
@@ -34,11 +35,16 @@ func NewHandler(
 	faucetEnabled bool,
 	faucetMax decimal.Decimal,
 	tgBotToken string,
+	telegramRuntimeMode string,
 	tgBotUsername string,
 	ownerTelegramID int64,
 	profectMode string,
 	webSocketOrigin string,
 ) *Handler {
+	mode := strings.ToLower(strings.TrimSpace(telegramRuntimeMode))
+	if mode == "" {
+		mode = "internal"
+	}
 	return &Handler{
 		svc:                   svc,
 		store:                 store,
@@ -46,11 +52,16 @@ func NewHandler(
 		faucetEnabled:         faucetEnabled,
 		faucetMax:             faucetMax,
 		tgBotToken:            strings.TrimSpace(tgBotToken),
+		telegramRuntimeMode:   mode,
 		tgBotUsername:         strings.TrimSpace(strings.TrimPrefix(tgBotUsername, "@")),
 		ownerTgID:             ownerTelegramID,
 		telegramNotifyEnabled: strings.EqualFold(strings.TrimSpace(profectMode), "production"),
 		telegramAppBaseURL:    normalizeTelegramAppBaseURL(webSocketOrigin),
 	}
+}
+
+func (h *Handler) telegramRuntimeEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(h.telegramRuntimeMode), "internal")
 }
 
 type movementRequest struct {

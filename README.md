@@ -18,8 +18,14 @@ Run
    - INTERNAL_API_TOKEN
    - WS_ORIGIN
    - PROFECT_MODE (development or production)
+   - TELEGRAM_RUNTIME_MODE (internal or external, default internal; `external` disables Telegram API calls from Go server and expects external bot process)
    - TELEGRAM_BOT_TOKEN (optional, required for Telegram Mini App auth)
    - TELEGRAM_BOT_USERNAME (optional, used to build referral share deep-link; if empty backend will try Telegram getMe by token)
+   - API_BASE_URL (optional, used by `bot` process for internal review callbacks; default http://localhost:8080)
+   - BOT_REVIEW_NOTIFY_CHANNEL (optional, Postgres NOTIFY channel for bot review dispatch; default review_dispatch)
+   - BOT_REVIEW_FALLBACK_SECONDS (optional, fallback resync interval when no notify; default 60)
+   - BOT_REVIEW_LISTENER_RETRY_SECONDS (optional, retry interval for DB listener reconnect; default 10)
+   - BOT_REVIEW_BATCH_LIMIT (optional, max pending review docs sent in one pass; default 20)
    - FAUCET_ENABLED (optional, default true)
    - FAUCET_MAX (optional, default 10000)
    - MARKETDATA_DIR (optional, default empty, example db/marketdata)
@@ -31,8 +37,17 @@ Run
 6) Dev auto-reload (optional)
    - go install github.com/air-verse/air@latest
    - make dev
+7) Telegram bot process (optional, for external Telegram runtime mode)
+   - cd bot
+   - python3 -m venv venv && source venv/bin/activate
+   - pip install -r requirements.txt
+   - python main.py
 
 Notes
+- `GET /health/live` is liveness (fast, no DB check).
+- `GET /health` and `GET /health/ready` are readiness summary (DB ping; HTTP 503 when DB is unreachable).
+- `GET /health/admin` returns full JSON diagnostics (runtime, memory, DB pool snapshot) and requires `X-Internal-Token`.
+- `GET /metrics` returns Prometheus-style metrics and requires `X-Internal-Token`.
 - Market orders are IOC only
 - FOK is rejected
 - WebSocket endpoint is /v1/ws and broadcasts trade events

@@ -221,9 +221,16 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 	amountUZS := amountUSD.Mul(cfg.USDToUZSRate)
 	reviewDue := time.Now().UTC().Add(time.Duration(cfg.RealDepositReviewMinute) * time.Minute)
 
+	tx, err := h.svc.pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	defer tx.Rollback(r.Context())
+
 	var requestID string
 	var ticketNo int64
-	err = h.svc.pool.QueryRow(r.Context(), `
+	err = tx.QueryRow(r.Context(), `
 		INSERT INTO real_deposit_requests (
 			user_id,
 			trading_account_id,
@@ -254,6 +261,11 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 			return
 		}
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	enqueueReviewDispatchTx(r.Context(), tx, "deposit", requestID)
+	if err := tx.Commit(r.Context()); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -291,15 +303,18 @@ func (h *Handler) StartRealDepositApprovalWorker(ctx context.Context) {
 		chatID := strings.TrimSpace(cfg.TelegramDepositChatID)
 		kycChatID := strings.TrimSpace(cfg.TelegramKYCChatID)
 		hasTelegramBot := strings.TrimSpace(h.tgBotToken) != ""
-		useTelegramReview := hasTelegramBot && chatID != ""
-		if hasTelegramBot {
+		hasTelegramReviewConfig := hasTelegramBot && chatID != ""
+		telegramRuntimeEnabled := h.telegramRuntimeEnabled() && hasTelegramBot
+		useTelegramReview := telegramRuntimeEnabled && chatID != ""
+		if telegramRuntimeEnabled {
 			if _, err := h.processTelegramDepositCallbacks(ctx, chatID, kycChatID, 50); err != nil {
 				log.Printf("[deposit-review] failed to process telegram updates: %v", err)
 			}
 		}
-		if !useTelegramReview {
+		shouldProcessDueFallback := !hasTelegramReviewConfig
+		if shouldProcessDueFallback {
 			_, _ = h.processDueRealDepositRequests(ctx, 20)
-		} else {
+		} else if useTelegramReview {
 			if _, err := h.dispatchPendingRealDepositReviewsToTelegram(ctx, chatID, 20); err != nil {
 				if isUndefinedTableError(err) || isUndefinedColumnError(err) {
 					_, _ = h.processDueRealDepositRequests(ctx, 20)
@@ -308,7 +323,7 @@ func (h *Handler) StartRealDepositApprovalWorker(ctx context.Context) {
 				}
 			}
 		}
-		if hasTelegramBot && kycChatID != "" {
+		if telegramRuntimeEnabled && kycChatID != "" {
 			if _, err := h.dispatchPendingKYCReviewsToTelegram(ctx, kycChatID, 20); err != nil {
 				if !isUndefinedTableError(err) && !isUndefinedColumnError(err) {
 					log.Printf("[kyc-review] failed to dispatch pending requests to telegram: %v", err)

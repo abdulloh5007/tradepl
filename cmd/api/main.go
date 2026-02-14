@@ -14,6 +14,7 @@ import (
 	"lv-tradepl/internal/auth"
 	"lv-tradepl/internal/config"
 	"lv-tradepl/internal/db"
+	"lv-tradepl/internal/health"
 	"lv-tradepl/internal/httpserver"
 	"lv-tradepl/internal/ledger"
 	"lv-tradepl/internal/marketdata"
@@ -26,6 +27,7 @@ import (
 )
 
 func main() {
+	startedAt := time.Now().UTC()
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
@@ -64,13 +66,14 @@ func main() {
 		cfg.FaucetEnabled,
 		faucetMax,
 		cfg.TelegramBotToken,
+		cfg.TelegramMode,
 		cfg.TelegramBotName,
 		cfg.OwnerTelegramID,
 		cfg.ProfectMode,
 		cfg.WebSocketOrigin,
 	)
 	orderHandler := orders.NewHandler(orderSvc, accountSvc)
-	if cfg.ProfectMode == "production" {
+	if cfg.ProfectMode == "production" && cfg.TelegramMode == "internal" {
 		orderSvc.SetImportantNotifier(ledgerHandler.NotifyUserImportantTelegram)
 	}
 	marketWS := marketdata.NewMarketWS(cfg.WebSocketOrigin)
@@ -82,6 +85,7 @@ func main() {
 	volStore := volatility.NewStore(pool)
 	volHandler := volatility.NewHandler(volStore)
 	adminHandler := admin.NewHandler(pool, cfg.JWTSecret)
+	healthHandler := health.NewHandler(pool, startedAt, cfg.ProfectMode, cfg.TelegramMode, cfg.HTTPAddr, cfg.InternalToken)
 	wsHandler := httpserver.NewWSHandler(bus, authSvc, accountSvc, orderSvc, cfg.WebSocketOrigin)
 	eventsWSHandler := httpserver.NewEventsWSHandler(bus, cfg.WebSocketOrigin)
 	router := httpserver.NewRouter(httpserver.RouterDeps{
@@ -93,6 +97,7 @@ func main() {
 		SessionsHandler:   sessionsHandler,
 		VolatilityHandler: volHandler,
 		AdminHandler:      adminHandler,
+		HealthHandler:     healthHandler,
 		AuthService:       authSvc,
 		InternalToken:     cfg.InternalToken,
 		JWTSecret:         cfg.JWTSecret,
@@ -120,6 +125,7 @@ func main() {
 	log.Printf("server listening on %s", cfg.HTTPAddr)
 	log.Printf("health endpoint: http://localhost%s/health", cfg.HTTPAddr)
 	log.Printf("auth mode: %s", cfg.ProfectMode)
+	log.Printf("telegram runtime mode: %s", cfg.TelegramMode)
 	if cfg.UIDist != "" {
 		log.Printf("ui dist: %s", cfg.UIDist)
 	}
