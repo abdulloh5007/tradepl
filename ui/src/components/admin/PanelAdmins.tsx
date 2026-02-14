@@ -9,7 +9,13 @@ interface PanelAdminsProps {
     userRole: string | null
 }
 
-const allRights = ["sessions", "volatility", "trend", "events"]
+const allRights = ["sessions", "volatility", "trend", "events", "kyc_review"]
+
+const rightLabel = (value: string) => {
+    const normalized = String(value || "").replace(/_/g, " ").trim()
+    if (!normalized) return value
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
 
 const normalizeRights = (rights: unknown): string[] => {
     if (Array.isArray(rights)) {
@@ -163,7 +169,7 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                         <button key={right}
                             className={`right-chip ${newAdminRights.includes(right) ? 'active' : ''}`}
                             onClick={() => toggleNewAdminRight(right)}>
-                            {right.charAt(0).toUpperCase() + right.slice(1)}
+                            {rightLabel(right)}
                         </button>
                     ))}
                 </div>
@@ -189,7 +195,7 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                             </div>
                         </div>
                         <div className="admin-rights">
-                            {Array.isArray(admin.rights) && admin.rights.map(r => <span key={r} className="right-badge">{r}</span>)}
+                            {Array.isArray(admin.rights) && admin.rights.map(r => <span key={r} className="right-badge">{rightLabel(r)}</span>)}
                         </div>
                         <div className="admin-actions">
                             <button className="edit-admin-btn" onClick={() => startEditing(admin)}>
@@ -234,7 +240,7 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                                                 setEditAdminRights(prev => [...prev, right])
                                             }
                                         }}>
-                                        {right.charAt(0).toUpperCase() + right.slice(1)}
+                                        {rightLabel(right)}
                                     </button>
                                 ))}
                             </div>

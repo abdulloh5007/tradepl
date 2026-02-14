@@ -22,6 +22,7 @@ interface RealDepositRequestModalProps {
 }
 
 const MAX_PROOF_SIZE = 5 * 1024 * 1024
+const DIAMOND_MIN_AMOUNT = 200
 
 const normalizeVoucherKind = (value?: string): VoucherKind => {
   const v = String(value || "").trim().toLowerCase()
@@ -83,6 +84,7 @@ export default function RealDepositRequestModal({
         id: normalizeVoucherKind(v.id),
         percent: Number(v.percent || "0"),
         title: v.title || String(v.id || ""),
+        minAmount: normalizeVoucherKind(v.id) === "diamond" ? DIAMOND_MIN_AMOUNT : 0,
         available: Boolean(allowVouchers && v.available && !v.used && !hasPending),
       }))
       .filter(v => v.id === "gold" || v.id === "diamond")
@@ -94,6 +96,7 @@ export default function RealDepositRequestModal({
 
   const amountNum = Number(amountRaw)
   const amountValid = Number.isFinite(amountNum) && amountNum > 0
+  const amountTooHigh = amountValid && maxAmount > 0 && amountNum > maxAmount
   const withinLimits = amountValid && amountNum >= minAmount && amountNum <= maxAmount
 
   const activeVoucherPercent = useMemo(() => {
@@ -108,12 +111,15 @@ export default function RealDepositRequestModal({
   const amountUZS = amountValid ? amountNum * uzsRate : 0
 
   const resetState = () => {
-    setAmountRaw(minAmount > 0 ? String(minAmount) : "")
-    setAmountDisplay(minAmount > 0 ? formatIntWithSpaces(String(minAmount)) : "")
+    const preferred = normalizeVoucherKind(defaultVoucher)
+    const baseDefaultAmount = minAmount > 0 ? minAmount : 0
+    const forcedAmount = preferred === "diamond" ? Math.max(baseDefaultAmount, DIAMOND_MIN_AMOUNT) : baseDefaultAmount
+    const initialAmount = forcedAmount > 0 ? String(forcedAmount) : ""
+    setAmountRaw(initialAmount)
+    setAmountDisplay(initialAmount ? formatIntWithSpaces(initialAmount) : "")
     setProofFile(null)
     setDragOver(false)
 
-    const preferred = normalizeVoucherKind(defaultVoucher)
     if (preferred !== "none" && availableVoucherIds.includes(preferred)) {
       setVoucherKind(preferred)
       return
@@ -129,7 +135,13 @@ export default function RealDepositRequestModal({
     if (!open) return
     resetState()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultVoucher, status?.eligible_account_id, status?.one_time_used, status?.pending_count])
+  }, [open, defaultVoucher, status?.eligible_account_id, status?.pending_count, status?.vouchers])
+
+  useEffect(() => {
+    if (voucherKind === "diamond" && amountValid && amountNum < DIAMOND_MIN_AMOUNT) {
+      setVoucherKind("none")
+    }
+  }, [voucherKind, amountValid, amountNum])
 
   useEffect(() => {
     if (voucherKind === "none") return
@@ -173,7 +185,7 @@ export default function RealDepositRequestModal({
             <label className="acm-label">
               Amount (USD)
               <input
-                className="acm-input"
+                className={`acm-input ${amountTooHigh ? "rdm-input-error" : ""}`}
                 inputMode="decimal"
                 value={amountDisplay}
                 onChange={e => {
@@ -184,6 +196,11 @@ export default function RealDepositRequestModal({
                 placeholder="100"
               />
             </label>
+            {amountTooHigh ? (
+              <div className="rdm-input-error-text">
+                Amount exceeds maximum allowed ({formatNumber(maxAmount, 2, 2)} USD)
+              </div>
+            ) : null}
 
             <div className="rdm-hints">
               <span>Min: {formatNumber(minAmount, 2, 2)} USD</span>
@@ -200,14 +217,23 @@ export default function RealDepositRequestModal({
               </button>
               {vouchers.map(v => {
                 const selected = voucherKind === v.id
-                const disabled = !v.available
+                const amountBlocked = v.id === "diamond" && amountValid && amountNum < DIAMOND_MIN_AMOUNT
+                const disabled = !v.available || amountBlocked
                 return (
                   <button
                     key={v.id}
                     type="button"
                     className={`rdm-voucher-btn ${selected ? "active" : ""}`}
                     disabled={disabled}
-                    onClick={() => setVoucherKind(v.id)}
+                    onClick={() => {
+                      if (v.id === "diamond" && amountNum < DIAMOND_MIN_AMOUNT) {
+                        const forced = normalizeAmountInput(String(DIAMOND_MIN_AMOUNT))
+                        setAmountRaw(forced.raw)
+                        setAmountDisplay(forced.display)
+                        return
+                      }
+                      setVoucherKind(v.id)
+                    }}
                   >
                     <Gift size={14} />
                     <span>{v.title}</span>
@@ -215,6 +241,9 @@ export default function RealDepositRequestModal({
                   </button>
                 )
               })}
+            </div>
+            <div className="acm-note" style={{ textAlign: "left" }}>
+              Diamond +50% is available only from {formatNumber(DIAMOND_MIN_AMOUNT, 0, 0)} USD deposit.
             </div>
 
             <div className="rdm-calc-card">
@@ -302,6 +331,10 @@ export default function RealDepositRequestModal({
             onClick={async () => {
               if (!withinLimits) {
                 toast.error(`Amount must be between ${formatNumber(minAmount, 2, 2)} and ${formatNumber(maxAmount, 2, 2)} USD`)
+                return
+              }
+              if (voucherKind === "diamond" && amountNum < DIAMOND_MIN_AMOUNT) {
+                toast.error(`Diamond voucher requires at least ${formatNumber(DIAMOND_MIN_AMOUNT, 0, 0)} USD deposit`)
                 return
               }
               if (!proofFile) {

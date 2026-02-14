@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react"
-import type { DepositBonusStatus, SignupBonusStatus, UserProfile } from "../api"
-import type { Lang, MarketConfig, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
-import { AccountsPage, ApiPage, FaucetPage, HistoryPage, PositionsPage, ProfilePage, TradingPage } from "../pages"
+import type { DepositBonusStatus, KYCStatus, ReferralStatus, SignupBonusStatus, UserProfile } from "../api"
+import type { AppNotification, Lang, MarketConfig, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
+import { AccountsPage, ApiPage, FaucetPage, HistoryPage, NotificationsPage, PositionsPage, ProfilePage, TradingPage } from "../pages"
 import type { AccountSnapshot } from "./accounts/types"
 
 type CandlePoint = { time: number; open: number; high: number; low: number; close: number }
@@ -58,7 +58,24 @@ interface AppViewRouterProps {
     voucherKind: "none" | "gold" | "diamond"
     proofFile: File
   }) => Promise<void>
+  kycStatus: KYCStatus | null
+  onRequestKYC: (payload: {
+    documentType: "passport" | "id_card" | "driver_license" | "other"
+    fullName: string
+    documentNumber: string
+    residenceAddress: string
+    notes?: string
+    proofFile: File
+  }) => Promise<void>
+  referralStatus: ReferralStatus | null
+  onReferralWithdraw: (amountUSD?: string) => Promise<void>
+  onRefreshReferral: () => Promise<void> | void
   onGoTrade: () => void
+  hasUnreadNotifications: boolean
+  onOpenNotifications: () => void
+  notifications: AppNotification[]
+  onBackFromNotifications: () => void
+  onMarkAllNotificationsRead: () => void
   profile: UserProfile | null
   setLang: (lang: Lang) => void
   setTheme: (theme: Theme) => void
@@ -117,7 +134,17 @@ export default function AppViewRouter({
   depositBonus,
   onClaimSignupBonus,
   onRequestRealDeposit,
+  kycStatus,
+  onRequestKYC,
+  referralStatus,
+  onReferralWithdraw,
+  onRefreshReferral,
   onGoTrade,
+  hasUnreadNotifications,
+  onOpenNotifications,
+  notifications,
+  onBackFromNotifications,
+  onMarkAllNotificationsRead,
   profile,
   setLang,
   setTheme,
@@ -205,10 +232,27 @@ export default function AppViewRouter({
         depositBonus={depositBonus}
         onClaimSignupBonus={onClaimSignupBonus}
         onRequestRealDeposit={onRequestRealDeposit}
+        kycStatus={kycStatus}
+        onRequestKYC={onRequestKYC}
+        referralStatus={referralStatus}
+        onReferralWithdraw={onReferralWithdraw}
+        onRefreshReferral={onRefreshReferral}
         onCloseAll={async () => {
           await onCloseAll()
         }}
         onGoTrade={onGoTrade}
+        hasUnreadNotifications={hasUnreadNotifications}
+        onOpenNotifications={onOpenNotifications}
+      />
+    )
+  }
+
+  if (view === "notifications") {
+    return (
+      <NotificationsPage
+        items={notifications}
+        onBack={onBackFromNotifications}
+        onMarkAllRead={onMarkAllNotificationsRead}
       />
     )
   }

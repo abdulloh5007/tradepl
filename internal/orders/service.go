@@ -22,16 +22,33 @@ import (
 )
 
 type Service struct {
-	pool       *pgxpool.Pool
-	store      *Store
-	ledger     *ledger.Service
-	market     *marketdata.Store
-	match      *matching.Engine
-	accountSvc *accounts.Service
+	pool              *pgxpool.Pool
+	store             *Store
+	ledger            *ledger.Service
+	market            *marketdata.Store
+	match             *matching.Engine
+	accountSvc        *accounts.Service
+	importantNotifier func(ctx context.Context, userID, title, message, target string)
 }
 
 func NewService(pool *pgxpool.Pool, store *Store, ledgerSvc *ledger.Service, market *marketdata.Store, match *matching.Engine, accountSvc *accounts.Service) *Service {
 	return &Service{pool: pool, store: store, ledger: ledgerSvc, market: market, match: match, accountSvc: accountSvc}
+}
+
+func (s *Service) SetImportantNotifier(fn func(ctx context.Context, userID, title, message, target string)) {
+	s.importantNotifier = fn
+}
+
+func (s *Service) notifyImportant(userID, title, message, target string) {
+	if s.importantNotifier == nil {
+		return
+	}
+	if strings.TrimSpace(userID) == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	s.importantNotifier(ctx, userID, title, message, target)
 }
 
 type PlaceOrderRequest struct {
@@ -549,6 +566,12 @@ func (s *Service) GetAccountMetricsByAccount(ctx context.Context, userID, accoun
 			positions = refreshedPositions
 			leveragedAccount = autoDowngradedLeverage
 			metrics.SystemNotice = "System changed leverage to 1:2000 because balance exceeded 1000 USD."
+			s.notifyImportant(
+				userID,
+				"Leverage changed by system",
+				"Your leverage was automatically changed to 1:2000 because balance exceeded 1000 USD.",
+				"#notifications",
+			)
 		}
 	}
 
@@ -564,6 +587,12 @@ func (s *Service) GetAccountMetricsByAccount(ctx context.Context, userID, accoun
 			}
 			metrics = refreshed
 			metrics.SystemNotice = "System auto-closed all orders: equity dropped below 0 in unlimited mode. Balance reset to 0."
+			s.notifyImportant(
+				userID,
+				"Auto-close executed",
+				"System auto-closed all open positions in unlimited mode and reset balance to 0.",
+				"#notifications",
+			)
 		}
 	}
 
@@ -573,6 +602,12 @@ func (s *Service) GetAccountMetricsByAccount(ctx context.Context, userID, accoun
 			refreshed, _, refreshErr := s.computeAccountMetricsByAccount(ctx, userID, accountID)
 			if refreshErr == nil {
 				refreshed.SystemNotice = metrics.SystemNotice
+				s.notifyImportant(
+					userID,
+					"Stop out executed",
+					"System closed one or more losing positions to recover margin level.",
+					"#notifications",
+				)
 				return refreshed, nil
 			}
 		}
@@ -1387,8 +1422,12 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 			ticket = formatSystemCoverTicket(accountMode, sequence, entryID)
 		} else if eventType == string(types.LedgerEntryTypeDeposit) && isSignupRewardRef(txRef) {
 			ticket = formatRewardTicket(accountMode, sequence, entryID)
+		} else if eventType == string(types.LedgerEntryTypeDeposit) && isKYCRewardRef(txRef) {
+			ticket = formatKYCRewardTicket(accountMode, sequence, entryID)
 		} else if eventType == string(types.LedgerEntryTypeDeposit) && isDepositBonusRef(txRef) {
 			ticket = formatDepositBonusTicket(accountMode, sequence, entryID)
+		} else if isReferralRef(txRef) {
+			ticket = formatReferralTicket(accountMode, sequence, entryID)
 		}
 
 		closeTime := createdAt
@@ -1607,10 +1646,22 @@ func formatRewardTicket(accountMode string, sequence int64, seed string) string 
 	return modeTicketPrefix(accountMode) + "BXrew" + digits + letters
 }
 
+func formatKYCRewardTicket(accountMode string, sequence int64, seed string) string {
+	digits := normalizeTicketNumber(sequence, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("cash:kyc_reward:%d:%s", sequence, seed))
+	return modeTicketPrefix(accountMode) + "BXkyc" + digits + letters
+}
+
 func formatDepositBonusTicket(accountMode string, sequence int64, seed string) string {
 	digits := normalizeTicketNumber(sequence, seed)
 	letters := ticketSeedLetters(fmt.Sprintf("cash:deposit_bonus:%d:%s", sequence, seed))
 	return modeTicketPrefix(accountMode) + "BXbon" + digits + letters
+}
+
+func formatReferralTicket(accountMode string, sequence int64, seed string) string {
+	digits := normalizeTicketNumber(sequence, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("cash:referral:%d:%s", sequence, seed))
+	return modeTicketPrefix(accountMode) + "BXref" + digits + letters
 }
 
 func isUndefinedTableError(err error) bool {
@@ -1628,9 +1679,19 @@ func isSignupRewardRef(ref string) bool {
 	return strings.HasPrefix(ref, "signup_reward")
 }
 
+func isKYCRewardRef(ref string) bool {
+	ref = strings.ToLower(strings.TrimSpace(ref))
+	return strings.HasPrefix(ref, "kyc_reward")
+}
+
 func isDepositBonusRef(ref string) bool {
 	ref = strings.ToLower(strings.TrimSpace(ref))
 	return strings.HasPrefix(ref, "deposit_bonus:")
+}
+
+func isReferralRef(ref string) bool {
+	ref = strings.ToLower(strings.TrimSpace(ref))
+	return strings.HasPrefix(ref, "referral_withdraw:")
 }
 
 func (s *Service) CloseOrdersByScope(ctx context.Context, userID, accountID, scope string) (CloseOrdersResult, error) {
@@ -1821,7 +1882,8 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 			}
 		}
 	}
-	if _, coverErr := s.coverNegativeUSDBalance(ctx, tx, userID, accountID, "system_negative_cover_close"); coverErr != nil {
+	coveredNegative, coverErr := s.coverNegativeUSDBalance(ctx, tx, userID, accountID, "system_negative_cover_close")
+	if coverErr != nil {
 		return fmt.Errorf("failed to cover negative balance: %w", coverErr)
 	}
 	realizedSwap, swapErr := s.sumOrderSwapChargesTx(ctx, tx, orderID)
@@ -1847,7 +1909,18 @@ func (s *Service) CancelOrder(ctx context.Context, userID, orderID, accountID st
 	}
 
 	// 9. Commit transaction
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if coveredNegative {
+		s.notifyImportant(
+			userID,
+			"Negative balance covered",
+			"System covered negative balance after position close.",
+			"#notifications",
+		)
+	}
+	return nil
 }
 
 func (s *Service) GetRiskConfig(ctx context.Context) (RiskConfig, error) {

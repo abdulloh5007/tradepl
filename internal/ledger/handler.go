@@ -3,6 +3,7 @@ package ledger
 import (
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
@@ -13,13 +14,17 @@ import (
 )
 
 type Handler struct {
-	svc           *Service
-	store         *marketdata.Store
-	accountSvc    *accounts.Service
-	faucetEnabled bool
-	faucetMax     decimal.Decimal
-	tgBotToken    string
-	ownerTgID     int64
+	svc                   *Service
+	store                 *marketdata.Store
+	accountSvc            *accounts.Service
+	faucetEnabled         bool
+	faucetMax             decimal.Decimal
+	tgBotToken            string
+	tgBotUsername         string
+	tgBotUsernameMu       sync.RWMutex
+	ownerTgID             int64
+	telegramNotifyEnabled bool
+	telegramAppBaseURL    string
 }
 
 func NewHandler(
@@ -29,16 +34,22 @@ func NewHandler(
 	faucetEnabled bool,
 	faucetMax decimal.Decimal,
 	tgBotToken string,
+	tgBotUsername string,
 	ownerTelegramID int64,
+	profectMode string,
+	webSocketOrigin string,
 ) *Handler {
 	return &Handler{
-		svc:           svc,
-		store:         store,
-		accountSvc:    accountSvc,
-		faucetEnabled: faucetEnabled,
-		faucetMax:     faucetMax,
-		tgBotToken:    strings.TrimSpace(tgBotToken),
-		ownerTgID:     ownerTelegramID,
+		svc:                   svc,
+		store:                 store,
+		accountSvc:            accountSvc,
+		faucetEnabled:         faucetEnabled,
+		faucetMax:             faucetMax,
+		tgBotToken:            strings.TrimSpace(tgBotToken),
+		tgBotUsername:         strings.TrimSpace(strings.TrimPrefix(tgBotUsername, "@")),
+		ownerTgID:             ownerTelegramID,
+		telegramNotifyEnabled: strings.EqualFold(strings.TrimSpace(profectMode), "production"),
+		telegramAppBaseURL:    normalizeTelegramAppBaseURL(webSocketOrigin),
 	}
 }
 

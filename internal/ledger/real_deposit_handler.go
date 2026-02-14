@@ -39,6 +39,7 @@ type realDepositRequestResponse struct {
 }
 
 type dueDepositRequest struct {
+	TicketNo         int64
 	ID               string
 	UserID           string
 	TradingAccountID string
@@ -73,8 +74,8 @@ func (h *Handler) DepositBonusStatus(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
-	oneTimeUsed := false
-	if err := h.svc.pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM deposit_bonus_claims WHERE user_id = $1)`, userID).Scan(&oneTimeUsed); err != nil {
+	usedVouchers, err := h.loadUsedDepositVoucherMap(r.Context(), userID)
+	if err != nil {
 		if isUndefinedTableError(err) {
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "deposit bonus is unavailable: run migrations"})
 			return
@@ -82,6 +83,9 @@ func (h *Handler) DepositBonusStatus(w http.ResponseWriter, r *http.Request, use
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
+	goldUsed := usedVouchers["gold"]
+	diamondUsed := usedVouchers["diamond"]
+	allVouchersUsed := goldUsed && diamondUsed
 
 	var pendingCount int
 	var nextDue *time.Time
@@ -105,19 +109,19 @@ func (h *Handler) DepositBonusStatus(w http.ResponseWriter, r *http.Request, use
 		nextDue = &t
 	}
 
-	available := !oneTimeUsed && strings.TrimSpace(eligibleAccountID) != ""
+	available := strings.TrimSpace(eligibleAccountID) != ""
 	resp := depositBonusStatusResponse{
 		MinAmountUSD:      cfg.RealDepositMinUSD.StringFixed(2),
 		MaxAmountUSD:      cfg.RealDepositMaxUSD.StringFixed(2),
 		USDToUZSRate:      cfg.USDToUZSRate.StringFixed(2),
 		ReviewMinutes:     cfg.RealDepositReviewMinute,
-		OneTimeUsed:       oneTimeUsed,
+		OneTimeUsed:       allVouchersUsed,
 		PendingCount:      pendingCount,
 		NextReviewDueAt:   nextDue,
 		EligibleAccountID: eligibleAccountID,
 		Vouchers: []depositVoucherStatus{
-			{ID: "gold", Title: voucherTitle("gold"), Percent: "100", Available: available, Used: oneTimeUsed},
-			{ID: "diamond", Title: voucherTitle("diamond"), Percent: "50", Available: available, Used: oneTimeUsed},
+			{ID: "gold", Title: voucherTitle("gold"), Percent: "100", Available: available && !goldUsed, Used: goldUsed},
+			{ID: "diamond", Title: voucherTitle("diamond"), Percent: "50", Available: available && !diamondUsed, Used: diamondUsed},
 		},
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
@@ -172,8 +176,9 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 		voucherKind = "none"
 		percent = decimal.Zero
 	}
-	oneTimeUsed := false
-	if err := h.svc.pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM deposit_bonus_claims WHERE user_id = $1)`, userID).Scan(&oneTimeUsed); err != nil {
+
+	usedVouchers, err := h.loadUsedDepositVoucherMap(r.Context(), userID)
+	if err != nil {
 		if isUndefinedTableError(err) {
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "deposit bonus is unavailable: run migrations"})
 			return
@@ -181,9 +186,18 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
-	if oneTimeUsed {
+	if voucherKind != "none" && usedVouchers[voucherKind] {
 		voucherKind = "none"
 		percent = decimal.Zero
+	}
+	if voucherKind != "none" {
+		minVoucherAmount := voucherMinAmountUSD(voucherKind)
+		if minVoucherAmount.GreaterThan(decimal.Zero) && amountUSD.LessThan(minVoucherAmount) {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{
+				Error: fmt.Sprintf("%s voucher requires minimum %s USD deposit", voucherKind, minVoucherAmount.StringFixed(2)),
+			})
+			return
+		}
 	}
 
 	proofName := strings.TrimSpace(req.ProofName)
@@ -243,9 +257,17 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
+	ticket := formatRealDepositTicket(ticketNo, requestID)
+	h.notifyUserTelegramAsync(
+		userID,
+		"Deposit request received",
+		fmt.Sprintf("Request %s was sent for review. Amount: %s USD.", ticket, amountUSD.StringFixed(2)),
+		"#notifications",
+	)
+
 	httputil.WriteJSON(w, http.StatusCreated, realDepositRequestResponse{
 		RequestID:      requestID,
-		Ticket:         formatRealDepositTicket(ticketNo, requestID),
+		Ticket:         ticket,
 		Status:         "pending",
 		ReviewDueAt:    reviewDue,
 		AmountUSD:      amountUSD.StringFixed(2),
@@ -267,24 +289,31 @@ func (h *Handler) StartRealDepositApprovalWorker(ctx context.Context) {
 		}
 
 		chatID := strings.TrimSpace(cfg.TelegramDepositChatID)
+		kycChatID := strings.TrimSpace(cfg.TelegramKYCChatID)
 		hasTelegramBot := strings.TrimSpace(h.tgBotToken) != ""
 		useTelegramReview := hasTelegramBot && chatID != ""
 		if hasTelegramBot {
-			if _, err := h.processTelegramDepositCallbacks(ctx, chatID, 50); err != nil {
+			if _, err := h.processTelegramDepositCallbacks(ctx, chatID, kycChatID, 50); err != nil {
 				log.Printf("[deposit-review] failed to process telegram updates: %v", err)
 			}
 		}
 		if !useTelegramReview {
 			_, _ = h.processDueRealDepositRequests(ctx, 20)
-			return
-		}
-
-		if _, err := h.dispatchPendingRealDepositReviewsToTelegram(ctx, chatID, 20); err != nil {
-			if isUndefinedTableError(err) || isUndefinedColumnError(err) {
-				_, _ = h.processDueRealDepositRequests(ctx, 20)
-				return
+		} else {
+			if _, err := h.dispatchPendingRealDepositReviewsToTelegram(ctx, chatID, 20); err != nil {
+				if isUndefinedTableError(err) || isUndefinedColumnError(err) {
+					_, _ = h.processDueRealDepositRequests(ctx, 20)
+				} else {
+					log.Printf("[deposit-review] failed to dispatch pending requests to telegram: %v", err)
+				}
 			}
-			log.Printf("[deposit-review] failed to dispatch pending requests to telegram: %v", err)
+		}
+		if hasTelegramBot && kycChatID != "" {
+			if _, err := h.dispatchPendingKYCReviewsToTelegram(ctx, kycChatID, 20); err != nil {
+				if !isUndefinedTableError(err) && !isUndefinedColumnError(err) {
+					log.Printf("[kyc-review] failed to dispatch pending requests to telegram: %v", err)
+				}
+			}
 		}
 	}
 	run()
@@ -329,6 +358,7 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 	req := dueDepositRequest{}
 	err = tx.QueryRow(ctx, `
 		SELECT
+			ticket_no,
 			id::text,
 			user_id::text,
 			trading_account_id::text,
@@ -342,6 +372,7 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 		FOR UPDATE SKIP LOCKED
 		LIMIT 1
 	`).Scan(
+		&req.TicketNo,
 		&req.ID,
 		&req.UserID,
 		&req.TradingAccountID,
@@ -368,6 +399,13 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 			if commitErr := tx.Commit(ctx); commitErr != nil {
 				return false, commitErr
 			}
+			ticket := formatRealDepositTicket(req.TicketNo, req.ID)
+			h.notifyUserTelegramAsync(
+				req.UserID,
+				"Deposit request rejected",
+				fmt.Sprintf("Request %s was rejected: account was not found.", ticket),
+				"#notifications",
+			)
 			return true, nil
 		}
 		return false, err
@@ -379,6 +417,13 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return false, commitErr
 		}
+		ticket := formatRealDepositTicket(req.TicketNo, req.ID)
+		h.notifyUserTelegramAsync(
+			req.UserID,
+			"Deposit request rejected",
+			fmt.Sprintf("Request %s was rejected: account type is not real.", ticket),
+			"#notifications",
+		)
 		return true, nil
 	}
 
@@ -415,7 +460,7 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 				bonus_percent,
 				bonus_amount_usd
 			) VALUES ($1, $2, $3, $4, $5, $6)
-			ON CONFLICT (user_id) DO NOTHING
+			ON CONFLICT (user_id, voucher_kind) DO NOTHING
 			RETURNING id::text
 		`, req.UserID, req.TradingAccountID, req.ID, voucherKind, voucherPercent(voucherKind), req.BonusAmountUSD).Scan(&claimID)
 		if claimErr != nil && !errors.Is(claimErr, pgx.ErrNoRows) {
@@ -433,6 +478,17 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 	}
 
 	totalCredit := req.AmountUSD.Add(appliedBonusAmount)
+	referralCommission, referralInviterID, referralErr := h.applyReferralDepositCommissionTx(
+		ctx,
+		tx,
+		req.UserID,
+		req.TradingAccountID,
+		req.AmountUSD,
+		"real_deposit_request:"+req.ID,
+	)
+	if referralErr != nil {
+		return false, referralErr
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE real_deposit_requests
 		SET status = 'approved',
@@ -450,6 +506,30 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
+	if referralCommission.GreaterThan(decimal.Zero) && strings.TrimSpace(referralInviterID) != "" {
+		h.notifyUserTelegramAsync(
+			referralInviterID,
+			"Referral commission credited",
+			fmt.Sprintf(
+				"You received %s USD (10%%) from referred user's deposit.",
+				referralCommission.StringFixed(2),
+			),
+			"#notifications",
+		)
+	}
+	ticket := formatRealDepositTicket(req.TicketNo, req.ID)
+	h.notifyUserTelegramAsync(
+		req.UserID,
+		"Deposit request approved",
+		fmt.Sprintf(
+			"Request %s approved: +%s USD (bonus %s, total %s USD).",
+			ticket,
+			req.AmountUSD.StringFixed(2),
+			appliedBonusAmount.StringFixed(2),
+			totalCredit.StringFixed(2),
+		),
+		"#notifications",
+	)
 	return true, nil
 }
 
@@ -486,6 +566,37 @@ func (h *Handler) resolvePreferredRealAccountID(ctx context.Context, userID, pre
 		return "", err
 	}
 	return id, nil
+}
+
+func (h *Handler) loadUsedDepositVoucherMap(ctx context.Context, userID string) (map[string]bool, error) {
+	used := map[string]bool{
+		"gold":    false,
+		"diamond": false,
+	}
+	rows, err := h.svc.pool.Query(ctx, `
+		SELECT voucher_kind
+		FROM deposit_bonus_claims
+		WHERE user_id = $1
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var kind string
+		if err := rows.Scan(&kind); err != nil {
+			return nil, err
+		}
+		k := normalizeVoucherKind(kind)
+		if k == "gold" || k == "diamond" {
+			used[k] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return used, nil
 }
 
 func formatRealDepositTicket(ticketNo int64, seed string) string {

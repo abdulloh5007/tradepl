@@ -1,0 +1,76 @@
+.kyc-form {
+  gap: 12px;
+}
+
+.kyc-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.kyc-dropzone {
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.38);
+  padding: 14px 12px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.kyc-dropzone.drag-over {
+  border-color: rgba(56, 189, 248, 0.8);
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.kyc-drop-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+
+.kyc-drop-sub {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.kyc-choose-btn {
+  margin-top: 2px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  border-radius: 9px;
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.kyc-choose-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kyc-file-input {
+  display: none;
+}
+
+.kyc-proof-picked {
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.15);
+  max-width: 100%;
+}
+
+.kyc-proof-picked span {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

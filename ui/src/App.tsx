@@ -2,17 +2,17 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { toast, Toaster } from "sonner"
 
 // Types
-import type { Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics } from "./types"
+import type { AppNotification, Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics } from "./types"
 
 // Utils
 import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId, storedTimeframe } from "./utils/cookies"
-import { normalizeBaseUrl, toDisplayCandle } from "./utils/format"
+import { formatNumber, normalizeBaseUrl, toDisplayCandle } from "./utils/format"
 import { t } from "./utils/i18n"
 import { calcDisplayedOrderProfit } from "./utils/trading"
 import { useMarketWebSocket } from "./hooks/useMarketWebSocket"
 
 // API
-import { createApiClient, type DepositBonusStatus, type SignupBonusStatus, type UserProfile } from "./api"
+import { createApiClient, type DepositBonusStatus, type KYCStatus, type ReferralStatus, type SignupBonusStatus, type UserProfile } from "./api"
 
 // Components
 import BottomNav from "./components/BottomNav"
@@ -30,13 +30,15 @@ const timeframes = ["1m", "5m", "10m", "15m", "30m", "1h"]
 const candleLimit = 1000   // Initial load
 const lazyLoadLimit = 500  // Load more when scrolling
 const historyPageLimit = 50
+const notificationsStorageKey = "lv_notifications_v1"
+const notificationsLimit = 200
 
 type PollKey = "metrics" | "orders"
 type PollBackoffState = Record<PollKey, { failures: number; retryAt: number }>
 
 function resolveView(): View {
   const hash = typeof window !== "undefined" ? window.location.hash.replace("#", "") : ""
-  if (hash === "positions" || hash === "history" || hash === "accounts" || hash === "profile" || hash === "api" || hash === "faucet") return hash
+  if (hash === "positions" || hash === "history" || hash === "accounts" || hash === "notifications" || hash === "profile" || hash === "api" || hash === "faucet") return hash
   if (hash === "balance") return "positions"
   return "chart"
 }
@@ -48,6 +50,106 @@ function telegramInitData(): string {
 
 function isTelegramMiniApp(): boolean {
   return telegramInitData().length > 0
+}
+
+function isCashFlowHistoryOrder(order: Order): boolean {
+  const side = String(order.side || "").toLowerCase()
+  const type = String(order.type || "").toLowerCase()
+  return side === "deposit" || side === "withdraw" || type === "balance"
+}
+
+function historyNotificationFromOrder(order: Order): { kind: AppNotification["kind"]; title: string; message: string } | null {
+  const ticket = String(order.ticket || "").toLowerCase()
+  const side = String(order.side || "").toLowerCase()
+  const type = String(order.type || "").toLowerCase()
+  const amount = Number(order.profit || 0)
+  const amountAbs = formatNumber(Math.abs(Number.isFinite(amount) ? amount : 0), 2, 2)
+
+  if (isCashFlowHistoryOrder(order)) {
+    if (ticket.includes("bxdepstm")) {
+      return {
+        kind: "system",
+        title: "Negative balance protection",
+        message: `System covered ${amountAbs} USD after stop-out.`,
+      }
+    }
+    if (ticket.includes("bxkyc")) {
+      return {
+        kind: "bonus",
+        title: "KYC bonus credited",
+        message: `${amountAbs} USD identity verification bonus added to your account.`,
+      }
+    }
+    if (ticket.includes("bxrew")) {
+      return {
+        kind: "bonus",
+        title: "Welcome bonus credited",
+        message: `${amountAbs} USD signup bonus added to your account.`,
+      }
+    }
+    if (ticket.includes("bxbon")) {
+      return {
+        kind: "bonus",
+        title: "Deposit voucher bonus credited",
+        message: `${amountAbs} USD voucher bonus added to your account.`,
+      }
+    }
+    if (ticket.includes("bxref")) {
+      return {
+        kind: "bonus",
+        title: "Referral balance payout",
+        message: `${amountAbs} USD moved from referral balance to trading account.`,
+      }
+    }
+    if (side === "withdraw") {
+      return {
+        kind: "deposit",
+        title: "Withdrawal posted",
+        message: `${amountAbs} USD withdrawal recorded in account history.`,
+      }
+    }
+    return {
+      kind: "deposit",
+      title: "Balance updated",
+      message: `${amountAbs} USD deposit posted to your account.`,
+    }
+  }
+
+  if (type === "swap") {
+    return {
+      kind: "news",
+      title: "Swap update",
+      message: `${amountAbs} USD swap ${amount >= 0 ? "credited" : "charged"}.`,
+    }
+  }
+
+  return null
+}
+
+function readStoredNotifications(): AppNotification[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(notificationsStorageKey)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item: any) => item && typeof item === "object")
+      .map((item: any) => ({
+        id: String(item.id || ""),
+        kind: item.kind === "system" || item.kind === "bonus" || item.kind === "deposit" || item.kind === "news" ? item.kind : "news",
+        title: String(item.title || ""),
+        message: String(item.message || ""),
+        created_at: String(item.created_at || ""),
+        read: Boolean(item.read),
+        dedupe_key: item.dedupe_key ? String(item.dedupe_key) : undefined,
+        account_id: item.account_id ? String(item.account_id) : undefined,
+      }))
+      .filter((item: AppNotification) => item.id && item.title && item.message)
+      .slice(0, notificationsLimit)
+  } catch {
+    return []
+  }
 }
 
 export default function App() {
@@ -116,19 +218,30 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [signupBonus, setSignupBonus] = useState<SignupBonusStatus | null>(null)
   const [depositBonus, setDepositBonus] = useState<DepositBonusStatus | null>(null)
+  const [kycStatus, setKycStatus] = useState<KYCStatus | null>(null)
+  const [referralStatus, setReferralStatus] = useState<ReferralStatus | null>(null)
+  const [notifications, setNotifications] = useState<AppNotification[]>(readStoredNotifications)
   const telegramRedirectedRef = useRef(false)
+  const telegramWriteAccessRequestedRef = useRef(false)
+  const signupBonusStateRef = useRef<{ canClaim: boolean; claimed: boolean }>({ canClaim: false, claimed: false })
+  const depositPendingByAccountRef = useRef<Record<string, { initialized: boolean; pending: number }>>({})
+  const seenHistoryNotificationsRef = useRef<Record<string, true>>({})
+  const historyNotificationSeededRef = useRef<Record<string, boolean>>({})
 
   const logout = useCallback(() => {
     setToken("")
     setProfile(null)
     setTelegramAuthError("")
     telegramRedirectedRef.current = false
+    telegramWriteAccessRequestedRef.current = false
     setActiveAccountId("")
     setAccounts([])
     setOpenOrders([])
     setOrderHistory([])
     setSignupBonus(null)
     setDepositBonus(null)
+    setKycStatus(null)
+    setReferralStatus(null)
     setHistoryAccountId("")
     setMetricsAccountId("")
     setOrdersAccountId("")
@@ -141,7 +254,50 @@ export default function App() {
     setCookie("lv_token", "")
     setCookie("lv_account_id", "")
     systemNoticeByAccountRef.current = {}
+    signupBonusStateRef.current = { canClaim: false, claimed: false }
+    depositPendingByAccountRef.current = {}
+    seenHistoryNotificationsRef.current = {}
+    historyNotificationSeededRef.current = {}
+    setNotifications([])
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(notificationsStorageKey)
+    }
   }, [])
+
+  const addNotification = useCallback((payload: {
+    kind: AppNotification["kind"]
+    title: string
+    message: string
+    accountID?: string
+    dedupeKey?: string
+  }) => {
+    const title = String(payload.title || "").trim()
+    const message = String(payload.message || "").trim()
+    if (!title || !message) return
+
+    setNotifications(prev => {
+      if (payload.dedupeKey && prev.some(item => item.dedupe_key === payload.dedupeKey)) {
+        return prev
+      }
+      const nextItem: AppNotification = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        kind: payload.kind,
+        title,
+        message,
+        created_at: new Date().toISOString(),
+        read: false,
+        dedupe_key: payload.dedupeKey,
+        account_id: payload.accountID,
+      }
+      return [nextItem, ...prev].slice(0, notificationsLimit)
+    })
+  }, [])
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications(prev => prev.map(item => (item.read ? item : { ...item, read: true })))
+  }, [])
+
+  const hasUnreadNotifications = useMemo(() => notifications.some(item => !item.read), [notifications])
 
   // Verify session on page load - check if user exists in DB
   useEffect(() => {
@@ -170,6 +326,15 @@ export default function App() {
 
     verifySession()
   }, [baseUrl, token, logout])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(notificationsStorageKey, JSON.stringify(notifications.slice(0, notificationsLimit)))
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [notifications])
 
   // Memoized API client (prevents recreation on every render = fixes lag)
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
@@ -350,6 +515,13 @@ export default function App() {
       const prevNotice = systemNoticeByAccountRef.current[requestAccountId] || ""
       if (prevNotice !== notice) {
         toast.message(notice)
+        addNotification({
+          kind: "system",
+          title: "System notice",
+          message: notice,
+          accountID: requestAccountId,
+          dedupeKey: `system:${requestAccountId}:${notice}`,
+        })
         systemNoticeByAccountRef.current[requestAccountId] = notice
         if (notice.includes("changed leverage to 1:2000")) {
           setAccounts(prev => prev.map(acc => (
@@ -358,7 +530,7 @@ export default function App() {
         }
       }
     }
-  }, [api, activeAccountId])
+  }, [api, activeAccountId, addNotification])
 
   const refreshAccounts = useCallback(async (preferredID?: string) => {
     if (!token) return
@@ -388,24 +560,96 @@ export default function App() {
       setSignupBonus(null)
       return
     }
+    const requestAccountId = activeAccountId
     try {
       const status = await api.signupBonusStatus()
+      if (activeAccountIdRef.current !== requestAccountId) return
       setSignupBonus(status || null)
+
+      const canClaim = Boolean(status?.can_claim && !status?.claimed)
+      const claimed = Boolean(status?.claimed)
+      const prev = signupBonusStateRef.current
+
+      if (canClaim && !prev.canClaim) {
+        const amount = Number(status?.amount || 0)
+        addNotification({
+          kind: "bonus",
+          title: "Welcome bonus available",
+          message: `${formatNumber(amount, 2, 2)} USD is ready to claim on your real standard account.`,
+          accountID: requestAccountId,
+          dedupeKey: `signup:available:${requestAccountId}:${amount}`,
+        })
+      }
+      signupBonusStateRef.current = { canClaim, claimed }
     } catch {
       setSignupBonus(null)
     }
-  }, [api, token])
+  }, [api, token, activeAccountId, addNotification])
 
   const refreshDepositBonus = useCallback(async () => {
     if (!token) {
       setDepositBonus(null)
       return
     }
+    const requestAccountId = activeAccountId
     try {
       const status = await api.depositBonusStatus()
+      if (activeAccountIdRef.current !== requestAccountId) return
       setDepositBonus(status || null)
+
+      const pending = Number(status?.pending_count || 0)
+      const accountKey = requestAccountId || "__global__"
+      const prevState = depositPendingByAccountRef.current[accountKey] || { initialized: false, pending: 0 }
+      if (!prevState.initialized) {
+        depositPendingByAccountRef.current[accountKey] = { initialized: true, pending }
+        return
+      }
+
+      if (pending > prevState.pending) {
+        addNotification({
+          kind: "deposit",
+          title: "Deposit request pending",
+          message: `You have ${pending} deposit request(s) under review.`,
+          accountID: requestAccountId,
+        })
+      } else if (pending < prevState.pending) {
+        addNotification({
+          kind: "deposit",
+          title: "Deposit request reviewed",
+          message: "One of your deposit requests was reviewed. Check History for result.",
+          accountID: requestAccountId,
+        })
+      }
+
+      depositPendingByAccountRef.current[accountKey] = { initialized: true, pending }
     } catch {
       setDepositBonus(null)
+    }
+  }, [api, token, activeAccountId, addNotification])
+
+  const refreshKYCStatus = useCallback(async () => {
+    if (!token) {
+      setKycStatus(null)
+      return
+    }
+    try {
+      const status = await api.kycStatus()
+      setKycStatus(status || null)
+    } catch {
+      setKycStatus(null)
+    }
+  }, [api, token])
+
+  const refreshReferralStatus = useCallback(async () => {
+    if (!token) {
+      setReferralStatus(null)
+      return
+    }
+    try {
+      const status = await api.referralStatus()
+      setReferralStatus(status || null)
+    } catch {
+      setReferralStatus(null)
     }
   }, [api, token])
 
@@ -460,6 +704,8 @@ export default function App() {
       setOrderHistory([])
       setSignupBonus(null)
       setDepositBonus(null)
+      setKycStatus(null)
+      setReferralStatus(null)
       setHistoryAccountId("")
       setMetricsAccountId("")
       setOrdersAccountId("")
@@ -482,13 +728,17 @@ export default function App() {
     if (!token) {
       setSignupBonus(null)
       setDepositBonus(null)
+      setKycStatus(null)
+      setReferralStatus(null)
       return
     }
     Promise.all([
       refreshSignupBonus().catch(() => { }),
-      refreshDepositBonus().catch(() => { })
+      refreshDepositBonus().catch(() => { }),
+      refreshKYCStatus().catch(() => { }),
+      refreshReferralStatus().catch(() => { })
     ]).catch(() => { })
-  }, [token, activeAccountId, refreshSignupBonus, refreshDepositBonus])
+  }, [token, activeAccountId, refreshSignupBonus, refreshDepositBonus, refreshKYCStatus, refreshReferralStatus])
 
   useEffect(() => {
     let cancelled = false
@@ -573,6 +823,23 @@ export default function App() {
     setView("accounts")
     telegramRedirectedRef.current = true
   }, [token, authFlowMode])
+
+  useEffect(() => {
+    if (authFlowMode !== "production") return
+    if (!token || !isTelegramMiniApp()) return
+    if (telegramWriteAccessRequestedRef.current) return
+    const requestWriteAccess = window.Telegram?.WebApp?.requestWriteAccess
+    if (typeof requestWriteAccess !== "function") return
+
+    telegramWriteAccessRequestedRef.current = true
+    try {
+      requestWriteAccess((allowed) => {
+        authApi.setTelegramWriteAccess(Boolean(allowed)).catch(() => { })
+      })
+    } catch {
+      // Ignore unsupported Telegram clients or runtime errors.
+    }
+  }, [authFlowMode, token, authApi])
 
   // Persist preferences
   useEffect(() => {
@@ -688,6 +955,43 @@ export default function App() {
     historyFailureRef.current = 0
     historyRetryAtRef.current = 0
   }, [activeAccountId, token])
+
+  useEffect(() => {
+    if (!token || !activeAccountId) return
+    if (orderHistory.length === 0) return
+
+    const accountKey = activeAccountId
+    const seenMap = seenHistoryNotificationsRef.current
+    const seeded = historyNotificationSeededRef.current[accountKey] === true
+    const inChronologicalOrder = [...orderHistory].sort((a, b) => {
+      const la = Date.parse(String(a.close_time || a.created_at || "")) || 0
+      const lb = Date.parse(String(b.close_time || b.created_at || "")) || 0
+      return la - lb
+    })
+
+    if (!seeded) {
+      for (const order of inChronologicalOrder) {
+        seenMap[`${accountKey}:${order.id}`] = true
+      }
+      historyNotificationSeededRef.current[accountKey] = true
+      return
+    }
+
+    for (const order of inChronologicalOrder) {
+      const seenKey = `${accountKey}:${order.id}`
+      if (seenMap[seenKey]) continue
+      seenMap[seenKey] = true
+      const next = historyNotificationFromOrder(order)
+      if (!next) continue
+      addNotification({
+        kind: next.kind,
+        title: next.title,
+        message: next.message,
+        accountID: accountKey,
+        dedupeKey: `history:${accountKey}:${order.id}`,
+      })
+    }
+  }, [token, activeAccountId, orderHistory, addNotification])
 
   // Fast polling for account metrics on live trading views.
   useEffect(() => {
@@ -916,6 +1220,7 @@ export default function App() {
     refreshAccountSnapshots().catch(() => { })
     refreshSignupBonus().catch(() => { })
     refreshDepositBonus().catch(() => { })
+    refreshKYCStatus().catch(() => { })
   }
 
   const handleUpdateAccountLeverage = async (accountID: string, leverage: number) => {
@@ -950,11 +1255,21 @@ export default function App() {
     refreshAccountSnapshots().catch(() => { })
     refreshSignupBonus().catch(() => { })
     refreshDepositBonus().catch(() => { })
+    refreshKYCStatus().catch(() => { })
   }
 
   const handleClaimSignupBonus = async () => {
     const claimed = await api.claimSignupBonus({ accept_terms: true })
     setSignupBonus(claimed || null)
+    if (claimed) {
+      addNotification({
+        kind: "bonus",
+        title: "Welcome bonus credited",
+        message: `${formatNumber(Number(claimed.amount || 0), 2, 2)} USD was credited to your account.`,
+        accountID: activeAccountId,
+        dedupeKey: `signup:claimed:${claimed.claimed_at || claimed.trading_account_id || activeAccountId}`,
+      })
+    }
     await refreshAccounts(activeAccountId || claimed?.trading_account_id || "")
     await Promise.all([
       refreshMetrics().catch(() => { }),
@@ -964,6 +1279,7 @@ export default function App() {
     refreshAccountSnapshots().catch(() => { })
     refreshSignupBonus().catch(() => { })
     refreshDepositBonus().catch(() => { })
+    refreshKYCStatus().catch(() => { })
   }
 
   const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
@@ -991,8 +1307,45 @@ export default function App() {
       proof_mime_type: payload.proofFile.type || "application/octet-stream",
       proof_base64: proofBase64,
     })
+    addNotification({
+      kind: "deposit",
+      title: "Deposit request submitted",
+      message: `${formatNumber(Number(payload.amountUSD || 0), 2, 2)} USD submitted for review.`,
+      accountID: activeAccountId,
+    })
     await Promise.all([
       refreshDepositBonus().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { }),
+    ])
+  }
+
+  const handleRequestKYC = async (payload: {
+    documentType: "passport" | "id_card" | "driver_license" | "other"
+    fullName: string
+    documentNumber: string
+    residenceAddress: string
+    notes?: string
+    proofFile: File
+  }) => {
+    const proofBase64 = await fileToBase64(payload.proofFile)
+    await api.requestKYC({
+      document_type: payload.documentType,
+      full_name: payload.fullName,
+      document_number: payload.documentNumber,
+      residence_address: payload.residenceAddress,
+      notes: payload.notes || "",
+      proof_file_name: payload.proofFile.name,
+      proof_mime_type: payload.proofFile.type || "application/octet-stream",
+      proof_base64: proofBase64,
+    })
+    addNotification({
+      kind: "news",
+      title: "KYC submitted",
+      message: "Identity verification request was sent for review.",
+      accountID: activeAccountId,
+    })
+    await Promise.all([
+      refreshKYCStatus().catch(() => { }),
       fetchOrderHistory(true).catch(() => { }),
     ])
   }
@@ -1011,6 +1364,28 @@ export default function App() {
       refreshMetrics().catch(() => { }),
       refreshOrders().catch(() => { }),
       fetchOrderHistory(true).catch(() => { })
+    ])
+    refreshAccountSnapshots().catch(() => { })
+  }
+
+  const handleReferralWithdraw = async (amountUSD?: string) => {
+    const payload = amountUSD && amountUSD.trim()
+      ? { amount_usd: amountUSD.trim() }
+      : undefined
+    const res = await api.referralWithdraw(payload)
+    addNotification({
+      kind: "bonus",
+      title: "Referral withdrawal completed",
+      message: `${formatNumber(Number(res?.amount_usd || 0), 2, 2)} USD moved to your real account.`,
+      accountID: activeAccountId,
+      dedupeKey: `ref:withdraw:${Date.now()}`,
+    })
+    await Promise.all([
+      refreshAccounts(activeAccountId).catch(() => { }),
+      refreshMetrics().catch(() => { }),
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { }),
+      refreshReferralStatus().catch(() => { }),
     ])
     refreshAccountSnapshots().catch(() => { })
   }
@@ -1092,7 +1467,17 @@ export default function App() {
           depositBonus={depositBonus}
           onClaimSignupBonus={handleClaimSignupBonus}
           onRequestRealDeposit={handleRequestRealDeposit}
+          kycStatus={kycStatus}
+          onRequestKYC={handleRequestKYC}
+          referralStatus={referralStatus}
+          onReferralWithdraw={handleReferralWithdraw}
+          onRefreshReferral={refreshReferralStatus}
           onGoTrade={() => setView("chart")}
+          hasUnreadNotifications={hasUnreadNotifications}
+          onOpenNotifications={() => setView("notifications")}
+          notifications={notifications}
+          onBackFromNotifications={() => setView("accounts")}
+          onMarkAllNotificationsRead={markAllNotificationsRead}
           profile={profile}
           setLang={setLang}
           setTheme={setTheme}

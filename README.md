@@ -19,6 +19,7 @@ Run
    - WS_ORIGIN
    - PROFECT_MODE (development or production)
    - TELEGRAM_BOT_TOKEN (optional, required for Telegram Mini App auth)
+   - TELEGRAM_BOT_USERNAME (optional, used to build referral share deep-link; if empty backend will try Telegram getMe by token)
    - FAUCET_ENABLED (optional, default true)
    - FAUCET_MAX (optional, default 10000)
    - MARKETDATA_DIR (optional, default empty, example db/marketdata)

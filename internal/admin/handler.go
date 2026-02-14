@@ -104,9 +104,10 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 			margin_call_level_pct, stop_out_level_pct, unlimited_effective_leverage,
 			signup_bonus_total_limit, signup_bonus_amount,
 			real_deposit_min_usd, real_deposit_max_usd, usd_to_uzs_rate, real_deposit_review_minutes,
-			telegram_deposit_chat_id
+			telegram_deposit_chat_id,
+			kyc_bonus_amount, kyc_review_eta_hours, telegram_kyc_chat_id
 		)
-		VALUES (1, 200, 100, 50000, 60, 20, 3000, 700, 10, 10, 1000, 13000, 120, '')
+		VALUES (1, 200, 100, 50000, 60, 20, 3000, 700, 10, 10, 1000, 13000, 120, '', 50, 8, '')
 		ON CONFLICT (id) DO NOTHING
 	`)
 	if err != nil {
@@ -128,6 +129,9 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 		USDToUZSRate            string `json:"usd_to_uzs_rate"`
 		RealDepositReviewMinute int    `json:"real_deposit_review_minutes"`
 		TelegramDepositChatID   string `json:"telegram_deposit_chat_id"`
+		KYCBonusAmount          string `json:"kyc_bonus_amount"`
+		KYCReviewETAHours       int    `json:"kyc_review_eta_hours"`
+		TelegramKYCChatID       string `json:"telegram_kyc_chat_id"`
 	}
 	err = h.pool.QueryRow(r.Context(), `
 		SELECT
@@ -143,7 +147,10 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 			COALESCE((to_jsonb(trc)->>'real_deposit_max_usd')::numeric, 1000)::text,
 			COALESCE((to_jsonb(trc)->>'usd_to_uzs_rate')::numeric, 13000)::text,
 			COALESCE((to_jsonb(trc)->>'real_deposit_review_minutes')::int, 120),
-			COALESCE((to_jsonb(trc)->>'telegram_deposit_chat_id')::text, '')
+			COALESCE((to_jsonb(trc)->>'telegram_deposit_chat_id')::text, ''),
+			COALESCE((to_jsonb(trc)->>'kyc_bonus_amount')::numeric, 50)::text,
+			COALESCE((to_jsonb(trc)->>'kyc_review_eta_hours')::int, 8),
+			COALESCE((to_jsonb(trc)->>'telegram_kyc_chat_id')::text, '')
 		FROM trading_risk_config trc
 		WHERE trc.id = 1
 	`).Scan(
@@ -151,6 +158,7 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 		&res.MarginCallLevelPercent, &res.StopOutLevelPercent, &res.UnlimitedEffectiveLevel,
 		&res.SignupBonusTotalLimit, &res.SignupBonusAmount,
 		&res.RealDepositMinUSD, &res.RealDepositMaxUSD, &res.USDToUZSRate, &res.RealDepositReviewMinute, &res.TelegramDepositChatID,
+		&res.KYCBonusAmount, &res.KYCReviewETAHours, &res.TelegramKYCChatID,
 	)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
@@ -178,6 +186,9 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 		USDToUZSRate            string `json:"usd_to_uzs_rate"`
 		RealDepositReviewMinute int    `json:"real_deposit_review_minutes"`
 		TelegramDepositChatID   string `json:"telegram_deposit_chat_id"`
+		KYCBonusAmount          string `json:"kyc_bonus_amount"`
+		KYCReviewETAHours       int    `json:"kyc_review_eta_hours"`
+		TelegramKYCChatID       string `json:"telegram_kyc_chat_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
@@ -188,8 +199,8 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "max_open_positions and unlimited_effective_leverage must be > 0"})
 		return
 	}
-	if req.SignupBonusTotalLimit <= 0 || req.RealDepositReviewMinute <= 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "signup_bonus_total_limit and real_deposit_review_minutes must be > 0"})
+	if req.SignupBonusTotalLimit <= 0 || req.RealDepositReviewMinute <= 0 || req.KYCReviewETAHours <= 0 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "signup_bonus_total_limit, real_deposit_review_minutes and kyc_review_eta_hours must be > 0"})
 		return
 	}
 	if !isPositiveNumeric(req.MaxOrderLots) ||
@@ -199,7 +210,8 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 		!isPositiveNumeric(req.SignupBonusAmount) ||
 		!isPositiveNumeric(req.RealDepositMinUSD) ||
 		!isPositiveNumeric(req.RealDepositMaxUSD) ||
-		!isPositiveNumeric(req.USDToUZSRate) {
+		!isPositiveNumeric(req.USDToUZSRate) ||
+		!isPositiveNumeric(req.KYCBonusAmount) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "numeric fields must be positive numbers"})
 		return
 	}
@@ -210,6 +222,7 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.TelegramDepositChatID = strings.TrimSpace(req.TelegramDepositChatID)
+	req.TelegramKYCChatID = strings.TrimSpace(req.TelegramKYCChatID)
 
 	_, err := h.pool.Exec(r.Context(), `
 		INSERT INTO trading_risk_config (
@@ -218,9 +231,10 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 			signup_bonus_total_limit, signup_bonus_amount,
 			real_deposit_min_usd, real_deposit_max_usd, usd_to_uzs_rate, real_deposit_review_minutes,
 			telegram_deposit_chat_id,
+			kyc_bonus_amount, kyc_review_eta_hours, telegram_kyc_chat_id,
 			updated_at
 		)
-		VALUES (1, $1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, $7, $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12, $13, NOW())
+		VALUES (1, $1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, $7, $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12, $13, $14::numeric, $15, $16, NOW())
 		ON CONFLICT (id) DO UPDATE
 		SET max_open_positions = EXCLUDED.max_open_positions,
 			max_order_lots = EXCLUDED.max_order_lots,
@@ -235,8 +249,11 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 			usd_to_uzs_rate = EXCLUDED.usd_to_uzs_rate,
 			real_deposit_review_minutes = EXCLUDED.real_deposit_review_minutes,
 			telegram_deposit_chat_id = EXCLUDED.telegram_deposit_chat_id,
+			kyc_bonus_amount = EXCLUDED.kyc_bonus_amount,
+			kyc_review_eta_hours = EXCLUDED.kyc_review_eta_hours,
+			telegram_kyc_chat_id = EXCLUDED.telegram_kyc_chat_id,
 			updated_at = NOW()
-	`, req.MaxOpenPositions, req.MaxOrderLots, req.MaxOrderNotionalUSD, req.MarginCallLevelPercent, req.StopOutLevelPercent, req.UnlimitedEffectiveLevel, req.SignupBonusTotalLimit, req.SignupBonusAmount, req.RealDepositMinUSD, req.RealDepositMaxUSD, req.USDToUZSRate, req.RealDepositReviewMinute, req.TelegramDepositChatID)
+	`, req.MaxOpenPositions, req.MaxOrderLots, req.MaxOrderNotionalUSD, req.MarginCallLevelPercent, req.StopOutLevelPercent, req.UnlimitedEffectiveLevel, req.SignupBonusTotalLimit, req.SignupBonusAmount, req.RealDepositMinUSD, req.RealDepositMaxUSD, req.USDToUZSRate, req.RealDepositReviewMinute, req.TelegramDepositChatID, req.KYCBonusAmount, req.KYCReviewETAHours, req.TelegramKYCChatID)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 		return
@@ -588,6 +605,35 @@ func (h *Handler) DeletePanelAdmin(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// ClearKYCBlock removes KYC cooldown/permanent ban for a user (owner only).
+func (h *Handler) ClearKYCBlock(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	userID := strings.TrimSpace(chi.URLParam(r, "userID"))
+	if userID == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "userID is required"})
+		return
+	}
+
+	_, err := h.pool.Exec(r.Context(), `
+		INSERT INTO kyc_user_states (user_id, failed_attempts, blocked_until, permanent_blocked, updated_at)
+		VALUES ($1::uuid, 0, NULL, FALSE, NOW())
+		ON CONFLICT (user_id)
+		DO UPDATE
+		SET failed_attempts = 0,
+			blocked_until = NULL,
+			permanent_blocked = FALSE,
+			updated_at = NOW()
+	`, userID)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // AdminAuthMiddleware validates admin JWT token
 func AdminAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 	secret := []byte(jwtSecret)
@@ -672,7 +718,7 @@ const adminUsernameKey contextKey = "admin_username"
 const adminRoleKey contextKey = "admin_role"
 const adminRightsKey contextKey = "admin_rights"
 
-var allAdminRights = []string{"sessions", "trend", "events", "volatility"}
+var allAdminRights = []string{"sessions", "trend", "events", "volatility", "kyc_review"}
 
 func requireOwner(w http.ResponseWriter, r *http.Request) bool {
 	role, _ := r.Context().Value(adminRoleKey).(string)

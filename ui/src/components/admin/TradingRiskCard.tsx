@@ -24,6 +24,9 @@ const DEFAULT_RISK: TradingRiskConfig = {
     usd_to_uzs_rate: "13000",
     real_deposit_review_minutes: 120,
     telegram_deposit_chat_id: "",
+    kyc_bonus_amount: "50",
+    kyc_review_eta_hours: 8,
+    telegram_kyc_chat_id: "",
 }
 
 const asPositiveNumberString = (value: unknown, fallback: string) => {
@@ -47,6 +50,9 @@ const normalizeRisk = (value: TradingRiskConfig | null | undefined): TradingRisk
     usd_to_uzs_rate: asPositiveNumberString(value?.usd_to_uzs_rate, DEFAULT_RISK.usd_to_uzs_rate),
     real_deposit_review_minutes: Number(value?.real_deposit_review_minutes) > 0 ? Number(value?.real_deposit_review_minutes) : DEFAULT_RISK.real_deposit_review_minutes,
     telegram_deposit_chat_id: String(value?.telegram_deposit_chat_id || DEFAULT_RISK.telegram_deposit_chat_id).trim(),
+    kyc_bonus_amount: asPositiveNumberString(value?.kyc_bonus_amount, DEFAULT_RISK.kyc_bonus_amount),
+    kyc_review_eta_hours: Number(value?.kyc_review_eta_hours) > 0 ? Number(value?.kyc_review_eta_hours) : DEFAULT_RISK.kyc_review_eta_hours,
+    telegram_kyc_chat_id: String(value?.telegram_kyc_chat_id || DEFAULT_RISK.telegram_kyc_chat_id).trim(),
 })
 
 export default function TradingRiskCard({ value, loading, initialLoad, canAccess, onSave }: TradingRiskCardProps) {
@@ -60,7 +66,13 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
 
     const update = (key: keyof TradingRiskConfig, val: string) => {
         setDraft(prev => {
-            if (key === "max_open_positions" || key === "unlimited_effective_leverage" || key === "signup_bonus_total_limit" || key === "real_deposit_review_minutes") {
+            if (
+                key === "max_open_positions" ||
+                key === "unlimited_effective_leverage" ||
+                key === "signup_bonus_total_limit" ||
+                key === "real_deposit_review_minutes" ||
+                key === "kyc_review_eta_hours"
+            ) {
                 return { ...prev, [key]: Number(val || 0) }
             }
             return { ...prev, [key]: val }
@@ -129,10 +141,36 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                             placeholder="-1001234567890"
                         />
                     </label>
+                    <label className="risk-field">
+                        <span>KYC Bonus Amount (USD)</span>
+                        <input
+                            type="text"
+                            value={draft.kyc_bonus_amount}
+                            onChange={e => update("kyc_bonus_amount", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>KYC Review ETA (hours)</span>
+                        <input
+                            type="number"
+                            min="1"
+                            value={String(draft.kyc_review_eta_hours)}
+                            onChange={e => update("kyc_review_eta_hours", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>Telegram KYC Review Chat ID</span>
+                        <input
+                            type="text"
+                            value={draft.telegram_kyc_chat_id}
+                            onChange={e => update("telegram_kyc_chat_id", e.target.value)}
+                            placeholder="-1001234567890"
+                        />
+                    </label>
                     <div className="risk-field">
                         <span>System</span>
                         <div className="no-events" style={{ margin: 0, padding: "11px 12px", textAlign: "left" }}>
-                            Margin call, stop out, and bonus pools are auto-managed. Real deposits go to Telegram review chat when chat ID is configured.
+                            Margin call, stop out, deposit and KYC bonus pools are auto-managed. Requests go to Telegram review chats when chat IDs are configured.
                         </div>
                     </div>
                 </div>

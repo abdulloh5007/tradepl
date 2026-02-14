@@ -346,7 +346,7 @@ func styleIf(enabled bool, style string) string {
 	return style
 }
 
-func (h *Handler) processTelegramDepositCallbacks(ctx context.Context, configuredChatID string, limit int) (int, error) {
+func (h *Handler) processTelegramDepositCallbacks(ctx context.Context, configuredDepositChatID, configuredKYCChatID string, limit int) (int, error) {
 	if limit <= 0 {
 		limit = 1
 	}
@@ -367,7 +367,8 @@ func (h *Handler) processTelegramDepositCallbacks(ctx context.Context, configure
 		return 0, nil
 	}
 
-	targetChatNumeric, hasTargetNumeric := parseTelegramChatID(configuredChatID)
+	depositChatNumeric, hasDepositChat := parseTelegramChatID(configuredDepositChatID)
+	kycChatNumeric, hasKYCChat := parseTelegramChatID(configuredKYCChatID)
 	processed := 0
 	nextOffset := offset
 
@@ -387,56 +388,98 @@ func (h *Handler) processTelegramDepositCallbacks(ctx context.Context, configure
 			h.answerTelegramCallbackQuery(ctx, cq.ID, "Unsupported callback", false)
 			continue
 		}
-		if !hasTargetNumeric {
-			h.answerTelegramCallbackQuery(ctx, cq.ID, "Review chat is not configured", true)
-			continue
-		}
-		if hasTargetNumeric && cq.Message.Chat.ID != targetChatNumeric {
-			h.answerTelegramCallbackQuery(ctx, cq.ID, "Wrong review chat", true)
-			continue
-		}
-
-		action, requestID, ok := parseDepositReviewCallbackData(cq.Data)
-		if !ok {
-			h.answerTelegramCallbackQuery(ctx, cq.ID, "Invalid callback data", true)
-			continue
-		}
-
-		allowed := h.isTelegramReviewerAllowed(ctx, cq.From.ID)
-		if !allowed {
-			h.answerTelegramCallbackQuery(ctx, cq.ID, "You are not allowed to review deposits", true)
-			continue
-		}
-
-		outcome, decisionErr := h.applyTelegramDepositReviewDecision(ctx, requestID, action, cq.From.ID)
-		if decisionErr != nil {
-			h.answerTelegramCallbackQuery(ctx, cq.ID, "Failed to process decision", true)
-			continue
-		}
-		if strings.HasPrefix(outcome.Status, "already_") {
-			alreadyStatus := strings.TrimPrefix(outcome.Status, "already_")
-			if alreadyStatus == "" {
-				alreadyStatus = "processed"
+		if action, requestID, ok := parseDepositReviewCallbackData(cq.Data); ok {
+			if !hasDepositChat {
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "Deposit review chat is not configured", true)
+				continue
 			}
-			h.answerTelegramCallbackQuery(ctx, cq.ID, "Already "+alreadyStatus, false)
+			if cq.Message.Chat.ID != depositChatNumeric {
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "Wrong deposit review chat", true)
+				continue
+			}
+			if !h.isTelegramReviewerAllowed(ctx, cq.From.ID) {
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "You are not allowed to review deposits", true)
+				continue
+			}
+
+			outcome, decisionErr := h.applyTelegramDepositReviewDecision(ctx, requestID, action, cq.From.ID)
+			if decisionErr != nil {
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "Failed to process decision", true)
+				continue
+			}
+			if strings.HasPrefix(outcome.Status, "already_") {
+				alreadyStatus := strings.TrimPrefix(outcome.Status, "already_")
+				if alreadyStatus == "" {
+					alreadyStatus = "processed"
+				}
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "Already "+alreadyStatus, false)
+				h.clearTelegramReviewKeyboard(ctx, cq.Message.Chat.ID, cq.Message.MessageID)
+				continue
+			}
+
+			reviewerLabel := fmt.Sprintf("tg:%d", cq.From.ID)
+			if name := strings.TrimSpace(cq.From.Username); name != "" {
+				reviewerLabel = "@" + name
+			}
+
+			statusWord := "approved"
+			if outcome.Status == "rejected" {
+				statusWord = "rejected"
+			}
+			ack := fmt.Sprintf("%s %s", strings.ToUpper(statusWord[:1])+statusWord[1:], outcome.Ticket)
+			h.answerTelegramCallbackQuery(ctx, cq.ID, ack, false)
 			h.clearTelegramReviewKeyboard(ctx, cq.Message.Chat.ID, cq.Message.MessageID)
+			h.sendTelegramReviewOutcomeMessage(ctx, cq.Message.Chat.ID, outcome, reviewerLabel)
+			processed++
 			continue
 		}
 
-		reviewerLabel := fmt.Sprintf("tg:%d", cq.From.ID)
-		if name := strings.TrimSpace(cq.From.Username); name != "" {
-			reviewerLabel = "@" + name
+		if action, requestID, ok := parseKYCReviewCallbackData(cq.Data); ok {
+			if !hasKYCChat {
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "KYC review chat is not configured", true)
+				continue
+			}
+			if cq.Message.Chat.ID != kycChatNumeric {
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "Wrong KYC review chat", true)
+				continue
+			}
+			if !h.isTelegramKYCReviewerAllowed(ctx, cq.From.ID) {
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "You are not allowed to review KYC", true)
+				continue
+			}
+
+			outcome, decisionErr := h.applyTelegramKYCReviewDecision(ctx, requestID, action, cq.From.ID)
+			if decisionErr != nil {
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "Failed to process decision", true)
+				continue
+			}
+			if strings.HasPrefix(outcome.Status, "already_") {
+				alreadyStatus := strings.TrimPrefix(outcome.Status, "already_")
+				if alreadyStatus == "" {
+					alreadyStatus = "processed"
+				}
+				h.answerTelegramCallbackQuery(ctx, cq.ID, "Already "+alreadyStatus, false)
+				h.clearTelegramReviewKeyboard(ctx, cq.Message.Chat.ID, cq.Message.MessageID)
+				continue
+			}
+
+			reviewerLabel := fmt.Sprintf("tg:%d", cq.From.ID)
+			if name := strings.TrimSpace(cq.From.Username); name != "" {
+				reviewerLabel = "@" + name
+			}
+			statusWord := "approved"
+			if outcome.Status == "rejected" {
+				statusWord = "rejected"
+			}
+			ack := fmt.Sprintf("%s %s", strings.ToUpper(statusWord[:1])+statusWord[1:], outcome.Ticket)
+			h.answerTelegramCallbackQuery(ctx, cq.ID, ack, false)
+			h.clearTelegramReviewKeyboard(ctx, cq.Message.Chat.ID, cq.Message.MessageID)
+			h.sendTelegramKYCReviewOutcomeMessage(ctx, cq.Message.Chat.ID, outcome, reviewerLabel)
+			processed++
+			continue
 		}
 
-		statusWord := "approved"
-		if outcome.Status == "rejected" {
-			statusWord = "rejected"
-		}
-		ack := fmt.Sprintf("%s %s", strings.ToUpper(statusWord[:1])+statusWord[1:], outcome.Ticket)
-		h.answerTelegramCallbackQuery(ctx, cq.ID, ack, false)
-		h.clearTelegramReviewKeyboard(ctx, cq.Message.Chat.ID, cq.Message.MessageID)
-		h.sendTelegramReviewOutcomeMessage(ctx, cq.Message.Chat.ID, outcome, reviewerLabel)
-		processed++
+		h.answerTelegramCallbackQuery(ctx, cq.ID, "Invalid callback data", true)
 	}
 
 	if nextOffset > offset {
@@ -604,6 +647,12 @@ func (h *Handler) applyTelegramDepositReviewDecision(ctx context.Context, reques
 		if err := tx.Commit(ctx); err != nil {
 			return telegramReviewOutcome{}, err
 		}
+		h.notifyUserTelegramAsync(
+			req.UserID,
+			"Deposit request rejected",
+			fmt.Sprintf("Request %s was rejected by review team.", ticket),
+			"#notifications",
+		)
 		return telegramReviewOutcome{
 			RequestID: req.ID,
 			Ticket:    ticket,
@@ -696,7 +745,7 @@ func (h *Handler) applyTelegramDepositReviewDecision(ctx context.Context, reques
 				bonus_percent,
 				bonus_amount_usd
 			) VALUES ($1, $2, $3, $4, $5, $6)
-			ON CONFLICT (user_id) DO NOTHING
+			ON CONFLICT (user_id, voucher_kind) DO NOTHING
 			RETURNING id::text
 		`, req.UserID, req.TradingAccountID, req.ID, voucherKind, voucherPercent(voucherKind), req.BonusAmountUSD).Scan(&claimID)
 		if claimErr != nil && !errors.Is(claimErr, pgx.ErrNoRows) {
@@ -713,6 +762,17 @@ func (h *Handler) applyTelegramDepositReviewDecision(ctx context.Context, reques
 	}
 
 	totalCredit := req.AmountUSD.Add(appliedBonusAmount)
+	referralCommission, referralInviterID, referralErr := h.applyReferralDepositCommissionTx(
+		ctx,
+		tx,
+		req.UserID,
+		req.TradingAccountID,
+		req.AmountUSD,
+		"real_deposit_request:"+req.ID,
+	)
+	if referralErr != nil {
+		return telegramReviewOutcome{}, referralErr
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE real_deposit_requests
 		SET status = 'approved',
@@ -732,6 +792,29 @@ func (h *Handler) applyTelegramDepositReviewDecision(ctx context.Context, reques
 	if err := tx.Commit(ctx); err != nil {
 		return telegramReviewOutcome{}, err
 	}
+	if referralCommission.GreaterThan(decimal.Zero) && strings.TrimSpace(referralInviterID) != "" {
+		h.notifyUserTelegramAsync(
+			referralInviterID,
+			"Referral commission credited",
+			fmt.Sprintf(
+				"You received %s USD (10%%) from referred user's deposit.",
+				referralCommission.StringFixed(2),
+			),
+			"#notifications",
+		)
+	}
+	h.notifyUserTelegramAsync(
+		req.UserID,
+		"Deposit request approved",
+		fmt.Sprintf(
+			"Request %s approved: +%s USD (bonus %s, total %s USD).",
+			ticket,
+			req.AmountUSD.StringFixed(2),
+			appliedBonusAmount.StringFixed(2),
+			totalCredit.StringFixed(2),
+		),
+		"#notifications",
+	)
 
 	return telegramReviewOutcome{
 		RequestID: req.ID,

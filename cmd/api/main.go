@@ -64,9 +64,15 @@ func main() {
 		cfg.FaucetEnabled,
 		faucetMax,
 		cfg.TelegramBotToken,
+		cfg.TelegramBotName,
 		cfg.OwnerTelegramID,
+		cfg.ProfectMode,
+		cfg.WebSocketOrigin,
 	)
 	orderHandler := orders.NewHandler(orderSvc, accountSvc)
+	if cfg.ProfectMode == "production" {
+		orderSvc.SetImportantNotifier(ledgerHandler.NotifyUserImportantTelegram)
+	}
 	marketWS := marketdata.NewMarketWS(cfg.WebSocketOrigin)
 	store := marketdata.NewCandleStore(cfg.MarketDataDir)
 	candleWS := marketdata.NewCandleWS(cfg.WebSocketOrigin, store)

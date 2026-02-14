@@ -97,6 +97,14 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.AuthHandler.Me(w, r, userID)
 			})
+			r.Post("/auth/telegram/write-access", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.AuthHandler.UpdateTelegramWriteAccess(w, r, userID)
+			})
 			r.Get("/balances", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {
@@ -176,6 +184,46 @@ func NewRouter(d RouterDeps) http.Handler {
 					return
 				}
 				d.LedgerHandler.RequestRealDeposit(w, r, userID)
+			})
+			r.Get("/kyc/status", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.KYCStatus(w, r, userID)
+			})
+			r.Post("/kyc/request", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.RequestKYC(w, r, userID)
+			})
+			r.Get("/referrals/status", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.ReferralStatus(w, r, userID)
+			})
+			r.Get("/referrals/events", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.ReferralEvents(w, r, userID)
+			})
+			r.Post("/referrals/withdraw", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.ReferralWithdraw(w, r, userID)
 			})
 			r.Post("/orders", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
@@ -293,6 +341,7 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.Post("/panel-admins", d.AdminHandler.CreatePanelAdmin)
 				r.Put("/panel-admins/{id}", d.AdminHandler.UpdatePanelAdmin)
 				r.Delete("/panel-admins/{id}", d.AdminHandler.DeletePanelAdmin)
+				r.Post("/kyc/unban/{userID}", d.AdminHandler.ClearKYCBlock)
 			})
 		})
 	})

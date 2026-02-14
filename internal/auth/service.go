@@ -18,6 +18,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -40,11 +41,13 @@ type User struct {
 }
 
 type telegramAuthPayload struct {
-	ID        int64  `json:"id"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Username  string `json:"username"`
-	PhotoURL  string `json:"photo_url"`
+	ID              int64  `json:"id"`
+	FirstName       string `json:"first_name"`
+	LastName        string `json:"last_name"`
+	Username        string `json:"username"`
+	PhotoURL        string `json:"photo_url"`
+	AllowsWriteToPM *bool  `json:"allows_write_to_pm,omitempty"`
+	StartParam      string `json:"-"`
 }
 
 func NewService(pool *pgxpool.Pool, issuer string, secret []byte, ttl time.Duration) *Service {
@@ -120,40 +123,79 @@ func (s *Service) LoginTelegram(ctx context.Context, initData string) (string, U
 	displayName := buildTelegramDisplayName(payload)
 	email := fmt.Sprintf("tg_%d@telegram.local", payload.ID)
 	var userID string
+	isNewUser := false
 
-	err = s.pool.QueryRow(ctx, `
-		SELECT id
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return "", User{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	err = tx.QueryRow(ctx, `
+		SELECT id::text
 		FROM users
 		WHERE telegram_id = $1
+		FOR UPDATE
 	`, payload.ID).Scan(&userID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return "", User{}, err
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		err = s.pool.QueryRow(ctx, `
-			INSERT INTO users (email, telegram_id, display_name, avatar_url)
-			VALUES ($1, $2, $3, $4)
+		referralCode := referralCodeFromUserID(email)
+		err = tx.QueryRow(ctx, `
+			INSERT INTO users (email, telegram_id, display_name, avatar_url, referral_code)
+			VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT (email)
 			DO UPDATE SET
 				telegram_id = EXCLUDED.telegram_id,
 				display_name = EXCLUDED.display_name,
-				avatar_url = EXCLUDED.avatar_url
-			RETURNING id
-		`, email, payload.ID, displayName, strings.TrimSpace(payload.PhotoURL)).Scan(&userID)
+				avatar_url = EXCLUDED.avatar_url,
+				referral_code = CASE
+					WHEN COALESCE(TRIM(users.referral_code), '') = '' THEN EXCLUDED.referral_code
+					ELSE users.referral_code
+				END
+			RETURNING id::text
+		`, email, payload.ID, displayName, strings.TrimSpace(payload.PhotoURL), referralCode).Scan(&userID)
 		if err != nil {
 			return "", User{}, err
 		}
+		isNewUser = true
 	} else {
-		_, err = s.pool.Exec(ctx, `
+		referralCode := referralCodeFromUserID(userID)
+		_, err = tx.Exec(ctx, `
 			UPDATE users
 			SET
 				display_name = $1,
-				avatar_url = $2
+				avatar_url = $2,
+				referral_code = CASE
+					WHEN COALESCE(TRIM(referral_code), '') = '' THEN $4
+					ELSE referral_code
+				END
 			WHERE id = $3
-		`, displayName, strings.TrimSpace(payload.PhotoURL), userID)
+		`, displayName, strings.TrimSpace(payload.PhotoURL), userID, referralCode)
 		if err != nil {
 			return "", User{}, err
 		}
+	}
+	if err := ensureReferralWalletTx(ctx, tx, userID); err != nil {
+		return "", User{}, err
+	}
+	if payload.AllowsWriteToPM != nil {
+		if _, err := tx.Exec(ctx, `
+			UPDATE users
+			SET telegram_write_access = $2
+			WHERE id = $1
+		`, userID, *payload.AllowsWriteToPM); err != nil && !isUndefinedColumnError(err) {
+			return "", User{}, err
+		}
+	}
+	if isNewUser {
+		if err := applyReferralFromStartParamTx(ctx, tx, userID, payload.StartParam); err != nil {
+			return "", User{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", User{}, err
 	}
 
 	if s.accountSvc != nil {
@@ -225,6 +267,142 @@ func (s *Service) UserExists(ctx context.Context, userID string) (bool, error) {
 	return exists, err
 }
 
+func (s *Service) SetTelegramWriteAccess(ctx context.Context, userID string, allowed bool) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users
+		SET telegram_write_access = $2
+		WHERE id = $1
+	`, userID, allowed)
+	if err != nil {
+		if isUndefinedColumnError(err) {
+			return errors.New("telegram write access is unavailable: run migrations")
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
+func referralCodeFromUserID(seed string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(seed))
+	if trimmed == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(trimmed))
+	return "bx" + hex.EncodeToString(sum[:])[:24]
+}
+
+func ensureReferralWalletTx(ctx context.Context, tx pgx.Tx, userID string) error {
+	if strings.TrimSpace(userID) == "" {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO referral_wallets (user_id, balance, total_earned, total_withdrawn, updated_at)
+		VALUES ($1, 0, 0, 0, NOW())
+		ON CONFLICT (user_id) DO NOTHING
+	`, userID)
+	if err != nil && (isUndefinedTableError(err) || isUndefinedColumnError(err)) {
+		return nil
+	}
+	return err
+}
+
+func parseStartReferralCode(startParam string) string {
+	value := strings.ToLower(strings.TrimSpace(startParam))
+	if strings.HasPrefix(value, "ref_") {
+		value = strings.TrimPrefix(value, "ref_")
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if !strings.HasPrefix(value, "bx") {
+		value = "bx" + value
+	}
+	return value
+}
+
+func applyReferralFromStartParamTx(ctx context.Context, tx pgx.Tx, newUserID, startParam string) error {
+	code := parseStartReferralCode(startParam)
+	if code == "" {
+		return nil
+	}
+	var inviterID string
+	err := tx.QueryRow(ctx, `
+		SELECT id::text
+		FROM users
+		WHERE LOWER(referral_code) = LOWER($1)
+	`, code).Scan(&inviterID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || isUndefinedColumnError(err) {
+			return nil
+		}
+		return err
+	}
+	inviterID = strings.TrimSpace(inviterID)
+	if inviterID == "" || inviterID == strings.TrimSpace(newUserID) {
+		return nil
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE users
+		SET referred_by = $2,
+		    referred_at = NOW()
+		WHERE id = $1
+		  AND referred_by IS NULL
+	`, newUserID, inviterID)
+	if err != nil {
+		if isUndefinedColumnError(err) {
+			return nil
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil
+	}
+
+	sourceRef := "ref_signup:" + newUserID
+	var eventID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO referral_events (
+			user_id,
+			related_user_id,
+			kind,
+			amount,
+			commission_percent,
+			source_ref,
+			created_at
+		) VALUES ($1, $2, 'signup', 5, 0, $3, NOW())
+		ON CONFLICT (kind, source_ref) DO NOTHING
+		RETURNING id::text
+	`, inviterID, newUserID, sourceRef).Scan(&eventID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || isUndefinedTableError(err) || isUndefinedColumnError(err) {
+			return nil
+		}
+		return err
+	}
+	if strings.TrimSpace(eventID) == "" {
+		return nil
+	}
+	if err := ensureReferralWalletTx(ctx, tx, inviterID); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		UPDATE referral_wallets
+		SET balance = balance + 5,
+		    total_earned = total_earned + 5,
+		    updated_at = NOW()
+		WHERE user_id = $1
+	`, inviterID)
+	if err != nil && (isUndefinedTableError(err) || isUndefinedColumnError(err)) {
+		return nil
+	}
+	return err
+}
+
 func validateTelegramInitData(initData, botToken string) (telegramAuthPayload, error) {
 	if strings.TrimSpace(initData) == "" {
 		return telegramAuthPayload{}, errors.New("init_data is required")
@@ -286,6 +464,7 @@ func validateTelegramInitData(initData, botToken string) (telegramAuthPayload, e
 	if payload.ID == 0 {
 		return telegramAuthPayload{}, errors.New("invalid telegram user id")
 	}
+	payload.StartParam = strings.TrimSpace(params.Get("start_param"))
 	return payload, nil
 }
 
@@ -298,4 +477,14 @@ func buildTelegramDisplayName(payload telegramAuthPayload) string {
 		return strings.TrimSpace(payload.Username)
 	}
 	return fmt.Sprintf("Telegram %d", payload.ID)
+}
+
+func isUndefinedColumnError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42703"
+}
+
+func isUndefinedTableError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42P01"
 }

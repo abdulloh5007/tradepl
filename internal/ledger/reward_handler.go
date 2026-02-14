@@ -251,6 +251,12 @@ func (h *Handler) ClaimSignupBonus(w http.ResponseWriter, r *http.Request, userI
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
+	h.notifyUserTelegramAsync(
+		userID,
+		"Welcome bonus credited",
+		fmt.Sprintf("You received %s USD welcome bonus on account %s.", cfg.SignupBonusAmount.StringFixed(2), target.Name),
+		"#notifications",
+	)
 
 	httputil.WriteJSON(w, http.StatusOK, signupBonusStatusResponse{
 		Amount:             cfg.SignupBonusAmount.StringFixed(2),

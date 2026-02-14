@@ -18,6 +18,7 @@ type Config struct {
 	WebSocketOrigin  string
 	ProfectMode      string
 	TelegramBotToken string
+	TelegramBotName  string
 	OwnerTelegramID  int64
 	UIDist           string
 	FaucetEnabled    bool
@@ -70,6 +71,7 @@ func Load() (Config, error) {
 		return c, errors.New("invalid PROFECT_MODE: use development or production")
 	}
 	c.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
+	c.TelegramBotName = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME"))
 	if c.ProfectMode == "production" && c.TelegramBotToken == "" {
 		missing = append(missing, "TELEGRAM_BOT_TOKEN")
 	}

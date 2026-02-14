@@ -123,6 +123,68 @@ export type RealDepositRequestResponse = {
   voucher_kind: "none" | "gold" | "diamond" | string
 }
 
+export type KYCStatus = {
+  state: "available" | "pending" | "approved" | "blocked_temp" | "blocked_permanent" | "unavailable" | string
+  can_submit: boolean
+  message: string
+  eligible_account_id?: string
+  bonus_amount_usd: string
+  review_eta_hours: number
+  is_review_configured: boolean
+  claimed: boolean
+  failed_attempts: number
+  pending_ticket?: string
+  pending_since?: string
+  pending_review_due_at?: string
+  blocked_until?: string
+  blocked_seconds?: number
+  permanent_blocked?: boolean
+  last_rejected_at?: string
+}
+
+export type KYCRequestPayload = {
+  document_type: "passport" | "id_card" | "driver_license" | "other"
+  full_name: string
+  document_number: string
+  residence_address: string
+  notes?: string
+  proof_file_name: string
+  proof_mime_type: string
+  proof_base64: string
+}
+
+export type KYCRequestResponse = {
+  request_id: string
+  ticket: string
+  status: string
+  review_due_at: string
+  bonus_amount_usd: string
+}
+
+export type ReferralStatus = {
+  referral_code: string
+  share_url: string
+  balance: string
+  total_earned: string
+  total_withdrawn: string
+  referrals_total: number
+  signup_reward_usd: string
+  deposit_commission_percent: string
+  min_withdraw_usd: string
+  can_withdraw: boolean
+  real_account_required: boolean
+}
+
+export type ReferralEvent = {
+  id: string
+  kind: "signup" | "deposit_commission" | "withdrawal" | string
+  amount: string
+  commission_percent: string
+  related_user_id?: string
+  trading_account_id?: string
+  created_at: string
+}
+
 const parseBody = (text: string) => {
   const trimmed = text.trim()
   if (!trimmed) return null
@@ -167,6 +229,8 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     register: (email: string, password: string) => request<{ user_id: string; access_token: string }>("/v1/auth/register", "POST", { email, password }),
     login: (email: string, password: string) => request<{ access_token: string }>("/v1/auth/login", "POST", { email, password }),
     telegramAuth: (initData: string) => request<{ access_token: string; user: UserProfile }>("/v1/auth/telegram", "POST", { init_data: initData }),
+    setTelegramWriteAccess: (allowed: boolean) =>
+      request<{ status: string; allowed: boolean }>("/v1/auth/telegram/write-access", "POST", { allowed }, true),
     me: () => request<UserProfile>("/v1/me", "GET", undefined, true),
     accounts: () => request<TradingAccount[] | null>("/v1/accounts", "GET", undefined, true),
     createAccount: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) =>
@@ -182,6 +246,20 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     depositBonusStatus: () => request<DepositBonusStatus>("/v1/rewards/deposit", "GET", undefined, true),
     requestRealDeposit: (payload: RealDepositRequestPayload) =>
       request<RealDepositRequestResponse>("/v1/deposits/real/request", "POST", payload, true),
+    kycStatus: () => request<KYCStatus>("/v1/kyc/status", "GET", undefined, true),
+    requestKYC: (payload: KYCRequestPayload) =>
+      request<KYCRequestResponse>("/v1/kyc/request", "POST", payload, true),
+    referralStatus: () => request<ReferralStatus>("/v1/referrals/status", "GET", undefined, true),
+    referralEvents: (params?: { limit?: number; before?: string }) => {
+      let url = "/v1/referrals/events"
+      const q: string[] = []
+      if (params?.limit && params.limit > 0) q.push(`limit=${params.limit}`)
+      if (params?.before) q.push(`before=${encodeURIComponent(params.before)}`)
+      if (q.length > 0) url += `?${q.join("&")}`
+      return request<{ items: ReferralEvent[] }>(url, "GET", undefined, true)
+    },
+    referralWithdraw: (payload?: { amount_usd?: string }) =>
+      request<{ status: string; amount_usd: string; balance: string }>("/v1/referrals/withdraw", "POST", payload || {}, true),
     balances: async () => {
       const res = await request<Array<{ asset_id: string; symbol: string; kind: string; amount: string }> | null>("/v1/balances", "GET", undefined, true)
       return res || []

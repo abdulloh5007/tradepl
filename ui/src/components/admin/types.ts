@@ -51,6 +51,9 @@ export type TradingRiskConfig = {
     usd_to_uzs_rate: string
     real_deposit_review_minutes: number
     telegram_deposit_chat_id: string
+    kyc_bonus_amount: string
+    kyc_review_eta_hours: number
+    telegram_kyc_chat_id: string
 }
 
 export type TradingPairSpec = {

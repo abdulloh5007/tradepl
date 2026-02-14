@@ -15,7 +15,10 @@ var (
 	defaultRealDepositMinUSD      = decimal.NewFromInt(10)
 	defaultRealDepositMaxUSD      = decimal.NewFromInt(1000)
 	defaultUSDToUZSRate           = decimal.NewFromInt(13000)
+	defaultKYCBonusAmount         = decimal.NewFromInt(50)
 	defaultRealDepositReviewHours = 2
+	defaultKYCReviewETAHours      = 8
+	diamondVoucherMinUSD          = decimal.NewFromInt(200)
 )
 
 const defaultSignupBonusTotalLimit = 700
@@ -28,6 +31,9 @@ type bonusProgramConfig struct {
 	USDToUZSRate            decimal.Decimal
 	RealDepositReviewMinute int
 	TelegramDepositChatID   string
+	KYCBonusAmount          decimal.Decimal
+	KYCReviewETAHours       int
+	TelegramKYCChatID       string
 }
 
 type depositVoucherStatus struct {
@@ -58,6 +64,8 @@ func defaultBonusProgramConfig() bonusProgramConfig {
 		RealDepositMaxUSD:       defaultRealDepositMaxUSD,
 		USDToUZSRate:            defaultUSDToUZSRate,
 		RealDepositReviewMinute: defaultRealDepositReviewHours * 60,
+		KYCBonusAmount:          defaultKYCBonusAmount,
+		KYCReviewETAHours:       defaultKYCReviewETAHours,
 	}
 }
 
@@ -84,7 +92,14 @@ func normalizeBonusProgramConfig(cfg bonusProgramConfig) bonusProgramConfig {
 	if out.RealDepositReviewMinute <= 0 {
 		out.RealDepositReviewMinute = defaultRealDepositReviewHours * 60
 	}
+	if !out.KYCBonusAmount.GreaterThan(decimal.Zero) {
+		out.KYCBonusAmount = defaultKYCBonusAmount
+	}
+	if out.KYCReviewETAHours <= 0 {
+		out.KYCReviewETAHours = defaultKYCReviewETAHours
+	}
 	out.TelegramDepositChatID = strings.TrimSpace(out.TelegramDepositChatID)
+	out.TelegramKYCChatID = strings.TrimSpace(out.TelegramKYCChatID)
 	return out
 }
 
@@ -98,10 +113,13 @@ func (h *Handler) loadBonusProgramConfig(ctx context.Context) (bonusProgramConfi
 			COALESCE((to_jsonb(trc)->>'real_deposit_max_usd')::numeric, $5::numeric),
 			COALESCE((to_jsonb(trc)->>'usd_to_uzs_rate')::numeric, $6::numeric),
 			COALESCE((to_jsonb(trc)->>'real_deposit_review_minutes')::int, $7),
-			COALESCE((to_jsonb(trc)->>'telegram_deposit_chat_id')::text, '')
+			COALESCE((to_jsonb(trc)->>'telegram_deposit_chat_id')::text, ''),
+			COALESCE((to_jsonb(trc)->>'kyc_bonus_amount')::numeric, $8::numeric),
+			COALESCE((to_jsonb(trc)->>'kyc_review_eta_hours')::int, $9),
+			COALESCE((to_jsonb(trc)->>'telegram_kyc_chat_id')::text, '')
 		FROM trading_risk_config trc
 		WHERE id = $1
-	`, 1, defaultSignupBonusTotalLimit, defaultSignupBonusAmount.String(), defaultRealDepositMinUSD.String(), defaultRealDepositMaxUSD.String(), defaultUSDToUZSRate.String(), defaultRealDepositReviewHours*60).Scan(
+	`, 1, defaultSignupBonusTotalLimit, defaultSignupBonusAmount.String(), defaultRealDepositMinUSD.String(), defaultRealDepositMaxUSD.String(), defaultUSDToUZSRate.String(), defaultRealDepositReviewHours*60, defaultKYCBonusAmount.String(), defaultKYCReviewETAHours).Scan(
 		&cfg.SignupBonusTotalLimit,
 		&cfg.SignupBonusAmount,
 		&cfg.RealDepositMinUSD,
@@ -109,6 +127,9 @@ func (h *Handler) loadBonusProgramConfig(ctx context.Context) (bonusProgramConfi
 		&cfg.USDToUZSRate,
 		&cfg.RealDepositReviewMinute,
 		&cfg.TelegramDepositChatID,
+		&cfg.KYCBonusAmount,
+		&cfg.KYCReviewETAHours,
+		&cfg.TelegramKYCChatID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -129,10 +150,13 @@ func (h *Handler) loadBonusProgramConfigTx(ctx context.Context, tx pgx.Tx) (bonu
 			COALESCE((to_jsonb(trc)->>'real_deposit_max_usd')::numeric, $5::numeric),
 			COALESCE((to_jsonb(trc)->>'usd_to_uzs_rate')::numeric, $6::numeric),
 			COALESCE((to_jsonb(trc)->>'real_deposit_review_minutes')::int, $7),
-			COALESCE((to_jsonb(trc)->>'telegram_deposit_chat_id')::text, '')
+			COALESCE((to_jsonb(trc)->>'telegram_deposit_chat_id')::text, ''),
+			COALESCE((to_jsonb(trc)->>'kyc_bonus_amount')::numeric, $8::numeric),
+			COALESCE((to_jsonb(trc)->>'kyc_review_eta_hours')::int, $9),
+			COALESCE((to_jsonb(trc)->>'telegram_kyc_chat_id')::text, '')
 		FROM trading_risk_config trc
 		WHERE id = $1
-	`, 1, defaultSignupBonusTotalLimit, defaultSignupBonusAmount.String(), defaultRealDepositMinUSD.String(), defaultRealDepositMaxUSD.String(), defaultUSDToUZSRate.String(), defaultRealDepositReviewHours*60).Scan(
+	`, 1, defaultSignupBonusTotalLimit, defaultSignupBonusAmount.String(), defaultRealDepositMinUSD.String(), defaultRealDepositMaxUSD.String(), defaultUSDToUZSRate.String(), defaultRealDepositReviewHours*60, defaultKYCBonusAmount.String(), defaultKYCReviewETAHours).Scan(
 		&cfg.SignupBonusTotalLimit,
 		&cfg.SignupBonusAmount,
 		&cfg.RealDepositMinUSD,
@@ -140,6 +164,9 @@ func (h *Handler) loadBonusProgramConfigTx(ctx context.Context, tx pgx.Tx) (bonu
 		&cfg.USDToUZSRate,
 		&cfg.RealDepositReviewMinute,
 		&cfg.TelegramDepositChatID,
+		&cfg.KYCBonusAmount,
+		&cfg.KYCReviewETAHours,
+		&cfg.TelegramKYCChatID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -179,5 +206,14 @@ func voucherTitle(kind string) string {
 		return "Diamond +50%"
 	default:
 		return "None"
+	}
+}
+
+func voucherMinAmountUSD(kind string) decimal.Decimal {
+	switch normalizeVoucherKind(kind) {
+	case "diamond":
+		return diamondVoucherMinUSD
+	default:
+		return decimal.Zero
 	}
 }

@@ -107,4 +107,15 @@ export interface TradingAccount {
 
 export type Theme = "dark" | "light"
 export type Lang = "en" | "uz" | "ru"
-export type View = "chart" | "positions" | "history" | "accounts" | "profile" | "api" | "faucet" | "admin"
+export type View = "chart" | "positions" | "history" | "accounts" | "notifications" | "profile" | "api" | "faucet" | "admin"
+
+export interface AppNotification {
+    id: string
+    kind: "system" | "bonus" | "deposit" | "news"
+    title: string
+    message: string
+    created_at: string
+    read: boolean
+    dedupe_key?: string
+    account_id?: string
+}

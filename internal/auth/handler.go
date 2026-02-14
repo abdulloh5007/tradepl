@@ -33,6 +33,10 @@ type telegramLoginRequest struct {
 	InitData string `json:"init_data"`
 }
 
+type telegramWriteAccessRequest struct {
+	Allowed bool `json:"allowed"`
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if h.profectMode == "production" {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "email auth is disabled in production mode"})
@@ -98,6 +102,26 @@ func (h *Handler) LoginTelegram(w http.ResponseWriter, r *http.Request) {
 			"display_name": user.DisplayName,
 			"avatar_url":   user.AvatarURL,
 		},
+	})
+}
+
+func (h *Handler) UpdateTelegramWriteAccess(w http.ResponseWriter, r *http.Request, userID string) {
+	if h.profectMode != "production" {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "telegram write access is available only in production mode"})
+		return
+	}
+	var req telegramWriteAccessRequest
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := h.svc.SetTelegramWriteAccess(r.Context(), userID, req.Allowed); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"allowed": req.Allowed,
 	})
 }
 

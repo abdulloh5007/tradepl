@@ -12,6 +12,8 @@ interface TelegramWebApp {
         user?: TelegramWebAppInitDataUser
     }
     ready?: () => void
+    requestWriteAccess?: (callback?: (allowed: boolean) => void) => void
+    openTelegramLink?: (url: string) => void
 }
 
 interface Window {
