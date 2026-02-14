@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { CheckCircle2, Upload, X } from "lucide-react"
+import { CheckCircle2, IdCard, X } from "lucide-react"
 import { toast } from "sonner"
 import type { KYCStatus } from "../../api"
+import SmartDropdown from "../ui/SmartDropdown"
+import type { SmartDropdownOption } from "../ui/SmartDropdown"
 import "./KYCVerificationModal.css"
 
 type KYCDocumentType = "passport" | "id_card" | "driver_license" | "other"
@@ -16,12 +18,30 @@ interface KYCVerificationModalProps {
     fullName: string
     documentNumber: string
     residenceAddress: string
-    notes?: string
-    proofFile: File
+    frontProofFile: File
+    backProofFile: File
   }) => Promise<void>
 }
 
 const MAX_KYC_PROOF_SIZE = 10 * 1024 * 1024
+const KYC_DOCUMENT_OPTIONS: SmartDropdownOption[] = [
+  { value: "passport", label: "Passport" },
+  { value: "id_card", label: "ID card" },
+  { value: "driver_license", label: "Driver license" },
+  { value: "other", label: "Other" },
+]
+
+const formatDocumentNumberInput = (raw: string) => {
+  const lettersOnly = raw.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2)
+  const digitsOnly = raw.replace(/\D/g, "").slice(0, 18)
+  if (!lettersOnly && !digitsOnly) return ""
+  if (!lettersOnly) return digitsOnly
+  if (!digitsOnly) return lettersOnly.length >= 2 ? `${lettersOnly} | ` : lettersOnly
+  return `${lettersOnly} | ${digitsOnly}`
+}
+
+const normalizeDocumentNumber = (formatted: string) =>
+  formatted.toUpperCase().replace(/[^A-Z0-9]/g, "")
 
 export default function KYCVerificationModal({
   open,
@@ -34,10 +54,10 @@ export default function KYCVerificationModal({
   const [fullName, setFullName] = useState("")
   const [documentNumber, setDocumentNumber] = useState("")
   const [residenceAddress, setResidenceAddress] = useState("")
-  const [notes, setNotes] = useState("")
-  const [proofFile, setProofFile] = useState<File | null>(null)
-  const [dragOver, setDragOver] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [frontProofFile, setFrontProofFile] = useState<File | null>(null)
+  const [backProofFile, setBackProofFile] = useState<File | null>(null)
+  const frontFileInputRef = useRef<HTMLInputElement | null>(null)
+  const backFileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -45,29 +65,38 @@ export default function KYCVerificationModal({
     setFullName("")
     setDocumentNumber("")
     setResidenceAddress("")
-    setNotes("")
-    setProofFile(null)
-    setDragOver(false)
+    setFrontProofFile(null)
+    setBackProofFile(null)
   }, [open])
 
   if (!open) return null
 
-  const pickProof = (file?: File | null) => {
+  const pickProof = (side: "front" | "back", file?: File | null) => {
     if (!file) return
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are allowed for KYC")
+      return
+    }
     if (file.size > MAX_KYC_PROOF_SIZE) {
       toast.error("Proof file is too large (max 10MB)")
       return
     }
-    setProofFile(file)
+    if (side === "front") {
+      setFrontProofFile(file)
+      return
+    }
+    setBackProofFile(file)
   }
 
+  const documentNumberNormalized = normalizeDocumentNumber(documentNumber)
   const canSubmit = Boolean(
     status?.can_submit &&
     !loading &&
     fullName.trim().length >= 3 &&
-    documentNumber.trim().length >= 3 &&
+    documentNumberNormalized.length >= 3 &&
     residenceAddress.trim().length >= 6 &&
-    proofFile
+    frontProofFile &&
+    backProofFile
   )
   const reviewHours = Number(status?.review_eta_hours || 8)
 
@@ -91,17 +120,14 @@ export default function KYCVerificationModal({
           <div className="acm-form kyc-form">
             <label className="acm-label">
               Document type
-              <select
-                className="acm-select"
+              <SmartDropdown
+                className="acm-dropdown"
                 value={documentType}
-                onChange={e => setDocumentType(e.target.value as KYCDocumentType)}
+                options={KYC_DOCUMENT_OPTIONS}
+                onChange={(value) => setDocumentType(String(value) as KYCDocumentType)}
                 disabled={loading}
-              >
-                <option value="passport">Passport</option>
-                <option value="id_card">ID card</option>
-                <option value="driver_license">Driver license</option>
-                <option value="other">Other</option>
-              </select>
+                ariaLabel="Document type"
+              />
             </label>
 
             <label className="acm-label">
@@ -123,8 +149,8 @@ export default function KYCVerificationModal({
                 className="acm-input"
                 type="text"
                 value={documentNumber}
-                onChange={e => setDocumentNumber(e.target.value)}
-                placeholder="AA1234567"
+                onChange={e => setDocumentNumber(formatDocumentNumberInput(e.target.value))}
+                placeholder="AD | 1234567"
                 maxLength={80}
                 disabled={loading}
               />
@@ -142,59 +168,62 @@ export default function KYCVerificationModal({
               />
             </label>
 
-            <label className="acm-label">
-              Notes (optional)
-              <textarea
-                className="acm-input kyc-textarea"
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Any additional information"
-                maxLength={500}
-                disabled={loading}
-              />
-            </label>
-
-            <div
-              className={`kyc-dropzone ${dragOver ? "drag-over" : ""}`}
-              onDragOver={(e) => {
-                e.preventDefault()
-                if (!loading) setDragOver(true)
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault()
-                setDragOver(false)
-              }}
-              onDrop={(e) => {
-                e.preventDefault()
-                setDragOver(false)
-                if (loading) return
-                pickProof(e.dataTransfer.files?.[0])
-              }}
-            >
-              <Upload size={18} />
-              <div className="kyc-drop-title">Upload document proof</div>
-              <div className="kyc-drop-sub">PNG, JPG, WEBP, PDF up to 10MB</div>
-              <button
-                type="button"
-                className="kyc-choose-btn"
-                disabled={loading}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Choose file
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="kyc-file-input"
-                accept="image/*,.pdf,.jpeg,.jpg,.png,.webp"
-                onChange={e => pickProof(e.target.files?.[0])}
-              />
-              {proofFile && (
-                <div className="kyc-proof-picked">
-                  <CheckCircle2 size={14} />
-                  <span>{proofFile.name}</span>
+            <div className="kyc-files-grid">
+              <div className="kyc-dropzone">
+                <div className="kyc-side-icon front" aria-hidden="true">
+                  <IdCard size={24} />
                 </div>
-              )}
+                <div className="kyc-drop-title">Front side</div>
+                <button
+                  type="button"
+                  className="kyc-choose-btn"
+                  disabled={loading}
+                  onClick={() => frontFileInputRef.current?.click()}
+                >
+                  Choose front
+                </button>
+                <input
+                  ref={frontFileInputRef}
+                  type="file"
+                  className="kyc-file-input"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={e => pickProof("front", e.target.files?.[0])}
+                />
+                {frontProofFile && (
+                  <div className="kyc-proof-picked">
+                    <CheckCircle2 size={14} />
+                    <span>{frontProofFile.name}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="kyc-dropzone">
+                <div className="kyc-side-icon back" aria-hidden="true">
+                  <IdCard size={24} />
+                </div>
+                <div className="kyc-drop-title">Back side</div>
+                <button
+                  type="button"
+                  className="kyc-choose-btn"
+                  disabled={loading}
+                  onClick={() => backFileInputRef.current?.click()}
+                >
+                  Choose back
+                </button>
+                <input
+                  ref={backFileInputRef}
+                  type="file"
+                  className="kyc-file-input"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={e => pickProof("back", e.target.files?.[0])}
+                />
+                {backProofFile && (
+                  <div className="kyc-proof-picked">
+                    <CheckCircle2 size={14} />
+                    <span>{backProofFile.name}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="acm-note" style={{ textAlign: "left" }}>
@@ -213,17 +242,17 @@ export default function KYCVerificationModal({
                 toast.error(status?.message || "KYC submission is not available now")
                 return
               }
-              if (!proofFile) {
-                toast.error("Upload document proof")
+              if (!frontProofFile || !backProofFile) {
+                toast.error("Upload both front and back images")
                 return
               }
               await onSubmit({
                 documentType,
                 fullName: fullName.trim(),
-                documentNumber: documentNumber.trim(),
+                documentNumber: documentNumberNormalized,
                 residenceAddress: residenceAddress.trim(),
-                notes: notes.trim(),
-                proofFile,
+                frontProofFile,
+                backProofFile,
               })
             }}
           >

@@ -1,5 +1,7 @@
 /* History Page */
 .history-container {
+    width: min(760px, 100%);
+    margin: 0 auto;
     padding: 0;
     background-color: transparent;
     height: 100%;
@@ -15,7 +17,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 10px;
+    padding: 10px 0;
     background-color: transparent;
     flex-shrink: 0;
     z-index: 10;
@@ -86,7 +88,7 @@
 .history-item {
     display: flex;
     flex-direction: column;
-    padding: 12px 10px;
+    padding: 12px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     gap: 4px;
     cursor: pointer;
@@ -168,7 +170,7 @@
 }
 
 .history-footer {
-    padding: 14px 10px 10px;
+    padding: 14px 0 10px;
     margin-top: auto;
     flex-shrink: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.06);

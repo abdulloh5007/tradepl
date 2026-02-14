@@ -58,14 +58,15 @@ interface AppViewRouterProps {
     voucherKind: "none" | "gold" | "diamond"
     proofFile: File
   }) => Promise<void>
+  activeAccount: TradingAccount | null
   kycStatus: KYCStatus | null
   onRequestKYC: (payload: {
     documentType: "passport" | "id_card" | "driver_license" | "other"
     fullName: string
     documentNumber: string
     residenceAddress: string
-    notes?: string
-    proofFile: File
+    frontProofFile: File
+    backProofFile: File
   }) => Promise<void>
   referralStatus: ReferralStatus | null
   onReferralWithdraw: (amountUSD?: string) => Promise<void>
@@ -134,6 +135,7 @@ export default function AppViewRouter({
   depositBonus,
   onClaimSignupBonus,
   onRequestRealDeposit,
+  activeAccount,
   kycStatus,
   onRequestKYC,
   referralStatus,
@@ -232,11 +234,6 @@ export default function AppViewRouter({
         depositBonus={depositBonus}
         onClaimSignupBonus={onClaimSignupBonus}
         onRequestRealDeposit={onRequestRealDeposit}
-        kycStatus={kycStatus}
-        onRequestKYC={onRequestKYC}
-        referralStatus={referralStatus}
-        onReferralWithdraw={onReferralWithdraw}
-        onRefreshReferral={onRefreshReferral}
         onCloseAll={async () => {
           await onCloseAll()
         }}
@@ -266,6 +263,12 @@ export default function AppViewRouter({
         setTheme={setTheme}
         onLogout={onLogout}
         profile={profile}
+        activeAccount={activeAccount}
+        kycStatus={kycStatus}
+        onRequestKYC={onRequestKYC}
+        referralStatus={referralStatus}
+        onReferralWithdraw={onReferralWithdraw}
+        onRefreshReferral={onRefreshReferral}
       />
     )
   }

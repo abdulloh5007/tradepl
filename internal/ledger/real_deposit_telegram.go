@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -67,19 +68,28 @@ type telegramInlineKeyboardButton struct {
 }
 
 type telegramUser struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
+	ID           int64  `json:"id"`
+	Username     string `json:"username"`
+	LanguageCode string `json:"language_code"`
+	IsBot        bool   `json:"is_bot"`
+	IsPremium    bool   `json:"is_premium"`
 }
 
 type telegramChat struct {
-	ID int64 `json:"id"`
+	ID       int64  `json:"id"`
+	Type     string `json:"type"`
+	Title    string `json:"title"`
+	Username string `json:"username"`
+	IsForum  bool   `json:"is_forum"`
 }
 
 type telegramMessage struct {
-	MessageID int64        `json:"message_id"`
-	Chat      telegramChat `json:"chat"`
-	From      telegramUser `json:"from"`
-	Text      string       `json:"text"`
+	MessageID       int64        `json:"message_id"`
+	MessageThreadID int64        `json:"message_thread_id"`
+	Date            int64        `json:"date"`
+	Chat            telegramChat `json:"chat"`
+	From            telegramUser `json:"from"`
+	Text            string       `json:"text"`
 }
 
 type telegramCallbackQuery struct {
@@ -90,9 +100,12 @@ type telegramCallbackQuery struct {
 }
 
 type telegramUpdate struct {
-	UpdateID      int64                  `json:"update_id"`
-	CallbackQuery *telegramCallbackQuery `json:"callback_query"`
-	Message       *telegramMessage       `json:"message"`
+	UpdateID          int64                  `json:"update_id"`
+	CallbackQuery     *telegramCallbackQuery `json:"callback_query"`
+	Message           *telegramMessage       `json:"message"`
+	EditedMessage     *telegramMessage       `json:"edited_message"`
+	ChannelPost       *telegramMessage       `json:"channel_post"`
+	EditedChannelPost *telegramMessage       `json:"edited_channel_post"`
 }
 
 type telegramReviewOutcome struct {
@@ -359,7 +372,7 @@ func (h *Handler) processTelegramDepositCallbacks(ctx context.Context, configure
 		"offset":          offset,
 		"limit":           limit,
 		"timeout":         0,
-		"allowed_updates": []string{"callback_query", "message"},
+		"allowed_updates": []string{"callback_query", "message", "edited_message", "channel_post", "edited_channel_post"},
 	}, &updates); err != nil {
 		return 0, err
 	}
@@ -377,7 +390,19 @@ func (h *Handler) processTelegramDepositCallbacks(ctx context.Context, configure
 			nextOffset = upd.UpdateID + 1
 		}
 		if msg := upd.Message; msg != nil {
-			h.handleTelegramMessageCommand(ctx, *msg)
+			h.handleTelegramMessageCommand(ctx, *msg, "message")
+			continue
+		}
+		if msg := upd.EditedMessage; msg != nil {
+			h.handleTelegramMessageCommand(ctx, *msg, "edited_message")
+			continue
+		}
+		if msg := upd.ChannelPost; msg != nil {
+			h.handleTelegramMessageCommand(ctx, *msg, "channel_post")
+			continue
+		}
+		if msg := upd.EditedChannelPost; msg != nil {
+			h.handleTelegramMessageCommand(ctx, *msg, "edited_channel_post")
 			continue
 		}
 		cq := upd.CallbackQuery
@@ -491,19 +516,98 @@ func (h *Handler) processTelegramDepositCallbacks(ctx context.Context, configure
 	return processed, nil
 }
 
-func (h *Handler) handleTelegramMessageCommand(ctx context.Context, msg telegramMessage) {
+func (h *Handler) handleTelegramMessageCommand(ctx context.Context, msg telegramMessage, updateType string) {
 	command := parseTelegramCommand(msg.Text)
 	switch command {
 	case "chid":
-		text := fmt.Sprintf("Chat ID: <code>%d</code>", msg.Chat.ID)
-		_ = h.telegramCallJSON(ctx, "sendMessage", map[string]interface{}{
+		text := fmt.Sprintf("Chat ID: <code>%d</code>\nType: <b>%s</b>", msg.Chat.ID, safeHTML(strings.TrimSpace(msg.Chat.Type)))
+		if err := h.telegramCallJSON(ctx, "sendMessage", map[string]interface{}{
 			"chat_id":    msg.Chat.ID,
 			"text":       text,
 			"parse_mode": "HTML",
-		}, nil)
+		}, nil); err != nil {
+			log.Printf("[telegram] failed to respond to /chid in chat %d: %v", msg.Chat.ID, err)
+		}
+	case "info":
+		if err := h.telegramCallJSON(ctx, "sendMessage", map[string]interface{}{
+			"chat_id":    msg.Chat.ID,
+			"text":       formatTelegramInfoMessage(msg, updateType),
+			"parse_mode": "HTML",
+		}, nil); err != nil {
+			log.Printf("[telegram] failed to respond to /info in chat %d: %v", msg.Chat.ID, err)
+		}
 	default:
 		return
 	}
+}
+
+func formatTelegramInfoMessage(msg telegramMessage, updateType string) string {
+	chatType := strings.TrimSpace(msg.Chat.Type)
+	if chatType == "" {
+		chatType = "unknown"
+	}
+	chatTitle := strings.TrimSpace(msg.Chat.Title)
+	if chatTitle == "" {
+		chatTitle = "N/A"
+	}
+	chatUsername := strings.TrimSpace(msg.Chat.Username)
+	if chatUsername == "" {
+		chatUsername = "N/A"
+	} else {
+		chatUsername = "@" + strings.TrimPrefix(chatUsername, "@")
+	}
+	lang := strings.TrimSpace(msg.From.LanguageCode)
+	if lang == "" {
+		lang = "N/A"
+	}
+	threadID := "N/A"
+	if msg.MessageThreadID > 0 {
+		threadID = strconv.FormatInt(msg.MessageThreadID, 10)
+	}
+	utcTime := "N/A"
+	if msg.Date > 0 {
+		utcTime = time.Unix(msg.Date, 0).UTC().Format("2006-01-02 15:04:05 UTC")
+	}
+	source := strings.TrimSpace(updateType)
+	if source == "" {
+		source = "message"
+	}
+
+	return fmt.Sprintf(
+		"<b>Chat Info</b>\n"+
+			"🆔 Chat ID: <code>%d</code>\n"+
+			"💬 Chat Type: <b>%s</b>\n"+
+			"🏷 Title: <b>%s</b>\n"+
+			"🔗 Chat Username: <b>%s</b>\n"+
+			"🧵 Thread ID: <code>%s</code>\n"+
+			"📩 Message ID: <code>%d</code>\n"+
+			"📨 Update Type: <b>%s</b>\n"+
+			"🕒 Message Time: <b>%s</b>\n"+
+			"🏛 Forum Chat: <b>%s</b>\n\n"+
+			"<b>User Extra</b>\n"+
+			"🌐 Language: <b>%s</b>\n"+
+			"🤖 Sender Is Bot: <b>%s</b>\n"+
+			"💎 Telegram Premium: <b>%s</b>",
+		msg.Chat.ID,
+		safeHTML(chatType),
+		safeHTML(chatTitle),
+		safeHTML(chatUsername),
+		safeHTML(threadID),
+		msg.MessageID,
+		safeHTML(source),
+		safeHTML(utcTime),
+		boolWord(msg.Chat.IsForum),
+		safeHTML(lang),
+		boolWord(msg.From.IsBot),
+		boolWord(msg.From.IsPremium),
+	)
+}
+
+func boolWord(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
 }
 
 func parseTelegramCommand(raw string) string {

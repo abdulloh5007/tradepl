@@ -32,6 +32,7 @@ const lazyLoadLimit = 500  // Load more when scrolling
 const historyPageLimit = 50
 const notificationsStorageKey = "lv_notifications_v1"
 const notificationsLimit = 200
+const MAX_KYC_PROOF_BYTES = 10 * 1024 * 1024
 
 type PollKey = "metrics" | "orders"
 type PollBackoffState = Record<PollKey, { failures: number; retryAt: number }>
@@ -1294,6 +1295,68 @@ export default function App() {
     reader.readAsDataURL(file)
   })
 
+  const loadImageFromFile = (file: File): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(image)
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error(`failed to decode image: ${file.name}`))
+    }
+    image.src = url
+  })
+
+  const canvasToJpegBlob = (canvas: HTMLCanvasElement, quality: number): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error("failed to build KYC proof image"))
+          return
+        }
+        resolve(blob)
+      }, "image/jpeg", quality)
+    })
+
+  const buildKYCCombinedProof = async (frontFile: File, backFile: File): Promise<File> => {
+    const [frontImage, backImage] = await Promise.all([
+      loadImageFromFile(frontFile),
+      loadImageFromFile(backFile),
+    ])
+
+    const sourceWidth = Math.max(frontImage.naturalWidth || frontImage.width, backImage.naturalWidth || backImage.width, 900)
+    const targetWidth = Math.min(1600, sourceWidth)
+    const pad = Math.round(targetWidth * 0.04)
+    const gap = Math.round(targetWidth * 0.03)
+
+    const frontScale = targetWidth / Math.max(1, frontImage.naturalWidth || frontImage.width)
+    const backScale = targetWidth / Math.max(1, backImage.naturalWidth || backImage.width)
+    const frontHeight = Math.max(1, Math.round((frontImage.naturalHeight || frontImage.height) * frontScale))
+    const backHeight = Math.max(1, Math.round((backImage.naturalHeight || backImage.height) * backScale))
+
+    const canvas = document.createElement("canvas")
+    canvas.width = targetWidth + pad * 2
+    canvas.height = frontHeight + backHeight + gap + pad * 2
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) throw new Error("failed to prepare KYC proof canvas")
+
+    ctx.fillStyle = "#ffffff"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(frontImage, pad, pad, targetWidth, frontHeight)
+    ctx.drawImage(backImage, pad, pad + frontHeight + gap, targetWidth, backHeight)
+
+    for (const quality of [0.9, 0.82, 0.74, 0.66]) {
+      const blob = await canvasToJpegBlob(canvas, quality)
+      if (blob.size <= MAX_KYC_PROOF_BYTES) {
+        return new File([blob], `kyc-${Date.now()}-front-back.jpg`, { type: "image/jpeg" })
+      }
+    }
+    throw new Error("KYC images are too large after merge (max 10MB)")
+  }
+
   const handleRequestRealDeposit = async (payload: {
     amountUSD: string
     voucherKind: "none" | "gold" | "diamond"
@@ -1324,18 +1387,18 @@ export default function App() {
     fullName: string
     documentNumber: string
     residenceAddress: string
-    notes?: string
-    proofFile: File
+    frontProofFile: File
+    backProofFile: File
   }) => {
-    const proofBase64 = await fileToBase64(payload.proofFile)
+    const mergedProof = await buildKYCCombinedProof(payload.frontProofFile, payload.backProofFile)
+    const proofBase64 = await fileToBase64(mergedProof)
     await api.requestKYC({
       document_type: payload.documentType,
       full_name: payload.fullName,
-      document_number: payload.documentNumber,
+      document_number: payload.documentNumber.replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
       residence_address: payload.residenceAddress,
-      notes: payload.notes || "",
-      proof_file_name: payload.proofFile.name,
-      proof_mime_type: payload.proofFile.type || "application/octet-stream",
+      proof_file_name: mergedProof.name,
+      proof_mime_type: mergedProof.type || "application/octet-stream",
       proof_base64: proofBase64,
     })
     addNotification({
@@ -1467,6 +1530,7 @@ export default function App() {
           depositBonus={depositBonus}
           onClaimSignupBonus={handleClaimSignupBonus}
           onRequestRealDeposit={handleRequestRealDeposit}
+          activeAccount={activeTradingAccount}
           kycStatus={kycStatus}
           onRequestKYC={handleRequestKYC}
           referralStatus={referralStatus}

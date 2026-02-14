@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import sys
 from aiogram import Bot, Dispatcher, types, F
@@ -41,6 +42,8 @@ async def cmd_help(message: types.Message):
     help_text = (
         "📚 <b>Available Commands</b>\n\n"
         "/me - Get your Telegram ID\n"
+        "/chid - Get current chat ID\n"
+        "/info - Get chat/user technical info\n"
         "/help - Show this help message\n"
     )
     
@@ -87,6 +90,49 @@ async def cmd_me(message: types.Message):
         rights = await db.get_admin_rights(user_id)
         text += f"🔑 <b>Rights:</b> {format_rights(rights)}\n"
     
+    await message.answer(text, parse_mode="HTML")
+
+
+@dp.message(Command("chid"))
+async def cmd_chid(message: types.Message):
+    """Handle /chid command - show current chat ID."""
+    await message.answer(
+        f"Chat ID: <code>{message.chat.id}</code>\n"
+        f"Type: <b>{message.chat.type}</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(Command("info"))
+async def cmd_info(message: types.Message):
+    """Handle /info command - show chat/user technical info without duplicating /me fields."""
+    chat = message.chat
+    user = message.from_user
+
+    chat_title = html.escape(chat.title) if chat.title else "N/A"
+    chat_username = html.escape(f"@{chat.username}") if chat.username else "N/A"
+    thread_id = str(message.message_thread_id) if message.message_thread_id else "N/A"
+    msg_time = message.date.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z") if message.date else "N/A"
+
+    user_lang = html.escape(user.language_code) if user and user.language_code else "N/A"
+    user_is_bot = "yes" if user and user.is_bot else "no"
+    user_is_premium = "yes" if user and user.is_premium else "no"
+
+    text = (
+        "<b>Chat Info</b>\n"
+        f"🆔 Chat ID: <code>{chat.id}</code>\n"
+        f"💬 Chat Type: <b>{chat.type}</b>\n"
+        f"🏷 Title: <b>{chat_title}</b>\n"
+        f"🔗 Chat Username: <b>{chat_username}</b>\n"
+        f"🧵 Thread ID: <code>{thread_id}</code>\n"
+        f"📩 Message ID: <code>{message.message_id}</code>\n"
+        f"🕒 Message Time: <b>{msg_time}</b>\n"
+        f"🏛 Forum Chat: <b>{'yes' if getattr(chat, 'is_forum', False) else 'no'}</b>\n\n"
+        "<b>User Extra</b>\n"
+        f"🌐 Language: <b>{user_lang}</b>\n"
+        f"🤖 Sender Is Bot: <b>{user_is_bot}</b>\n"
+        f"💎 Telegram Premium: <b>{user_is_premium}</b>"
+    )
     await message.answer(text, parse_mode="HTML")
 
 
@@ -193,6 +239,8 @@ async def set_bot_commands():
     commands = [
         BotCommand(command="help", description="Show help message"),
         BotCommand(command="me", description="Get your Telegram ID"),
+        BotCommand(command="chid", description="Get current chat ID"),
+        BotCommand(command="info", description="Get chat/user technical info"),
     ]
     await bot.set_my_commands(commands)
 
