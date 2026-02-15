@@ -330,7 +330,32 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       if (before) url += `&before=${before}`
       return request<Candle[]>(url, "GET")
     },
-    metrics: () => request<{ balance: string; equity: string; margin: string; free_margin: string; margin_level: string; pl: string; system_notice?: string }>("/v1/metrics", "GET", undefined, true),
+    metrics: () => request<{
+        balance: string
+        equity: string
+        margin: string
+        free_margin: string
+        margin_level: string
+        pl: string
+        system_notice?: string
+        system_notice_details?: {
+            kind?: string
+            reason?: string
+            triggered_at?: string
+            threshold_percent?: string
+            balance_before?: string
+            balance_after?: string
+            equity_before?: string
+            equity_after?: string
+            margin_before?: string
+            margin_after?: string
+            margin_level_before?: string
+            margin_level_after?: string
+            closed_orders?: number
+            total_loss?: string
+            total_loss_estimated?: boolean
+        }
+    }>("/v1/metrics", "GET", undefined, true),
     orders: () => request<Array<{
       id: string
       ticket?: string

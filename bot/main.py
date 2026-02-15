@@ -7,7 +7,7 @@ import signal
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.exceptions import TelegramBadRequest
@@ -20,6 +20,8 @@ from config import (
     INTERNAL_API_TOKEN,
     OWNER_TELEGRAM_ID,
     REVIEW_BATCH_LIMIT,
+    REVIEW_CHAT_LINK_TTL_SECONDS,
+    REVIEW_ACCESS_SYNC_SECONDS,
     REVIEW_FALLBACK_SECONDS,
     REVIEW_LISTENER_RETRY_SECONDS,
     REVIEW_NOTIFY_CHANNEL,
@@ -58,6 +60,8 @@ REVIEW_HEALTH = {
 
 BOT_STOP_EVENT: asyncio.Event | None = None
 SHUTDOWN_IN_PROGRESS = False
+LAST_DEPOSIT_REVIEW_ACCESS: dict[int, bool] = {}
+LAST_DEPOSIT_REVIEW_CHAT_ID = 0
 
 
 def utc_now_iso() -> str:
@@ -137,6 +141,77 @@ def parse_chat_id(raw: str):
     except Exception:
         return None
     return value if value != 0 else None
+
+
+async def get_deposit_review_chat_id():
+    deposit_chat_raw, _ = await db.get_review_chats()
+    return parse_chat_id(deposit_chat_raw)
+
+
+async def kick_deposit_review_chat_member(chat_id: int, telegram_id: int, reason: str):
+    if chat_id <= 0 or telegram_id <= 0:
+        return
+    try:
+        until = datetime.now(timezone.utc) + timedelta(seconds=45)
+        await bot.ban_chat_member(chat_id=chat_id, user_id=telegram_id, until_date=until, revoke_messages=False)
+        await bot.unban_chat_member(chat_id=chat_id, user_id=telegram_id, only_if_banned=True)
+        logger.info("Review chat member removed user=%s reason=%s", telegram_id, reason)
+    except TelegramBadRequest as err:
+        text = str(err).lower()
+        if "participant" in text or "not enough rights" in text or "user not found" in text:
+            logger.info("Skip review chat kick user=%s: %s", telegram_id, err)
+            return
+        logger.exception("Failed to revoke review chat access user=%s", telegram_id)
+    except Exception:
+        logger.exception("Failed to revoke review chat access user=%s", telegram_id)
+
+
+async def sync_deposit_review_chat_access_once():
+    global LAST_DEPOSIT_REVIEW_ACCESS, LAST_DEPOSIT_REVIEW_CHAT_ID
+    chat_id = await get_deposit_review_chat_id()
+    if not chat_id:
+        LAST_DEPOSIT_REVIEW_ACCESS = {}
+        LAST_DEPOSIT_REVIEW_CHAT_ID = 0
+        return
+
+    rows = await db.list_panel_admin_deposit_review_rights()
+    current: dict[int, bool] = {}
+    for row in rows:
+        telegram_id = int(row.get("telegram_id") or 0)
+        if telegram_id <= 0 or telegram_id == OWNER_TELEGRAM_ID:
+            continue
+        current[telegram_id] = bool(row.get("deposit_review"))
+
+    force_full_scan = chat_id != LAST_DEPOSIT_REVIEW_CHAT_ID
+    revoke_ids: set[int] = set()
+    if force_full_scan:
+        revoke_ids.update(uid for uid, allowed in current.items() if not allowed)
+    else:
+        for uid, allowed in current.items():
+            prev_allowed = LAST_DEPOSIT_REVIEW_ACCESS.get(uid)
+            if not allowed and (prev_allowed is None or prev_allowed):
+                revoke_ids.add(uid)
+
+    removed_from_admins = set(LAST_DEPOSIT_REVIEW_ACCESS.keys()) - set(current.keys())
+    revoke_ids.update(removed_from_admins)
+
+    for telegram_id in sorted(revoke_ids):
+        await kick_deposit_review_chat_member(chat_id, telegram_id, "deposit_review_revoked")
+
+    LAST_DEPOSIT_REVIEW_ACCESS = current
+    LAST_DEPOSIT_REVIEW_CHAT_ID = chat_id
+
+
+async def review_access_sync_loop(stop_event: asyncio.Event):
+    while not stop_event.is_set():
+        try:
+            await sync_deposit_review_chat_access_once()
+        except Exception:
+            logger.exception("Review chat access sync failed")
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=max(10, REVIEW_ACCESS_SYNC_SECONDS))
+        except asyncio.TimeoutError:
+            pass
 
 
 def humanize_seconds(total_seconds: int) -> str:
@@ -238,6 +313,40 @@ async def safe_callback_answer(query: types.CallbackQuery, text: str, show_alert
     except Exception as err:
         logger.exception("Failed to answer callback query: %s", err)
         return False
+
+
+def _append_caption_block(base_caption: str, block_lines: list[str]) -> str:
+    base = str(base_caption or "").strip()
+    block = "\n".join([str(x) for x in block_lines if str(x).strip()]).strip()
+    if not block:
+        return base[:1024]
+
+    sep = "\n\n"
+    max_caption = 1024
+
+    if len(block) >= max_caption:
+        return f"{block[: max_caption - 3]}..."
+
+    if not base:
+        return block
+
+    budget_for_base = max_caption - len(sep) - len(block)
+    if budget_for_base <= 0:
+        return block
+    if len(base) > budget_for_base:
+        if budget_for_base > 3:
+            base = f"{base[: budget_for_base - 3]}..."
+        else:
+            base = base[:budget_for_base]
+    return f"{base}{sep}{block}"
+
+
+async def append_review_result_to_message(message: types.Message, block_lines: list[str]):
+    if not message:
+        return
+    base = str(message.caption or "").strip()
+    updated_caption = _append_caption_block(base, block_lines)
+    await message.edit_caption(caption=updated_caption, reply_markup=None)
 
 
 def _internal_post_sync(path: str, payload: dict):
@@ -579,6 +688,8 @@ async def cmd_help(message: types.Message):
     user_id = message.from_user.id
     is_owner = user_id == OWNER_TELEGRAM_ID
     is_admin = await db.is_panel_admin(user_id)
+    rights = await db.get_admin_rights(user_id) if is_admin and not is_owner else {}
+    has_deposit_review = is_owner or bool((rights or {}).get("deposit_review"))
 
     help_text = (
         "📚 <b>Available Commands</b>\n\n"
@@ -592,6 +703,7 @@ async def cmd_help(message: types.Message):
         help_text += (
             "\n<b>🔐 Owner Commands:</b>\n"
             "/getownerpanel [time] - Get owner panel link\n"
+            "/review_chat - Get deposit review chat join link\n"
             "/health - Bot review listener health\n"
             "/off - Graceful shutdown bot\n"
             "  Examples:\n"
@@ -608,6 +720,8 @@ async def cmd_help(message: types.Message):
             "  • /getadminpanel 60m (60 minutes)\n"
             "  • /getadminpanel 24h (24 hours)\n"
         )
+        if has_deposit_review:
+            help_text += "/review_chat - Get deposit review chat join link\n"
 
     await message.answer(help_text, parse_mode="HTML")
 
@@ -715,6 +829,48 @@ async def cmd_health(message: types.Message):
     await message.answer(text, parse_mode="HTML")
 
 
+@dp.message(Command("review_chat"))
+async def cmd_review_chat(message: types.Message):
+    """Return deposit review chat join link for owner/deposit reviewers."""
+    user_id = int(message.from_user.id)
+    allowed = await db.is_deposit_reviewer_allowed(user_id, OWNER_TELEGRAM_ID)
+    if not allowed:
+        return
+
+    chat_id = await get_deposit_review_chat_id()
+    if not chat_id:
+        await message.answer("Deposit review chat is not configured in owner panel.")
+        return
+
+    await sync_deposit_review_chat_access_once()
+
+    ttl_seconds = max(60, int(REVIEW_CHAT_LINK_TTL_SECONDS))
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+    link_name = f"review-{user_id}-{int(datetime.now(timezone.utc).timestamp())}"
+    try:
+        invite = await bot.create_chat_invite_link(
+            chat_id=chat_id,
+            name=link_name,
+            expire_date=expires_at,
+            creates_join_request=True,
+        )
+    except Exception:
+        logger.exception("Failed to create review chat invite for user=%s chat=%s", user_id, chat_id)
+        await message.answer(
+            "Failed to create review chat link. Check that bot is admin in the review chat "
+            "and has rights to manage invite links and join requests."
+        )
+        return
+
+    text = (
+        "<b>Deposit Review Chat Access</b>\n\n"
+        f"Link valid for: <b>{humanize_seconds(ttl_seconds)}</b>\n"
+        "Join request will be approved only if you have <b>deposit_review</b> right.\n\n"
+        f"{invite.invite_link}"
+    )
+    await message.answer(text, parse_mode="HTML")
+
+
 @dp.message(Command("off"))
 async def cmd_off(message: types.Message):
     """Owner-only graceful bot shutdown command."""
@@ -723,6 +879,44 @@ async def cmd_off(message: types.Message):
         return
     await message.answer("🛑 Shutting down bot...")
     await trigger_shutdown(f"telegram /off by {user_id}")
+
+
+@dp.chat_join_request()
+async def on_chat_join_request(req: types.ChatJoinRequest):
+    """Approve join requests only for owner/admins with deposit_review in configured deposit chat."""
+    chat_id = await get_deposit_review_chat_id()
+    if not chat_id:
+        return
+    if req.chat.id != chat_id:
+        return
+
+    telegram_id = int(req.from_user.id)
+    allowed = await db.is_deposit_reviewer_allowed(telegram_id, OWNER_TELEGRAM_ID)
+    if allowed:
+        try:
+            await bot.approve_chat_join_request(chat_id=chat_id, user_id=telegram_id)
+            logger.info("Approved review chat join request user=%s", telegram_id)
+            with contextlib.suppress(Exception):
+                await bot.send_message(
+                    chat_id=telegram_id,
+                    text="✅ Access granted to deposit review chat.",
+                )
+        except Exception:
+            logger.exception("Failed to approve review chat join request user=%s", telegram_id)
+        LAST_DEPOSIT_REVIEW_ACCESS[telegram_id] = True
+        return
+
+    try:
+        await bot.decline_chat_join_request(chat_id=chat_id, user_id=telegram_id)
+        logger.info("Declined review chat join request user=%s", telegram_id)
+    except Exception:
+        logger.exception("Failed to decline review chat join request user=%s", telegram_id)
+    with contextlib.suppress(Exception):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="❌ Access denied. You need panel right: deposit_review.",
+        )
+    LAST_DEPOSIT_REVIEW_ACCESS[telegram_id] = False
 
 
 @dp.callback_query(F.data.startswith("dep:"))
@@ -760,32 +954,24 @@ async def callback_deposit_review(query: types.CallbackQuery):
     if status != 200:
         error_text = str((payload or {}).get("error") or "Review decision failed")
         await safe_callback_answer(query, error_text[:180], show_alert=True)
-        with contextlib.suppress(Exception):
-            await bot.send_message(
-                chat_id=query.message.chat.id,
-                text=f"❌ Deposit review failed: {html.escape(error_text)}",
-                parse_mode="HTML",
-            )
         return
 
     outcome = payload or {}
-    with contextlib.suppress(Exception):
-        await query.message.edit_reply_markup(reply_markup=None)
-
     reviewer_label = f"@{query.from_user.username}" if query.from_user.username else str(query.from_user.id)
     icon = "✅"
     outcome_status = str(outcome.get("status") or "").strip()
     if outcome_status.startswith("rejected"):
         icon = "❌"
-    text = (
-        f"{icon} Deposit <b>{html.escape(outcome_status.upper() or 'UPDATED')}</b>\n"
-        f"Ticket: <code>{html.escape(str(outcome.get('ticket') or request_id))}</code>\n"
-        f"Amount: <b>{safe_decimal_2(outcome.get('amount_usd'))} USD</b>\n"
-        f"Bonus: <b>{safe_decimal_2(outcome.get('bonus_usd'))} USD</b>\n"
-        f"Total: <b>{safe_decimal_2(outcome.get('total_usd'))} USD</b>\n"
-        f"Reviewer: <b>{html.escape(reviewer_label)}</b>"
-    )
-    await bot.send_message(chat_id=query.message.chat.id, text=text, parse_mode="HTML")
+    lines = [
+        f"{icon} Deposit {outcome_status.upper() or 'UPDATED'}",
+        f"Ticket: {str(outcome.get('ticket') or request_id)}",
+        f"Amount: {safe_decimal_2(outcome.get('amount_usd'))} USD",
+        f"Bonus: {safe_decimal_2(outcome.get('bonus_usd'))} USD",
+        f"Total: {safe_decimal_2(outcome.get('total_usd'))} USD",
+        f"Reviewer: {reviewer_label}",
+    ]
+    with contextlib.suppress(Exception):
+        await append_review_result_to_message(query.message, lines)
     await send_deposit_user_notification(request_id, outcome)
     await safe_callback_answer(query, "Decision applied", show_alert=False)
 
@@ -825,40 +1011,32 @@ async def callback_kyc_review(query: types.CallbackQuery):
     if status != 200:
         error_text = str((payload or {}).get("error") or "Review decision failed")
         await safe_callback_answer(query, error_text[:180], show_alert=True)
-        with contextlib.suppress(Exception):
-            await bot.send_message(
-                chat_id=query.message.chat.id,
-                text=f"❌ KYC review failed: {html.escape(error_text)}",
-                parse_mode="HTML",
-            )
         return
 
     outcome = payload or {}
-    with contextlib.suppress(Exception):
-        await query.message.edit_reply_markup(reply_markup=None)
-
     reviewer_label = f"@{query.from_user.username}" if query.from_user.username else str(query.from_user.id)
     icon = "✅"
     outcome_status = str(outcome.get("status") or "").strip()
     lines = [
-        f"{icon} KYC <b>{html.escape(outcome_status.upper() or 'UPDATED')}</b>",
-        f"Ticket: <code>{html.escape(str(outcome.get('ticket') or request_id))}</code>",
-        f"Reviewer: <b>{html.escape(reviewer_label)}</b>",
+        f"{icon} KYC {outcome_status.upper() or 'UPDATED'}",
+        f"Ticket: {str(outcome.get('ticket') or request_id)}",
+        f"Reviewer: {reviewer_label}",
     ]
     if outcome_status.startswith("rejected"):
-        lines[0] = f"❌ KYC <b>{html.escape(outcome_status.upper() or 'REJECTED')}</b>"
+        lines[0] = f"❌ KYC {outcome_status.upper() or 'REJECTED'}"
         blocked_until = outcome.get("blocked_until")
         if blocked_until:
-            lines.append(f"Blocked until: <code>{html.escape(str(blocked_until))}</code>")
+            lines.append(f"Blocked until: {str(blocked_until)}")
         if bool(outcome.get("permanent_blocked")):
-            lines.append("User KYC state: <b>PERMANENT BLOCK</b>")
+            lines.append("User KYC state: PERMANENT BLOCK")
         attempts = int(outcome.get("failed_attempts") or 0)
         if attempts > 0:
-            lines.append(f"Failed attempts: <b>{attempts}</b>")
+            lines.append(f"Failed attempts: {attempts}")
     if outcome_status.startswith("approved"):
-        lines.append(f"Bonus: <b>{safe_decimal_2(outcome.get('bonus_amount_usd'))} USD</b>")
+        lines.append(f"Bonus: {safe_decimal_2(outcome.get('bonus_amount_usd'))} USD")
 
-    await bot.send_message(chat_id=query.message.chat.id, text="\n".join(lines), parse_mode="HTML")
+    with contextlib.suppress(Exception):
+        await append_review_result_to_message(query.message, lines)
     await send_kyc_user_notification(request_id, outcome)
     await safe_callback_answer(query, "Decision applied", show_alert=False)
 
@@ -999,6 +1177,7 @@ async def set_bot_commands():
         BotCommand(command="me", description="Get your Telegram ID"),
         BotCommand(command="chid", description="Get current chat ID"),
         BotCommand(command="info", description="Get chat/user technical info"),
+        BotCommand(command="review_chat", description="Get deposit review chat link"),
         BotCommand(command="health", description="Bot review listener health"),
         BotCommand(command="off", description="Graceful shutdown (owner only)"),
     ]
@@ -1034,6 +1213,7 @@ async def main():
 
     dispatcher_task = asyncio.create_task(review_dispatch_loop(stop_event, dispatch_event))
     listener_task = asyncio.create_task(review_listener_loop(stop_event, dispatch_event, loop))
+    access_task = asyncio.create_task(review_access_sync_loop(stop_event))
     terminal_task = asyncio.create_task(terminal_shutdown_loop(stop_event))
 
     try:
@@ -1044,11 +1224,14 @@ async def main():
         stop_event.set()
         dispatcher_task.cancel()
         listener_task.cancel()
+        access_task.cancel()
         terminal_task.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await dispatcher_task
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await listener_task
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await access_task
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await terminal_task
         with contextlib.suppress(NotImplementedError, Exception):

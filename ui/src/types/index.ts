@@ -61,6 +61,7 @@ export interface Metrics {
     margin_level: string
     pl: string
     system_notice?: string
+    system_notice_details?: SystemNoticeDetails
 }
 
 export interface MarketConfig {
@@ -109,6 +110,24 @@ export type Theme = "dark" | "light"
 export type Lang = "en" | "uz" | "ru"
 export type View = "chart" | "positions" | "history" | "accounts" | "notifications" | "profile" | "api" | "faucet" | "admin"
 
+export interface SystemNoticeDetails {
+    kind?: "margin_call" | "stop_out" | string
+    reason?: string
+    triggered_at?: string
+    threshold_percent?: string
+    balance_before?: string
+    balance_after?: string
+    equity_before?: string
+    equity_after?: string
+    margin_before?: string
+    margin_after?: string
+    margin_level_before?: string
+    margin_level_after?: string
+    closed_orders?: number
+    total_loss?: string
+    total_loss_estimated?: boolean
+}
+
 export interface AppNotification {
     id: string
     kind: "system" | "bonus" | "deposit" | "news"
@@ -118,6 +137,7 @@ export interface AppNotification {
     read: boolean
     dedupe_key?: string
     account_id?: string
+    details?: SystemNoticeDetails
 }
 
 export interface MarketNewsEvent {

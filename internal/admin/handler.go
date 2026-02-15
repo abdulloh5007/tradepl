@@ -105,9 +105,13 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 			signup_bonus_total_limit, signup_bonus_amount,
 			real_deposit_min_usd, real_deposit_max_usd, usd_to_uzs_rate, real_deposit_review_minutes,
 			telegram_deposit_chat_id,
-			kyc_bonus_amount, kyc_review_eta_hours, telegram_kyc_chat_id
+			kyc_bonus_amount, kyc_review_eta_hours, telegram_kyc_chat_id,
+			spread_calm_max_add, spread_spike_threshold, spread_spike_max_add,
+			spread_news_pre_mult, spread_news_post_mult,
+			spread_news_live_low_mult, spread_news_live_medium_mult, spread_news_live_high_mult,
+			spread_dynamic_cap_mult, spread_smoothing_alpha
 		)
-		VALUES (1, 200, 100, 50000, 60, 20, 3000, 700, 10, 10, 1000, 13000, 120, '', 50, 8, '')
+		VALUES (1, 200, 100, 50000, 60, 20, 3000, 700, 10, 10, 1000, 13000, 120, '', 50, 8, '', 0.12, 0.60, 0.20, 1.08, 1.12, 1.20, 1.35, 1.55, 1.75, 0.18)
 		ON CONFLICT (id) DO NOTHING
 	`)
 	if err != nil {
@@ -132,6 +136,16 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 		KYCBonusAmount          string `json:"kyc_bonus_amount"`
 		KYCReviewETAHours       int    `json:"kyc_review_eta_hours"`
 		TelegramKYCChatID       string `json:"telegram_kyc_chat_id"`
+		SpreadCalmMaxAdd        string `json:"spread_calm_max_add"`
+		SpreadSpikeThreshold    string `json:"spread_spike_threshold"`
+		SpreadSpikeMaxAdd       string `json:"spread_spike_max_add"`
+		SpreadNewsPreMult       string `json:"spread_news_pre_mult"`
+		SpreadNewsPostMult      string `json:"spread_news_post_mult"`
+		SpreadNewsLiveLowMult   string `json:"spread_news_live_low_mult"`
+		SpreadNewsLiveMediumMul string `json:"spread_news_live_medium_mult"`
+		SpreadNewsLiveHighMult  string `json:"spread_news_live_high_mult"`
+		SpreadDynamicCapMult    string `json:"spread_dynamic_cap_mult"`
+		SpreadSmoothingAlpha    string `json:"spread_smoothing_alpha"`
 	}
 	err = h.pool.QueryRow(r.Context(), `
 		SELECT
@@ -150,7 +164,17 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 			COALESCE((to_jsonb(trc)->>'telegram_deposit_chat_id')::text, ''),
 			COALESCE((to_jsonb(trc)->>'kyc_bonus_amount')::numeric, 50)::text,
 			COALESCE((to_jsonb(trc)->>'kyc_review_eta_hours')::int, 8),
-			COALESCE((to_jsonb(trc)->>'telegram_kyc_chat_id')::text, '')
+			COALESCE((to_jsonb(trc)->>'telegram_kyc_chat_id')::text, ''),
+			COALESCE((to_jsonb(trc)->>'spread_calm_max_add')::numeric, 0.12)::text,
+			COALESCE((to_jsonb(trc)->>'spread_spike_threshold')::numeric, 0.60)::text,
+			COALESCE((to_jsonb(trc)->>'spread_spike_max_add')::numeric, 0.20)::text,
+			COALESCE((to_jsonb(trc)->>'spread_news_pre_mult')::numeric, 1.08)::text,
+			COALESCE((to_jsonb(trc)->>'spread_news_post_mult')::numeric, 1.12)::text,
+			COALESCE((to_jsonb(trc)->>'spread_news_live_low_mult')::numeric, 1.20)::text,
+			COALESCE((to_jsonb(trc)->>'spread_news_live_medium_mult')::numeric, 1.35)::text,
+			COALESCE((to_jsonb(trc)->>'spread_news_live_high_mult')::numeric, 1.55)::text,
+			COALESCE((to_jsonb(trc)->>'spread_dynamic_cap_mult')::numeric, 1.75)::text,
+			COALESCE((to_jsonb(trc)->>'spread_smoothing_alpha')::numeric, 0.18)::text
 		FROM trading_risk_config trc
 		WHERE trc.id = 1
 	`).Scan(
@@ -159,6 +183,9 @@ func (h *Handler) GetTradingRisk(w http.ResponseWriter, r *http.Request) {
 		&res.SignupBonusTotalLimit, &res.SignupBonusAmount,
 		&res.RealDepositMinUSD, &res.RealDepositMaxUSD, &res.USDToUZSRate, &res.RealDepositReviewMinute, &res.TelegramDepositChatID,
 		&res.KYCBonusAmount, &res.KYCReviewETAHours, &res.TelegramKYCChatID,
+		&res.SpreadCalmMaxAdd, &res.SpreadSpikeThreshold, &res.SpreadSpikeMaxAdd,
+		&res.SpreadNewsPreMult, &res.SpreadNewsPostMult, &res.SpreadNewsLiveLowMult, &res.SpreadNewsLiveMediumMul, &res.SpreadNewsLiveHighMult,
+		&res.SpreadDynamicCapMult, &res.SpreadSmoothingAlpha,
 	)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
@@ -189,6 +216,16 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 		KYCBonusAmount          string `json:"kyc_bonus_amount"`
 		KYCReviewETAHours       int    `json:"kyc_review_eta_hours"`
 		TelegramKYCChatID       string `json:"telegram_kyc_chat_id"`
+		SpreadCalmMaxAdd        string `json:"spread_calm_max_add"`
+		SpreadSpikeThreshold    string `json:"spread_spike_threshold"`
+		SpreadSpikeMaxAdd       string `json:"spread_spike_max_add"`
+		SpreadNewsPreMult       string `json:"spread_news_pre_mult"`
+		SpreadNewsPostMult      string `json:"spread_news_post_mult"`
+		SpreadNewsLiveLowMult   string `json:"spread_news_live_low_mult"`
+		SpreadNewsLiveMediumMul string `json:"spread_news_live_medium_mult"`
+		SpreadNewsLiveHighMult  string `json:"spread_news_live_high_mult"`
+		SpreadDynamicCapMult    string `json:"spread_dynamic_cap_mult"`
+		SpreadSmoothingAlpha    string `json:"spread_smoothing_alpha"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
@@ -211,7 +248,17 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 		!isPositiveNumeric(req.RealDepositMinUSD) ||
 		!isPositiveNumeric(req.RealDepositMaxUSD) ||
 		!isPositiveNumeric(req.USDToUZSRate) ||
-		!isPositiveNumeric(req.KYCBonusAmount) {
+		!isPositiveNumeric(req.KYCBonusAmount) ||
+		!isPositiveNumeric(req.SpreadNewsPreMult) ||
+		!isPositiveNumeric(req.SpreadNewsPostMult) ||
+		!isPositiveNumeric(req.SpreadNewsLiveLowMult) ||
+		!isPositiveNumeric(req.SpreadNewsLiveMediumMul) ||
+		!isPositiveNumeric(req.SpreadNewsLiveHighMult) ||
+		!isPositiveNumeric(req.SpreadDynamicCapMult) ||
+		!isPositiveNumeric(req.SpreadSmoothingAlpha) ||
+		!isNonNegativeNumeric(req.SpreadCalmMaxAdd) ||
+		!isNonNegativeNumeric(req.SpreadSpikeThreshold) ||
+		!isNonNegativeNumeric(req.SpreadSpikeMaxAdd) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "numeric fields must be positive numbers"})
 		return
 	}
@@ -219,6 +266,25 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 	maxDep, _ := strconv.ParseFloat(strings.TrimSpace(req.RealDepositMaxUSD), 64)
 	if maxDep < minDep {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "real_deposit_max_usd must be >= real_deposit_min_usd"})
+		return
+	}
+	spreadCap, _ := strconv.ParseFloat(strings.TrimSpace(req.SpreadDynamicCapMult), 64)
+	spreadPre, _ := strconv.ParseFloat(strings.TrimSpace(req.SpreadNewsPreMult), 64)
+	spreadPost, _ := strconv.ParseFloat(strings.TrimSpace(req.SpreadNewsPostMult), 64)
+	spreadLow, _ := strconv.ParseFloat(strings.TrimSpace(req.SpreadNewsLiveLowMult), 64)
+	spreadMed, _ := strconv.ParseFloat(strings.TrimSpace(req.SpreadNewsLiveMediumMul), 64)
+	spreadHigh, _ := strconv.ParseFloat(strings.TrimSpace(req.SpreadNewsLiveHighMult), 64)
+	smoothingAlpha, _ := strconv.ParseFloat(strings.TrimSpace(req.SpreadSmoothingAlpha), 64)
+	if spreadCap < 1 || spreadPre < 1 || spreadPost < 1 || spreadLow < 1 || spreadMed < 1 || spreadHigh < 1 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "spread multipliers must be >= 1"})
+		return
+	}
+	if spreadCap < spreadPre || spreadCap < spreadPost || spreadCap < spreadLow || spreadCap < spreadMed || spreadCap < spreadHigh {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "spread_dynamic_cap_mult must be >= all news multipliers"})
+		return
+	}
+	if smoothingAlpha <= 0 || smoothingAlpha > 1 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "spread_smoothing_alpha must be in (0, 1]"})
 		return
 	}
 	req.TelegramDepositChatID = strings.TrimSpace(req.TelegramDepositChatID)
@@ -232,9 +298,13 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 			real_deposit_min_usd, real_deposit_max_usd, usd_to_uzs_rate, real_deposit_review_minutes,
 			telegram_deposit_chat_id,
 			kyc_bonus_amount, kyc_review_eta_hours, telegram_kyc_chat_id,
+			spread_calm_max_add, spread_spike_threshold, spread_spike_max_add,
+			spread_news_pre_mult, spread_news_post_mult,
+			spread_news_live_low_mult, spread_news_live_medium_mult, spread_news_live_high_mult,
+			spread_dynamic_cap_mult, spread_smoothing_alpha,
 			updated_at
 		)
-		VALUES (1, $1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, $7, $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12, $13, $14::numeric, $15, $16, NOW())
+		VALUES (1, $1, $2::numeric, $3::numeric, $4::numeric, $5::numeric, $6, $7, $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12, $13, $14::numeric, $15, $16, $17::numeric, $18::numeric, $19::numeric, $20::numeric, $21::numeric, $22::numeric, $23::numeric, $24::numeric, $25::numeric, $26::numeric, NOW())
 		ON CONFLICT (id) DO UPDATE
 		SET max_open_positions = EXCLUDED.max_open_positions,
 			max_order_lots = EXCLUDED.max_order_lots,
@@ -252,8 +322,18 @@ func (h *Handler) UpdateTradingRisk(w http.ResponseWriter, r *http.Request) {
 			kyc_bonus_amount = EXCLUDED.kyc_bonus_amount,
 			kyc_review_eta_hours = EXCLUDED.kyc_review_eta_hours,
 			telegram_kyc_chat_id = EXCLUDED.telegram_kyc_chat_id,
+			spread_calm_max_add = EXCLUDED.spread_calm_max_add,
+			spread_spike_threshold = EXCLUDED.spread_spike_threshold,
+			spread_spike_max_add = EXCLUDED.spread_spike_max_add,
+			spread_news_pre_mult = EXCLUDED.spread_news_pre_mult,
+			spread_news_post_mult = EXCLUDED.spread_news_post_mult,
+			spread_news_live_low_mult = EXCLUDED.spread_news_live_low_mult,
+			spread_news_live_medium_mult = EXCLUDED.spread_news_live_medium_mult,
+			spread_news_live_high_mult = EXCLUDED.spread_news_live_high_mult,
+			spread_dynamic_cap_mult = EXCLUDED.spread_dynamic_cap_mult,
+			spread_smoothing_alpha = EXCLUDED.spread_smoothing_alpha,
 			updated_at = NOW()
-	`, req.MaxOpenPositions, req.MaxOrderLots, req.MaxOrderNotionalUSD, req.MarginCallLevelPercent, req.StopOutLevelPercent, req.UnlimitedEffectiveLevel, req.SignupBonusTotalLimit, req.SignupBonusAmount, req.RealDepositMinUSD, req.RealDepositMaxUSD, req.USDToUZSRate, req.RealDepositReviewMinute, req.TelegramDepositChatID, req.KYCBonusAmount, req.KYCReviewETAHours, req.TelegramKYCChatID)
+	`, req.MaxOpenPositions, req.MaxOrderLots, req.MaxOrderNotionalUSD, req.MarginCallLevelPercent, req.StopOutLevelPercent, req.UnlimitedEffectiveLevel, req.SignupBonusTotalLimit, req.SignupBonusAmount, req.RealDepositMinUSD, req.RealDepositMaxUSD, req.USDToUZSRate, req.RealDepositReviewMinute, req.TelegramDepositChatID, req.KYCBonusAmount, req.KYCReviewETAHours, req.TelegramKYCChatID, req.SpreadCalmMaxAdd, req.SpreadSpikeThreshold, req.SpreadSpikeMaxAdd, req.SpreadNewsPreMult, req.SpreadNewsPostMult, req.SpreadNewsLiveLowMult, req.SpreadNewsLiveMediumMul, req.SpreadNewsLiveHighMult, req.SpreadDynamicCapMult, req.SpreadSmoothingAlpha)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 		return
@@ -710,6 +790,11 @@ func AdminAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 func isPositiveNumeric(raw string) bool {
 	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
 	return err == nil && v > 0
+}
+
+func isNonNegativeNumeric(raw string) bool {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	return err == nil && v >= 0
 }
 
 type contextKey string

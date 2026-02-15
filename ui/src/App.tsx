@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { toast, Toaster } from "sonner"
 
 // Types
-import type { AppNotification, MarketNewsEvent, Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics } from "./types"
+import type { AppNotification, MarketNewsEvent, Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics, SystemNoticeDetails } from "./types"
 
 // Utils
 import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId, storedTimeframe } from "./utils/cookies"
@@ -182,6 +182,25 @@ function readStoredNotifications(): AppNotification[] {
         read: Boolean(item.read),
         dedupe_key: item.dedupe_key ? String(item.dedupe_key) : undefined,
         account_id: item.account_id ? String(item.account_id) : undefined,
+        details: item.details && typeof item.details === "object"
+          ? {
+            kind: item.details.kind ? String(item.details.kind) : undefined,
+            reason: item.details.reason ? String(item.details.reason) : undefined,
+            triggered_at: item.details.triggered_at ? String(item.details.triggered_at) : undefined,
+            threshold_percent: item.details.threshold_percent ? String(item.details.threshold_percent) : undefined,
+            balance_before: item.details.balance_before ? String(item.details.balance_before) : undefined,
+            balance_after: item.details.balance_after ? String(item.details.balance_after) : undefined,
+            equity_before: item.details.equity_before ? String(item.details.equity_before) : undefined,
+            equity_after: item.details.equity_after ? String(item.details.equity_after) : undefined,
+            margin_before: item.details.margin_before ? String(item.details.margin_before) : undefined,
+            margin_after: item.details.margin_after ? String(item.details.margin_after) : undefined,
+            margin_level_before: item.details.margin_level_before ? String(item.details.margin_level_before) : undefined,
+            margin_level_after: item.details.margin_level_after ? String(item.details.margin_level_after) : undefined,
+            closed_orders: Number(item.details.closed_orders || 0),
+            total_loss: item.details.total_loss ? String(item.details.total_loss) : undefined,
+            total_loss_estimated: Boolean(item.details.total_loss_estimated),
+          } satisfies SystemNoticeDetails
+          : undefined,
       }))
       .filter((item: AppNotification) => item.id && item.title && item.message)
       .slice(0, notificationsLimit)
@@ -310,6 +329,7 @@ export default function App() {
     message: string
     accountID?: string
     dedupeKey?: string
+    details?: SystemNoticeDetails
   }) => {
     const title = String(payload.title || "").trim()
     const message = String(payload.message || "").trim()
@@ -328,6 +348,7 @@ export default function App() {
         read: false,
         dedupe_key: payload.dedupeKey,
         account_id: payload.accountID,
+        details: payload.details,
       }
       return [nextItem, ...prev].slice(0, notificationsLimit)
     })
@@ -566,17 +587,30 @@ export default function App() {
     setMetricsAccountId(requestAccountId)
     const notice = String(m?.system_notice || "").trim()
     if (notice) {
+      const details = m?.system_notice_details && typeof m.system_notice_details === "object"
+        ? m.system_notice_details
+        : undefined
+      const detailKey = details
+        ? [
+          details.kind || "",
+          details.triggered_at || "",
+          details.closed_orders || "",
+          details.total_loss || "",
+        ].join(":")
+        : ""
+      const currentKey = detailKey ? `${notice}:${detailKey}` : notice
       const prevNotice = systemNoticeByAccountRef.current[requestAccountId] || ""
-      if (prevNotice !== notice) {
+      if (prevNotice !== currentKey) {
         toast.message(notice)
         addNotification({
           kind: "system",
-          title: "System notice",
+          title: details?.kind === "stop_out" ? "Margin call stop-out" : details?.kind === "margin_call" ? "Margin call warning" : "System notice",
           message: notice,
           accountID: requestAccountId,
-          dedupeKey: `system:${requestAccountId}:${notice}`,
+          dedupeKey: detailKey ? `system:${requestAccountId}:${detailKey}` : `system:${requestAccountId}:${notice}`,
+          details,
         })
-        systemNoticeByAccountRef.current[requestAccountId] = notice
+        systemNoticeByAccountRef.current[requestAccountId] = currentKey
         if (notice.includes("changed leverage to 1:2000")) {
           setAccounts(prev => prev.map(acc => (
             acc.id === requestAccountId ? { ...acc, leverage: 2000 } : acc

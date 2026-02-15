@@ -73,6 +73,16 @@ export type TradingRiskConfig = {
     kyc_bonus_amount: string
     kyc_review_eta_hours: number
     telegram_kyc_chat_id: string
+    spread_calm_max_add: string
+    spread_spike_threshold: string
+    spread_spike_max_add: string
+    spread_news_pre_mult: string
+    spread_news_post_mult: string
+    spread_news_live_low_mult: string
+    spread_news_live_medium_mult: string
+    spread_news_live_high_mult: string
+    spread_dynamic_cap_mult: string
+    spread_smoothing_alpha: string
 }
 
 export type TradingPairSpec = {

@@ -494,18 +494,45 @@ func (s *Service) finalizeOrder(ctx context.Context, tx pgx.Tx, order model.Orde
 }
 
 type AccountMetrics struct {
-	Balance      decimal.Decimal `json:"balance"`
-	Equity       decimal.Decimal `json:"equity"`
-	Margin       decimal.Decimal `json:"margin"`
-	FreeMargin   decimal.Decimal `json:"free_margin"`
-	MarginLevel  decimal.Decimal `json:"margin_level"`
-	PnL          decimal.Decimal `json:"pl"`
-	SystemNotice string          `json:"system_notice,omitempty"`
+	Balance             decimal.Decimal      `json:"balance"`
+	Equity              decimal.Decimal      `json:"equity"`
+	Margin              decimal.Decimal      `json:"margin"`
+	FreeMargin          decimal.Decimal      `json:"free_margin"`
+	MarginLevel         decimal.Decimal      `json:"margin_level"`
+	PnL                 decimal.Decimal      `json:"pl"`
+	SystemNotice        string               `json:"system_notice,omitempty"`
+	SystemNoticeDetails *SystemNoticeDetails `json:"system_notice_details,omitempty"`
 }
 
 type positionRisk struct {
 	Order model.Order
 	PnL   decimal.Decimal
+}
+
+type SystemNoticeDetails struct {
+	Kind               string          `json:"kind,omitempty"`
+	Reason             string          `json:"reason,omitempty"`
+	TriggeredAt        time.Time       `json:"triggered_at,omitempty"`
+	ThresholdPercent   decimal.Decimal `json:"threshold_percent,omitempty"`
+	BalanceBefore      decimal.Decimal `json:"balance_before,omitempty"`
+	BalanceAfter       decimal.Decimal `json:"balance_after,omitempty"`
+	EquityBefore       decimal.Decimal `json:"equity_before,omitempty"`
+	EquityAfter        decimal.Decimal `json:"equity_after,omitempty"`
+	MarginBefore       decimal.Decimal `json:"margin_before,omitempty"`
+	MarginAfter        decimal.Decimal `json:"margin_after,omitempty"`
+	MarginLevelBefore  decimal.Decimal `json:"margin_level_before,omitempty"`
+	MarginLevelAfter   decimal.Decimal `json:"margin_level_after,omitempty"`
+	ClosedOrders       int             `json:"closed_orders,omitempty"`
+	TotalLoss          decimal.Decimal `json:"total_loss,omitempty"`
+	TotalLossEstimated bool            `json:"total_loss_estimated,omitempty"`
+}
+
+type stopOutResult struct {
+	ClosedAny          bool
+	ClosedOrders       int
+	TotalLoss          decimal.Decimal
+	TotalLossEstimated bool
+	TriggeredAt        time.Time
 }
 
 type RiskConfig struct {
@@ -596,16 +623,59 @@ func (s *Service) GetAccountMetricsByAccount(ctx context.Context, userID, accoun
 		}
 	}
 
+	if metrics.Margin.GreaterThan(decimal.Zero) && metrics.MarginLevel.LessThanOrEqual(riskCfg.MarginCallLevelPercent) {
+		metrics.SystemNotice = fmt.Sprintf(
+			"Margin call active: new orders are blocked until margin level recovers above %.2f%%.",
+			riskCfg.MarginCallLevelPercent.InexactFloat64(),
+		)
+		metrics.SystemNoticeDetails = &SystemNoticeDetails{
+			Kind:              "margin_call",
+			Reason:            "margin level dropped below margin call threshold",
+			ThresholdPercent:  riskCfg.MarginCallLevelPercent,
+			BalanceBefore:     metrics.Balance,
+			EquityBefore:      metrics.Equity,
+			MarginBefore:      metrics.Margin,
+			MarginLevelBefore: metrics.MarginLevel,
+		}
+	}
+
 	if metrics.Margin.GreaterThan(decimal.Zero) && metrics.MarginLevel.LessThanOrEqual(riskCfg.StopOutLevelPercent) {
-		changed, stopErr := s.applyStopOut(ctx, userID, accountID, positions, riskCfg)
-		if stopErr == nil && changed {
+		stopResult, stopErr := s.applyStopOut(ctx, userID, accountID, positions, riskCfg)
+		if stopErr == nil && stopResult.ClosedAny {
 			refreshed, _, refreshErr := s.computeAccountMetricsByAccount(ctx, userID, accountID)
 			if refreshErr == nil {
-				refreshed.SystemNotice = metrics.SystemNotice
+				refreshed.SystemNotice = fmt.Sprintf(
+					"Margin call stop-out: %d order(s) auto-closed. Total loss %.2f USD.",
+					stopResult.ClosedOrders,
+					stopResult.TotalLoss.InexactFloat64(),
+				)
+				refreshed.SystemNoticeDetails = &SystemNoticeDetails{
+					Kind:               "stop_out",
+					Reason:             "margin level reached stop-out threshold, system closed losing positions",
+					TriggeredAt:        stopResult.TriggeredAt,
+					ThresholdPercent:   riskCfg.StopOutLevelPercent,
+					BalanceBefore:      metrics.Balance,
+					BalanceAfter:       refreshed.Balance,
+					EquityBefore:       metrics.Equity,
+					EquityAfter:        refreshed.Equity,
+					MarginBefore:       metrics.Margin,
+					MarginAfter:        refreshed.Margin,
+					MarginLevelBefore:  metrics.MarginLevel,
+					MarginLevelAfter:   refreshed.MarginLevel,
+					ClosedOrders:       stopResult.ClosedOrders,
+					TotalLoss:          stopResult.TotalLoss,
+					TotalLossEstimated: stopResult.TotalLossEstimated,
+				}
 				s.notifyImportant(
 					userID,
 					"Stop out executed",
-					"System closed one or more losing positions to recover margin level.",
+					fmt.Sprintf(
+						"System auto-closed %d position(s). Total loss %.2f USD. Margin level moved from %.2f%% to %.2f%%.",
+						stopResult.ClosedOrders,
+						stopResult.TotalLoss.InexactFloat64(),
+						metrics.MarginLevel.InexactFloat64(),
+						refreshed.MarginLevel.InexactFloat64(),
+					),
 					"#notifications",
 				)
 				return refreshed, nil
@@ -747,7 +817,10 @@ func (s *Service) computeAccountMetricsByAccount(ctx context.Context, userID, ac
 	}, positions, nil
 }
 
-func (s *Service) applyStopOut(ctx context.Context, userID, accountID string, positions []positionRisk, riskCfg RiskConfig) (bool, error) {
+func (s *Service) applyStopOut(ctx context.Context, userID, accountID string, positions []positionRisk, riskCfg RiskConfig) (stopOutResult, error) {
+	result := stopOutResult{
+		TriggeredAt: time.Now().UTC(),
+	}
 	losing := make([]positionRisk, 0, len(positions))
 	for _, p := range positions {
 		if p.PnL.LessThan(decimal.Zero) {
@@ -755,30 +828,71 @@ func (s *Service) applyStopOut(ctx context.Context, userID, accountID string, po
 		}
 	}
 	if len(losing) == 0 {
-		return false, nil
+		return result, nil
 	}
 
 	sort.Slice(losing, func(i, j int) bool {
 		return losing[i].PnL.LessThan(losing[j].PnL)
 	})
 
-	closedAny := false
+	closedIDs := make([]string, 0, len(losing))
+	estimatedLoss := decimal.Zero
 	for _, p := range losing {
 		if err := s.CancelOrder(ctx, userID, p.Order.ID, accountID); err != nil {
 			continue
 		}
-		closedAny = true
+		result.ClosedAny = true
+		result.ClosedOrders++
+		closedIDs = append(closedIDs, p.Order.ID)
+		if p.PnL.LessThan(decimal.Zero) {
+			estimatedLoss = estimatedLoss.Add(p.PnL.Abs())
+		}
 
 		metrics, _, err := s.computeAccountMetricsByAccount(ctx, userID, accountID)
 		if err != nil {
-			return closedAny, err
+			return result, err
 		}
 		if !metrics.Margin.GreaterThan(decimal.Zero) || metrics.MarginLevel.GreaterThan(riskCfg.StopOutLevelPercent) {
-			return closedAny, nil
+			break
 		}
 	}
 
-	return closedAny, nil
+	if len(closedIDs) == 0 {
+		return result, nil
+	}
+	totalLoss, summaryErr := s.sumRealizedLossByOrderIDs(ctx, closedIDs)
+	if summaryErr != nil {
+		result.TotalLoss = estimatedLoss
+		result.TotalLossEstimated = true
+		return result, nil
+	}
+	result.TotalLoss = totalLoss
+	result.TotalLossEstimated = false
+	return result, nil
+}
+
+func (s *Service) sumRealizedLossByOrderIDs(ctx context.Context, orderIDs []string) (decimal.Decimal, error) {
+	if len(orderIDs) == 0 {
+		return decimal.Zero, nil
+	}
+	var total decimal.Decimal
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(
+			CASE
+				WHEN coalesce(realized_pnl, 0) < 0 THEN abs(coalesce(realized_pnl, 0))
+				ELSE 0
+			END
+		), 0)
+		FROM orders
+		WHERE id = ANY($1::uuid[])
+	`, orderIDs).Scan(&total)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	if total.LessThan(decimal.Zero) {
+		return total.Abs(), nil
+	}
+	return total, nil
 }
 
 func (s *Service) autoDowngradeUnlimitedLeverage(ctx context.Context, userID, accountID string, balance decimal.Decimal) (bool, error) {

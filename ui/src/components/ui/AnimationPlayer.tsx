@@ -1,7 +1,5 @@
-"use client";
-
 import React, { useState, useEffect, useRef } from "react";
-import lottie, { AnimationItem } from "lottie-web";
+import lottie, { AnimationItem } from "lottie-web/build/player/lottie_light";
 import pako from "pako";
 
 interface AnimationPlayerProps {

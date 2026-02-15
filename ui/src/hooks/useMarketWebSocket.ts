@@ -197,6 +197,25 @@ export function useMarketWebSocket({
                 margin_level: String((rawMetrics as any).margin_level || "0"),
                 pl: String((rawMetrics as any).pl || "0"),
                 system_notice: String((rawMetrics as any).system_notice || ""),
+                system_notice_details: (rawMetrics as any).system_notice_details && typeof (rawMetrics as any).system_notice_details === "object"
+                  ? {
+                    kind: String((rawMetrics as any).system_notice_details.kind || ""),
+                    reason: String((rawMetrics as any).system_notice_details.reason || ""),
+                    triggered_at: String((rawMetrics as any).system_notice_details.triggered_at || ""),
+                    threshold_percent: String((rawMetrics as any).system_notice_details.threshold_percent || ""),
+                    balance_before: String((rawMetrics as any).system_notice_details.balance_before || ""),
+                    balance_after: String((rawMetrics as any).system_notice_details.balance_after || ""),
+                    equity_before: String((rawMetrics as any).system_notice_details.equity_before || ""),
+                    equity_after: String((rawMetrics as any).system_notice_details.equity_after || ""),
+                    margin_before: String((rawMetrics as any).system_notice_details.margin_before || ""),
+                    margin_after: String((rawMetrics as any).system_notice_details.margin_after || ""),
+                    margin_level_before: String((rawMetrics as any).system_notice_details.margin_level_before || ""),
+                    margin_level_after: String((rawMetrics as any).system_notice_details.margin_level_after || ""),
+                    closed_orders: Number((rawMetrics as any).system_notice_details.closed_orders || 0),
+                    total_loss: String((rawMetrics as any).system_notice_details.total_loss || ""),
+                    total_loss_estimated: Boolean((rawMetrics as any).system_notice_details.total_loss_estimated),
+                  }
+                  : undefined,
               }
               : null
 

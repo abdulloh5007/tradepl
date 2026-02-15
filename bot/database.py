@@ -252,6 +252,26 @@ class Database:
             )
             return bool(row and row["allowed"])
 
+    async def list_panel_admin_deposit_review_rights(self) -> List[Dict[str, Any]]:
+        """Return panel admins with telegram IDs and current deposit_review right."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                '''
+                SELECT
+                    telegram_id,
+                    COALESCE((rights->>'deposit_review')::boolean, FALSE) AS deposit_review
+                FROM panel_admins
+                WHERE COALESCE(telegram_id, 0) > 0
+                '''
+            )
+            return [
+                {
+                    "telegram_id": int(r["telegram_id"] or 0),
+                    "deposit_review": bool(r["deposit_review"]),
+                }
+                for r in rows
+            ]
+
     async def is_kyc_reviewer_allowed(self, telegram_id: int, owner_telegram_id: int) -> bool:
         if telegram_id == 0:
             return False

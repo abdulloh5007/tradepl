@@ -52,6 +52,19 @@ type AutoTrendEvent struct {
 	SessionID       string `json:"session_id"`
 }
 
+type spreadDynamicsConfig struct {
+	CalmMaxAdd       float64
+	SpikeThreshold   float64
+	SpikeMaxAdd      float64
+	NewsPreMult      float64
+	NewsPostMult     float64
+	NewsLiveLowMult  float64
+	NewsLiveMedMult  float64
+	NewsLiveHighMult float64
+	CapMult          float64
+	SmoothingAlpha   float64
+}
+
 var currentAutoTrendState = &AutoTrendStatus{
 	Active:         false,
 	Trend:          "random",
@@ -207,6 +220,15 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 	trendDyn := &trendDynamics{lastTrend: "random", anchorPrice: currentPrice}
 	autoTrend := &autoTrendState{activeImpulse: -1}
 	priceSamples := []priceSample{{t: time.Now(), price: currentPrice}}
+	currentSpread := resolveBaseSpread(config.Spread, currentPrice)
+	spreadCfg := defaultSpreadDynamicsConfig()
+	lastSpreadCfgRefresh := time.Time{}
+	if pool != nil {
+		if loaded, err := loadSpreadDynamicsConfig(context.Background(), pool); err == nil {
+			spreadCfg = loaded
+		}
+		lastSpreadCfgRefresh = time.Now()
+	}
 
 	// Active price event tracking
 	var activeEvent *sessions.PriceEvent
@@ -287,12 +309,15 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 			}
 			priceSamples = appendPriceSample(priceSamples, time.Now(), currentPrice)
 
-			// Calculate bid/ask from current price
-			// Calculate bid/ask from current price (Mid Price)
-			spread := config.Spread
-			if spread == 0 {
-				spread = currentPrice * 0.0001
-			}
+			// Dynamic spread model (Balanced):
+			// - calm market: slight floating spread
+			// - news windows: wider spread floor by impact/phase
+			// - spike impulse: temporary expansion with smoothing
+			baseSpread := resolveBaseSpread(config.Spread, currentPrice)
+			targetSpreadMult := resolveDynamicSpreadMultiplier(newsEffect, trendDyn, spreadCfg)
+			targetSpread := baseSpread * targetSpreadMult
+			currentSpread = smoothSpread(currentSpread, targetSpread, spreadCfg.SmoothingAlpha)
+			spread := currentSpread
 			halfSpread := spread / 2
 			bid := currentPrice - halfSpread
 			ask := currentPrice + halfSpread
@@ -353,6 +378,7 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 			config.TrendBias = trend
 
 		case <-volTicker.C:
+			now := time.Now()
 			if volStore != nil {
 				// Refresh volatility only. Spread stays controlled by account plan multipliers.
 				if volConfig, err := volStore.GetActiveConfig(context.Background()); err == nil {
@@ -369,8 +395,13 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 					}
 				}
 			}
+			if pool != nil && (lastSpreadCfgRefresh.IsZero() || now.Sub(lastSpreadCfgRefresh) >= 5*time.Second) {
+				if loaded, err := loadSpreadDynamicsConfig(context.Background(), pool); err == nil {
+					spreadCfg = loaded
+				}
+				lastSpreadCfgRefresh = now
+			}
 			if sessStore != nil {
-				now := time.Now()
 				mode, _ := sessStore.GetSetting(context.Background(), sessions.SettingSessionMode)
 				if mode == "auto" {
 					checkAutoSession(sessStore)
@@ -689,6 +720,193 @@ func clampFloat(v, minV, maxV float64) float64 {
 		return maxV
 	}
 	return v
+}
+
+func resolveBaseSpread(configSpread, currentPrice float64) float64 {
+	if configSpread > 0 {
+		return configSpread
+	}
+	if currentPrice <= 0 {
+		return 0
+	}
+	return currentPrice * 0.0001
+}
+
+func defaultSpreadDynamicsConfig() spreadDynamicsConfig {
+	return spreadDynamicsConfig{
+		CalmMaxAdd:       0.12,
+		SpikeThreshold:   0.60,
+		SpikeMaxAdd:      0.20,
+		NewsPreMult:      1.08,
+		NewsPostMult:     1.12,
+		NewsLiveLowMult:  1.20,
+		NewsLiveMedMult:  1.35,
+		NewsLiveHighMult: 1.55,
+		CapMult:          1.75,
+		SmoothingAlpha:   0.18,
+	}
+}
+
+func normalizeSpreadDynamicsConfig(in spreadDynamicsConfig) spreadDynamicsConfig {
+	def := defaultSpreadDynamicsConfig()
+	out := in
+	if out.CalmMaxAdd < 0 {
+		out.CalmMaxAdd = def.CalmMaxAdd
+	}
+	if out.SpikeThreshold < 0 {
+		out.SpikeThreshold = def.SpikeThreshold
+	}
+	if out.SpikeMaxAdd < 0 {
+		out.SpikeMaxAdd = def.SpikeMaxAdd
+	}
+	if out.NewsPreMult < 1 {
+		out.NewsPreMult = def.NewsPreMult
+	}
+	if out.NewsPostMult < 1 {
+		out.NewsPostMult = def.NewsPostMult
+	}
+	if out.NewsLiveLowMult < 1 {
+		out.NewsLiveLowMult = def.NewsLiveLowMult
+	}
+	if out.NewsLiveMedMult < 1 {
+		out.NewsLiveMedMult = def.NewsLiveMedMult
+	}
+	if out.NewsLiveHighMult < 1 {
+		out.NewsLiveHighMult = def.NewsLiveHighMult
+	}
+	if out.CapMult < 1 {
+		out.CapMult = def.CapMult
+	}
+	if out.CapMult < out.NewsPreMult {
+		out.CapMult = out.NewsPreMult
+	}
+	if out.CapMult < out.NewsPostMult {
+		out.CapMult = out.NewsPostMult
+	}
+	if out.CapMult < out.NewsLiveLowMult {
+		out.CapMult = out.NewsLiveLowMult
+	}
+	if out.CapMult < out.NewsLiveMedMult {
+		out.CapMult = out.NewsLiveMedMult
+	}
+	if out.CapMult < out.NewsLiveHighMult {
+		out.CapMult = out.NewsLiveHighMult
+	}
+	if out.SmoothingAlpha <= 0 || out.SmoothingAlpha > 1 {
+		out.SmoothingAlpha = def.SmoothingAlpha
+	}
+	out.CalmMaxAdd = clampFloat(out.CalmMaxAdd, 0, 1)
+	out.SpikeMaxAdd = clampFloat(out.SpikeMaxAdd, 0, 2)
+	out.SpikeThreshold = clampFloat(out.SpikeThreshold, 0, 5)
+	out.CapMult = clampFloat(out.CapMult, 1, 5)
+	return out
+}
+
+func loadSpreadDynamicsConfig(ctx context.Context, pool *pgxpool.Pool) (spreadDynamicsConfig, error) {
+	cfg := defaultSpreadDynamicsConfig()
+	if pool == nil {
+		return cfg, nil
+	}
+	err := pool.QueryRow(ctx, `
+		SELECT
+			COALESCE((to_jsonb(trc)->>'spread_calm_max_add')::double precision, 0.12),
+			COALESCE((to_jsonb(trc)->>'spread_spike_threshold')::double precision, 0.60),
+			COALESCE((to_jsonb(trc)->>'spread_spike_max_add')::double precision, 0.20),
+			COALESCE((to_jsonb(trc)->>'spread_news_pre_mult')::double precision, 1.08),
+			COALESCE((to_jsonb(trc)->>'spread_news_post_mult')::double precision, 1.12),
+			COALESCE((to_jsonb(trc)->>'spread_news_live_low_mult')::double precision, 1.20),
+			COALESCE((to_jsonb(trc)->>'spread_news_live_medium_mult')::double precision, 1.35),
+			COALESCE((to_jsonb(trc)->>'spread_news_live_high_mult')::double precision, 1.55),
+			COALESCE((to_jsonb(trc)->>'spread_dynamic_cap_mult')::double precision, 1.75),
+			COALESCE((to_jsonb(trc)->>'spread_smoothing_alpha')::double precision, 0.18)
+		FROM trading_risk_config trc
+		WHERE trc.id = 1
+	`).Scan(
+		&cfg.CalmMaxAdd,
+		&cfg.SpikeThreshold,
+		&cfg.SpikeMaxAdd,
+		&cfg.NewsPreMult,
+		&cfg.NewsPostMult,
+		&cfg.NewsLiveLowMult,
+		&cfg.NewsLiveMedMult,
+		&cfg.NewsLiveHighMult,
+		&cfg.CapMult,
+		&cfg.SmoothingAlpha,
+	)
+	if err != nil {
+		return defaultSpreadDynamicsConfig(), err
+	}
+	return normalizeSpreadDynamicsConfig(cfg), nil
+}
+
+// resolveDynamicSpreadMultiplier applies a Balanced profile:
+// calm range is near 1.00..1.12, news phases set higher floors,
+// and strong impulses can add up to +0.20, capped at 1.75x.
+func resolveDynamicSpreadMultiplier(newsEffect economicNewsEffect, dyn *trendDynamics, cfg spreadDynamicsConfig) float64 {
+	cfg = normalizeSpreadDynamicsConfig(cfg)
+
+	impulseScore := 0.0
+	if dyn != nil && dyn.impulseScore > 0 {
+		impulseScore = dyn.impulseScore
+	}
+	impulseScore = clampFloat(impulseScore, 0, 1.2)
+
+	ambientAdd := 0.0
+	if impulseScore > 0.04 {
+		ambientAdd = clampFloat((impulseScore-0.04)/(0.45-0.04), 0, 1) * cfg.CalmMaxAdd
+	}
+
+	spikeAdd := 0.0
+	if impulseScore > cfg.SpikeThreshold {
+		denom := 1.10 - cfg.SpikeThreshold
+		if denom < 0.05 {
+			denom = 0.05
+		}
+		spikeAdd = clampFloat((impulseScore-cfg.SpikeThreshold)/denom, 0, 1) * cfg.SpikeMaxAdd
+	}
+
+	multiplier := 1.0 + ambientAdd + spikeAdd
+
+	if newsEffect.Active {
+		newsFloor := 1.0
+		switch newsEffect.Phase {
+		case "pre":
+			newsFloor = cfg.NewsPreMult
+		case "post":
+			newsFloor = cfg.NewsPostMult
+		case "live":
+			switch newsEffect.Impact {
+			case "high":
+				newsFloor = cfg.NewsLiveHighMult
+			case "medium":
+				newsFloor = cfg.NewsLiveMedMult
+			default:
+				newsFloor = cfg.NewsLiveLowMult
+			}
+		}
+		if multiplier < newsFloor {
+			multiplier = newsFloor
+		}
+	}
+
+	return clampFloat(multiplier, 1.0, cfg.CapMult)
+}
+
+func smoothSpread(current, target, alpha float64) float64 {
+	if target <= 0 {
+		return target
+	}
+	if current <= 0 {
+		return target
+	}
+	if alpha <= 0 || alpha > 1 {
+		alpha = 0.18
+	}
+	next := current + (target-current)*alpha
+	if next <= 0 {
+		return target
+	}
+	return next
 }
 
 type timeWindow struct {

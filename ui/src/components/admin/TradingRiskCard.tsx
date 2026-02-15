@@ -27,12 +27,29 @@ const DEFAULT_RISK: TradingRiskConfig = {
     kyc_bonus_amount: "50",
     kyc_review_eta_hours: 8,
     telegram_kyc_chat_id: "",
+    spread_calm_max_add: "0.12",
+    spread_spike_threshold: "0.60",
+    spread_spike_max_add: "0.20",
+    spread_news_pre_mult: "1.08",
+    spread_news_post_mult: "1.12",
+    spread_news_live_low_mult: "1.20",
+    spread_news_live_medium_mult: "1.35",
+    spread_news_live_high_mult: "1.55",
+    spread_dynamic_cap_mult: "1.75",
+    spread_smoothing_alpha: "0.18",
 }
 
 const asPositiveNumberString = (value: unknown, fallback: string) => {
     const raw = String(value ?? "").trim()
     const n = Number(raw)
     if (!Number.isFinite(n) || n <= 0) return fallback
+    return raw
+}
+
+const asNonNegativeNumberString = (value: unknown, fallback: string) => {
+    const raw = String(value ?? "").trim()
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n < 0) return fallback
     return raw
 }
 
@@ -53,6 +70,16 @@ const normalizeRisk = (value: TradingRiskConfig | null | undefined): TradingRisk
     kyc_bonus_amount: asPositiveNumberString(value?.kyc_bonus_amount, DEFAULT_RISK.kyc_bonus_amount),
     kyc_review_eta_hours: Number(value?.kyc_review_eta_hours) > 0 ? Number(value?.kyc_review_eta_hours) : DEFAULT_RISK.kyc_review_eta_hours,
     telegram_kyc_chat_id: String(value?.telegram_kyc_chat_id || DEFAULT_RISK.telegram_kyc_chat_id).trim(),
+    spread_calm_max_add: asNonNegativeNumberString(value?.spread_calm_max_add, DEFAULT_RISK.spread_calm_max_add),
+    spread_spike_threshold: asNonNegativeNumberString(value?.spread_spike_threshold, DEFAULT_RISK.spread_spike_threshold),
+    spread_spike_max_add: asNonNegativeNumberString(value?.spread_spike_max_add, DEFAULT_RISK.spread_spike_max_add),
+    spread_news_pre_mult: asPositiveNumberString(value?.spread_news_pre_mult, DEFAULT_RISK.spread_news_pre_mult),
+    spread_news_post_mult: asPositiveNumberString(value?.spread_news_post_mult, DEFAULT_RISK.spread_news_post_mult),
+    spread_news_live_low_mult: asPositiveNumberString(value?.spread_news_live_low_mult, DEFAULT_RISK.spread_news_live_low_mult),
+    spread_news_live_medium_mult: asPositiveNumberString(value?.spread_news_live_medium_mult, DEFAULT_RISK.spread_news_live_medium_mult),
+    spread_news_live_high_mult: asPositiveNumberString(value?.spread_news_live_high_mult, DEFAULT_RISK.spread_news_live_high_mult),
+    spread_dynamic_cap_mult: asPositiveNumberString(value?.spread_dynamic_cap_mult, DEFAULT_RISK.spread_dynamic_cap_mult),
+    spread_smoothing_alpha: asPositiveNumberString(value?.spread_smoothing_alpha, DEFAULT_RISK.spread_smoothing_alpha),
 })
 
 export default function TradingRiskCard({ value, loading, initialLoad, canAccess, onSave }: TradingRiskCardProps) {
@@ -165,6 +192,86 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                             value={draft.telegram_kyc_chat_id}
                             onChange={e => update("telegram_kyc_chat_id", e.target.value)}
                             placeholder="-1001234567890"
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>Spread Calm Max Add</span>
+                        <input
+                            type="text"
+                            value={draft.spread_calm_max_add}
+                            onChange={e => update("spread_calm_max_add", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>Spread Spike Threshold</span>
+                        <input
+                            type="text"
+                            value={draft.spread_spike_threshold}
+                            onChange={e => update("spread_spike_threshold", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>Spread Spike Max Add</span>
+                        <input
+                            type="text"
+                            value={draft.spread_spike_max_add}
+                            onChange={e => update("spread_spike_max_add", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>News Pre Mult</span>
+                        <input
+                            type="text"
+                            value={draft.spread_news_pre_mult}
+                            onChange={e => update("spread_news_pre_mult", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>News Post Mult</span>
+                        <input
+                            type="text"
+                            value={draft.spread_news_post_mult}
+                            onChange={e => update("spread_news_post_mult", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>News Live Low Mult</span>
+                        <input
+                            type="text"
+                            value={draft.spread_news_live_low_mult}
+                            onChange={e => update("spread_news_live_low_mult", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>News Live Medium Mult</span>
+                        <input
+                            type="text"
+                            value={draft.spread_news_live_medium_mult}
+                            onChange={e => update("spread_news_live_medium_mult", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>News Live High Mult</span>
+                        <input
+                            type="text"
+                            value={draft.spread_news_live_high_mult}
+                            onChange={e => update("spread_news_live_high_mult", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>Spread Dynamic Cap Mult</span>
+                        <input
+                            type="text"
+                            value={draft.spread_dynamic_cap_mult}
+                            onChange={e => update("spread_dynamic_cap_mult", e.target.value)}
+                        />
+                    </label>
+                    <label className="risk-field">
+                        <span>Spread Smoothing Alpha</span>
+                        <input
+                            type="text"
+                            value={draft.spread_smoothing_alpha}
+                            onChange={e => update("spread_smoothing_alpha", e.target.value)}
                         />
                     </label>
                     <div className="risk-field">
