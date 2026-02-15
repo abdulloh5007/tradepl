@@ -3,6 +3,7 @@ import { Plus, ArrowRight } from "lucide-react"
 import type { Order, Quote, Lang, MarketConfig, Metrics } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { calcDisplayedOrderProfit, resolveOrderSymbol } from "../../utils/trading"
+import { t } from "../../utils/i18n"
 import "./PositionsPage.css"
 
 interface PositionsPageProps {
@@ -86,12 +87,12 @@ export default function PositionsPage({
                 </div>
 
                 <div className="pos-stats">
-                    <StatRow label="Balance:" value={formatValue(metrics.balance)} />
-                    <StatRow label="Equity:" value={formatValue(metrics.equity)} />
-                    {!isUnlimitedLeverage && <StatRow label="Margin:" value={formatValue(metrics.margin)} />}
-                    {!isUnlimitedLeverage && <StatRow label="Free Margin:" value={formatValue(metrics.free_margin)} />}
+                    <StatRow label={`${t("balance", lang)}:`} value={formatValue(metrics.balance)} />
+                    <StatRow label={`${t("equity", lang)}:`} value={formatValue(metrics.equity)} />
+                    {!isUnlimitedLeverage && <StatRow label={`${t("margin", lang)}:`} value={formatValue(metrics.margin)} />}
+                    {!isUnlimitedLeverage && <StatRow label={`${t("freeMargin", lang)}:`} value={formatValue(metrics.free_margin)} />}
                     <StatRow
-                        label="Margin Level (%):"
+                        label={`${t("marginLevel", lang)} (%):`}
                         value={metrics.margin_level ? formatNumber(parseFloat(metrics.margin_level), 2, 2) : "0.00"}
                     />
                 </div>
@@ -99,7 +100,7 @@ export default function PositionsPage({
 
             {/* Options / Title Row */}
             <div className="pos-options-row">
-                <h3 className="pos-section-title">Positions</h3>
+                <h3 className="pos-section-title">{t("positions", lang)}</h3>
                 <div style={{ position: "relative" }} ref={menuRef}>
                     <button
                         className="pos-dots-btn"
@@ -118,7 +119,7 @@ export default function PositionsPage({
                                     onCloseAll()
                                 }}
                             >
-                                Close All
+                                {t("positions.closeAll", lang)}
                             </button>
                             <button
                                 className="pos-menu-item"
@@ -128,7 +129,7 @@ export default function PositionsPage({
                                     onCloseProfit()
                                 }}
                             >
-                                Close Profit
+                                {t("positions.closeProfit", lang)}
                             </button>
                             <button
                                 className="pos-menu-item"
@@ -138,7 +139,7 @@ export default function PositionsPage({
                                     onCloseLoss()
                                 }}
                             >
-                                Close Loss
+                                {t("positions.closeLoss", lang)}
                             </button>
                         </div>
                     )}
@@ -148,7 +149,7 @@ export default function PositionsPage({
             {/* Positions List */}
             <div className="pos-list">
                 {orders.length === 0 ? (
-                    <div className="pos-empty">No open positions</div>
+                    <div className="pos-empty">{t("positions.noOpen", lang)}</div>
                 ) : (
                     orders.map(o => {
                         const displaySymbol = resolveOrderSymbol(o, marketPair)

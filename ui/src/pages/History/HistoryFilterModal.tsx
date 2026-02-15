@@ -1,5 +1,7 @@
 import { useState } from "react"
 import { X, Calendar } from "lucide-react"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 import "../../components/accounts/SharedAccountSheet.css"
 
 export type DateRange = {
@@ -10,12 +12,13 @@ export type DateRange = {
 
 interface HistoryFilterModalProps {
     open: boolean
+    lang: Lang
     currentRange: DateRange
     onClose: () => void
     onApply: (range: DateRange) => void
 }
 
-export default function HistoryFilterModal({ open, currentRange, onClose, onApply }: HistoryFilterModalProps) {
+export default function HistoryFilterModal({ open, lang, currentRange, onClose, onApply }: HistoryFilterModalProps) {
     const [rangeType, setRangeType] = useState<DateRange["type"]>(currentRange.type)
     const [startDate, setStartDate] = useState(currentRange.startDate || "")
     const [endDate, setEndDate] = useState(currentRange.endDate || "")
@@ -39,7 +42,7 @@ export default function HistoryFilterModal({ open, currentRange, onClose, onAppl
                     <button onClick={onClose} className="acm-close-btn">
                         <X size={24} />
                     </button>
-                    <h2 className="acm-title">Filter History</h2>
+                    <h2 className="acm-title">{t("history.filterTitle", lang)}</h2>
                     <div className="acm-spacer" />
                 </div>
 
@@ -49,35 +52,35 @@ export default function HistoryFilterModal({ open, currentRange, onClose, onAppl
                             className={`acm-list-item ${rangeType === "today" ? "active" : ""}`}
                             onClick={() => setRangeType("today")}
                         >
-                            <span>Today</span>
+                            <span>{t("history.filter.today", lang)}</span>
                             {rangeType === "today" && <span style={{ color: '#fbbf24' }}>✓</span>}
                         </button>
                         <button
                             className={`acm-list-item ${rangeType === "week" ? "active" : ""}`}
                             onClick={() => setRangeType("week")}
                         >
-                            <span>Last Week</span>
+                            <span>{t("history.filter.week", lang)}</span>
                             {rangeType === "week" && <span style={{ color: '#fbbf24' }}>✓</span>}
                         </button>
                         <button
                             className={`acm-list-item ${rangeType === "month" ? "active" : ""}`}
                             onClick={() => setRangeType("month")}
                         >
-                            <span>Last Month</span>
+                            <span>{t("history.filter.month", lang)}</span>
                             {rangeType === "month" && <span style={{ color: '#fbbf24' }}>✓</span>}
                         </button>
                         <button
                             className={`acm-list-item ${rangeType === "custom" ? "active" : ""}`}
                             onClick={() => setRangeType("custom")}
                         >
-                            <span>Custom Period</span>
+                            <span>{t("history.filter.custom", lang)}</span>
                             {rangeType === "custom" && <span style={{ color: '#fbbf24' }}>✓</span>}
                         </button>
 
                         {rangeType === "custom" && (
                             <div className="acm-form" style={{ padding: '8px 0', gap: 12 }}>
                                 <label className="acm-label">
-                                    Start Date
+                                    {t("history.filter.startDate", lang)}
                                     <div style={{ position: 'relative' }}>
                                         <input
                                             type="date"
@@ -90,7 +93,7 @@ export default function HistoryFilterModal({ open, currentRange, onClose, onAppl
                                     </div>
                                 </label>
                                 <label className="acm-label">
-                                    End Date
+                                    {t("history.filter.endDate", lang)}
                                     <div style={{ position: 'relative' }}>
                                         <input
                                             type="date"
@@ -109,7 +112,7 @@ export default function HistoryFilterModal({ open, currentRange, onClose, onAppl
 
                 <div className="acm-footer">
                     <button className="acm-submit-btn" onClick={handleApply}>
-                        Apply Filter
+                        {t("history.filter.apply", lang)}
                     </button>
                 </div>
             </div>

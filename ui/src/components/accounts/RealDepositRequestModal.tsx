@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { CheckCircle2, Gift, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import type { DepositBonusStatus } from "../../api"
+import type { Lang } from "../../types"
 import { formatNumber } from "../../utils/format"
+import { t } from "../../utils/i18n"
 import "./RealDepositRequestModal.css"
 
 type VoucherKind = "none" | "gold" | "diamond"
 
 interface RealDepositRequestModalProps {
+  lang: Lang
   open: boolean
   status: DepositBonusStatus | null
   allowVouchers: boolean
@@ -56,6 +59,7 @@ const amountToApi = (raw: string) => {
 }
 
 export default function RealDepositRequestModal({
+  lang,
   open,
   status,
   allowVouchers,
@@ -156,7 +160,7 @@ export default function RealDepositRequestModal({
   const pickProof = (file?: File | null) => {
     if (!file) return
     if (file.size > MAX_PROOF_SIZE) {
-      toast.error("Proof file is too large (max 5MB)")
+      toast.error(t("accounts.depositProofTooLarge", lang))
       return
     }
     setProofFile(file)
@@ -176,14 +180,14 @@ export default function RealDepositRequestModal({
           }} className="acm-close-btn">
             <X size={24} />
           </button>
-          <h2 className="acm-title">Real Deposit</h2>
+          <h2 className="acm-title">{t("accounts.realDeposit", lang)}</h2>
           <div className="acm-spacer" />
         </div>
 
         <div className="acm-content">
           <div className="acm-form rdm-form">
             <label className="acm-label">
-              Amount (USD)
+              {t("accounts.amountUsd", lang)}
               <input
                 className={`acm-input ${amountTooHigh ? "rdm-input-error" : ""}`}
                 inputMode="decimal"
@@ -193,18 +197,18 @@ export default function RealDepositRequestModal({
                   setAmountRaw(next.raw)
                   setAmountDisplay(next.display)
                 }}
-                placeholder="100"
+                placeholder={t("accounts.amountPlaceholder", lang)}
               />
             </label>
             {amountTooHigh ? (
               <div className="rdm-input-error-text">
-                Amount exceeds maximum allowed ({formatNumber(maxAmount, 2, 2)} USD)
+                {t("accounts.amountExceedsMax", lang).replace("{max}", formatNumber(maxAmount, 2, 2))}
               </div>
             ) : null}
 
             <div className="rdm-hints">
-              <span>Min: {formatNumber(minAmount, 2, 2)} USD</span>
-              <span>Max: {formatNumber(maxAmount, 2, 2)} USD</span>
+              <span>{t("accounts.min", lang)}: {formatNumber(minAmount, 2, 2)} USD</span>
+              <span>{t("accounts.max", lang)}: {formatNumber(maxAmount, 2, 2)} USD</span>
             </div>
 
             <div className="rdm-vouchers">
@@ -213,7 +217,7 @@ export default function RealDepositRequestModal({
                 className={`rdm-voucher-btn ${voucherKind === "none" ? "active" : ""}`}
                 onClick={() => setVoucherKind("none")}
               >
-                No voucher
+                {t("accounts.noVoucher", lang)}
               </button>
               {vouchers.map(v => {
                 const selected = voucherKind === v.id
@@ -242,23 +246,23 @@ export default function RealDepositRequestModal({
                 )
               })}
             </div>
-            <div className="acm-note" style={{ textAlign: "left" }}>
-              Diamond +50% is available only from {formatNumber(DIAMOND_MIN_AMOUNT, 0, 0)} USD deposit.
+              <div className="acm-note" style={{ textAlign: "left" }}>
+              {t("accounts.diamondOnlyFrom", lang).replace("{amount}", formatNumber(DIAMOND_MIN_AMOUNT, 0, 0))}
             </div>
 
             <div className="rdm-calc-card">
               <div className="rdm-calc-row">
-                <span>Deposit</span>
+                <span>{t("accounts.deposit", lang)}</span>
                 <strong>{formatNumber(amountValid ? amountNum : 0, 2, 2)} USD</strong>
               </div>
               <div className="rdm-calc-row">
-                <span>Bonus</span>
+                <span>{t("accounts.bonus", lang)}</span>
                 <strong>
                   +{formatNumber(bonusAmount, 2, 2)} USD {activeVoucherPercent > 0 ? `(${activeVoucherPercent}%)` : ""}
                 </strong>
               </div>
               <div className="rdm-calc-row total">
-                <span>Total credit</span>
+                <span>{t("accounts.totalCredit", lang)}</span>
                 <strong>{formatNumber(totalAmount, 2, 2)} USD</strong>
               </div>
               <div className="rdm-calc-rate">
@@ -284,15 +288,15 @@ export default function RealDepositRequestModal({
               }}
             >
               <Upload size={18} />
-              <div className="rdm-drop-title">Upload payment proof</div>
-              <div className="rdm-drop-sub">Drag and drop, or choose image/file</div>
+              <div className="rdm-drop-title">{t("accounts.uploadPaymentProof", lang)}</div>
+              <div className="rdm-drop-sub">{t("accounts.dragDropProof", lang)}</div>
               <button
                 type="button"
                 className="rdm-choose-btn"
                 disabled={loading}
                 onClick={() => fileInputRef.current?.click()}
               >
-                Choose file
+                {t("accounts.chooseFile", lang)}
               </button>
               <input
                 ref={fileInputRef}
@@ -311,13 +315,13 @@ export default function RealDepositRequestModal({
 
             {status?.pending_count ? (
               <div className="acm-note" style={{ textAlign: "left" }}>
-                You already have {status.pending_count} pending request(s). New request will also be reviewed.
+                {t("accounts.pendingRequestsNewAlsoReviewed", lang).replace("{count}", String(status.pending_count))}
               </div>
             ) : null}
 
             {!allowVouchers ? (
               <div className="acm-note" style={{ textAlign: "left", color: "#f59e0b" }}>
-                Voucher bonus is available only for Real Standard account.
+                {t("accounts.voucherOnlyRealStandard", lang)}
               </div>
             ) : null}
           </div>
@@ -330,15 +334,19 @@ export default function RealDepositRequestModal({
             disabled={disabledSubmit}
             onClick={async () => {
               if (!withinLimits) {
-                toast.error(`Amount must be between ${formatNumber(minAmount, 2, 2)} and ${formatNumber(maxAmount, 2, 2)} USD`)
+                toast.error(
+                  t("accounts.amountBetween", lang)
+                    .replace("{min}", formatNumber(minAmount, 2, 2))
+                    .replace("{max}", formatNumber(maxAmount, 2, 2))
+                )
                 return
               }
               if (voucherKind === "diamond" && amountNum < DIAMOND_MIN_AMOUNT) {
-                toast.error(`Diamond voucher requires at least ${formatNumber(DIAMOND_MIN_AMOUNT, 0, 0)} USD deposit`)
+                toast.error(t("accounts.diamondRequires", lang).replace("{amount}", formatNumber(DIAMOND_MIN_AMOUNT, 0, 0)))
                 return
               }
               if (!proofFile) {
-                toast.error("Upload payment proof")
+                toast.error(t("accounts.uploadPaymentProof", lang))
                 return
               }
 
@@ -349,7 +357,7 @@ export default function RealDepositRequestModal({
               })
             }}
           >
-            {loading ? "Sending..." : `Submit (review up to ${reviewMinutes} min)`}
+            {loading ? t("common.sending", lang) : t("accounts.submitReviewMin", lang).replace("{minutes}", String(reviewMinutes))}
           </button>
         </div>
       </div>

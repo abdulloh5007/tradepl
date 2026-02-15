@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from "react"
 import { ArrowLeft, CircleCheck, RefreshCw, Trophy, Wallet2, X } from "lucide-react"
 import { toast } from "sonner"
 import type { ProfitRewardStageStatus, ProfitRewardStatus } from "../../api"
-import type { TradingAccount } from "../../types"
+import type { Lang, TradingAccount } from "../../types"
 import { formatNumber } from "../../utils/format"
+import { t } from "../../utils/i18n"
 import SmartDropdown from "../../components/ui/SmartDropdown"
 import "../../components/accounts/SharedAccountSheet.css"
 import "./ProfitStagesPage.css"
 
 interface ProfitStagesPageProps {
+  lang: Lang
   status: ProfitRewardStatus | null
   accounts: TradingAccount[]
   onBack: () => void
@@ -21,14 +23,14 @@ const toNumber = (value?: string) => {
   return Number.isFinite(n) ? n : 0
 }
 
-const stageStateLabel = (stage: ProfitRewardStageStatus) => {
-  if (stage.claimed) return "Claimed"
-  if (stage.can_claim) return "Ready to claim"
-  if (stage.achieved) return "Passed"
-  return "In progress"
+const stageStateLabel = (stage: ProfitRewardStageStatus, lang: Lang) => {
+  if (stage.claimed) return t("profitStages.claimed", lang)
+  if (stage.can_claim) return t("profitStages.readyToClaim", lang)
+  if (stage.achieved) return t("profitStages.passed", lang)
+  return t("profitStages.inProgress", lang)
 }
 
-export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, onClaim }: ProfitStagesPageProps) {
+export default function ProfitStagesPage({ lang, status, accounts, onBack, onRefresh, onClaim }: ProfitStagesPageProps) {
   const [claimStageNo, setClaimStageNo] = useState<number | null>(null)
   const [claimAccountID, setClaimAccountID] = useState("")
   const [claiming, setClaiming] = useState(false)
@@ -62,7 +64,7 @@ export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, 
 
   const openClaim = (stageNo: number) => {
     if (realAccounts.length === 0) {
-      toast.error("Create a real account first")
+      toast.error(t("profile.createRealAccountFirst", lang))
       return
     }
     setClaimStageNo(stageNo)
@@ -75,10 +77,10 @@ export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, 
   return (
     <div className="profit-stage-page">
       <header className="profit-stage-header">
-        <button type="button" className="profit-stage-icon-btn" onClick={onBack} aria-label="Back to profile">
+        <button type="button" className="profit-stage-icon-btn" onClick={onBack} aria-label={t("profitStages.backToProfile", lang)}>
           <ArrowLeft size={18} />
         </button>
-        <h2>Profit Stages</h2>
+        <h2>{t("profile.profitStages", lang)}</h2>
         <button
           type="button"
           className="profit-stage-icon-btn"
@@ -91,7 +93,7 @@ export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, 
               setRefreshing(false)
             }
           }}
-          aria-label="Refresh stages"
+          aria-label={t("profitStages.refresh", lang)}
         >
           <RefreshCw size={18} className={refreshing ? "spin" : ""} />
         </button>
@@ -100,19 +102,21 @@ export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, 
       <section className="profit-stage-summary">
         <div className="profit-stage-badge">
           <Trophy size={14} />
-          <span>Net Closed Profit</span>
+          <span>{t("profitStages.netClosedProfit", lang)}</span>
         </div>
         <div className="profit-stage-progress">${formatNumber(progress, 2, 2)}</div>
         <div className="profit-stage-meta">
-          <span>{status?.claimed_stages || 0}/{status?.total_stages || 5} claimed</span>
-          <span>{status?.available_claims || 0} ready</span>
+          <span>{t("profitStages.claimedMeta", lang).replace("{claimed}", String(status?.claimed_stages || 0)).replace("{total}", String(status?.total_stages || 5))}</span>
+          <span>{t("profitStages.readyMeta", lang).replace("{ready}", String(status?.available_claims || 0))}</span>
         </div>
         {nextStage ? (
           <div className="profit-stage-next">
-            Next: Stage {nextStage.stage_no} at ${formatNumber(toNumber(nextStage.target_profit_usd), 2, 2)}
+            {t("profitStages.nextStage", lang)
+              .replace("{stage}", String(nextStage.stage_no))
+              .replace("{target}", formatNumber(toNumber(nextStage.target_profit_usd), 2, 2))}
           </div>
         ) : (
-          <div className="profit-stage-next">All stages completed</div>
+          <div className="profit-stage-next">{t("profitStages.allCompleted", lang)}</div>
         )}
       </section>
 
@@ -124,12 +128,12 @@ export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, 
           return (
             <article key={stage.stage_no} className={`profit-stage-item ${stage.claimed ? "claimed" : stage.can_claim ? "ready" : ""}`}>
               <div className="profit-stage-item-head">
-                <strong>Stage {stage.stage_no}</strong>
-                <span>{stageStateLabel(stage)}</span>
+                <strong>{t("profitStages.stage", lang)} {stage.stage_no}</strong>
+                <span>{stageStateLabel(stage, lang)}</span>
               </div>
               <div className="profit-stage-values">
-                <span>Target ${formatNumber(target, 2, 2)}</span>
-                <span>Reward +${formatNumber(reward, 2, 2)}</span>
+                <span>{t("profitStages.target", lang)} ${formatNumber(target, 2, 2)}</span>
+                <span>{t("profitStages.reward", lang)} +${formatNumber(reward, 2, 2)}</span>
               </div>
               <div className="profit-stage-bar">
                 <div className="profit-stage-bar-fill" style={{ width: `${percent}%` }} />
@@ -143,9 +147,9 @@ export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, 
                 {stage.claimed ? (
                   <>
                     <CircleCheck size={14} />
-                    Claimed
+                    {t("profitStages.claimed", lang)}
                   </>
-                ) : stage.can_claim ? "Claim" : "Locked"}
+                ) : stage.can_claim ? t("profitStages.claim", lang) : t("profitStages.locked", lang)}
               </button>
             </article>
           )
@@ -165,23 +169,23 @@ export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, 
               >
                 <X size={24} />
               </button>
-              <h2 className="acm-title">Claim Stage {claimTarget.stage_no}</h2>
+              <h2 className="acm-title">{t("profitStages.claimStage", lang).replace("{stage}", String(claimTarget.stage_no))}</h2>
               <div className="acm-spacer" />
             </div>
             <div className="acm-content">
               <div className="acm-form">
                 <div className="profit-stage-modal-amount">
                   <Wallet2 size={16} />
-                  <span>Reward +${formatNumber(toNumber(claimTarget.reward_usd), 2, 2)}</span>
+                  <span>{t("profitStages.reward", lang)} +${formatNumber(toNumber(claimTarget.reward_usd), 2, 2)}</span>
                 </div>
                 <label className="acm-label">
-                  Credit to real account
+                  {t("profitStages.creditToRealAccount", lang)}
                   <SmartDropdown
                     value={claimAccountID}
                     options={accountOptions}
                     onChange={(value) => setClaimAccountID(String(value))}
                     className="acm-dropdown"
-                    ariaLabel="Select real account"
+                    ariaLabel={t("profitStages.selectRealAccount", lang)}
                     disabled={claiming || accountOptions.length === 0}
                   />
                 </label>
@@ -191,23 +195,23 @@ export default function ProfitStagesPage({ status, accounts, onBack, onRefresh, 
                   disabled={claiming || !claimAccountID}
                   onClick={async () => {
                     if (!claimAccountID) {
-                      toast.error("Select real account")
+                      toast.error(t("profitStages.selectRealAccount", lang))
                       return
                     }
                     setClaiming(true)
                     try {
                       await onClaim(claimTarget.stage_no, claimAccountID)
-                      toast.success(`Stage ${claimTarget.stage_no} reward credited`)
+                      toast.success(t("profitStages.rewardCredited", lang).replace("{stage}", String(claimTarget.stage_no)))
                       setClaimStageNo(null)
                       await onRefresh()
                     } catch (err: any) {
-                      toast.error(err?.message || "Failed to claim reward")
+                      toast.error(err?.message || t("profitStages.claimFailed", lang))
                     } finally {
                       setClaiming(false)
                     }
                   }}
                 >
-                  {claiming ? "Claiming..." : "Claim reward"}
+                  {claiming ? t("accounts.claiming", lang) : t("profitStages.claimReward", lang)}
                 </button>
               </div>
             </div>

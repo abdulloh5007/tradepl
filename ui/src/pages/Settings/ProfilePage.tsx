@@ -6,6 +6,7 @@ import type { Lang, Theme, TradingAccount } from "../../types"
 import KYCVerificationModal from "../../components/accounts/KYCVerificationModal"
 import ProfitStagesPage from "./ProfitStagesPage"
 import SettingsSheet from "./SettingsSheet"
+import { t } from "../../utils/i18n"
 import "./ProfilePage.css"
 
 interface ProfilePageProps {
@@ -73,8 +74,8 @@ export default function ProfilePage({
         if (preferred) return preferred
         const fromEmail = (profile?.email || "").trim()
         if (fromEmail) return fromEmail
-        return "Trader"
-    }, [profile])
+        return t("profile.trader", lang)
+    }, [profile, lang])
 
     const avatarUrl = (profile?.avatar_url || "").trim()
     const initial = displayName.charAt(0).toUpperCase()
@@ -91,11 +92,11 @@ export default function ProfilePage({
 
     const openKYCModal = () => {
         if (!isRealStandard) {
-            toast.error("Switch to active Real Standard account")
+            toast.error(t("accounts.errors.switchRealStandard", lang))
             return
         }
         if (!kycStatus?.can_submit) {
-            toast.error(kycStatus?.message || "KYC submission is unavailable")
+            toast.error(kycStatus?.message || t("kyc.unavailable", lang))
             return
         }
         setKycModalOpen(true)
@@ -103,10 +104,10 @@ export default function ProfilePage({
 
     const handleShareReferral = () => {
         if (!referralStatus?.share_url) {
-            toast.error("Referral link is unavailable")
+            toast.error(t("profile.referralLinkUnavailable", lang))
             return
         }
-        const text = "Join LV Trade with my referral link."
+        const text = t("profile.referralShareText", lang)
         const shareURL = `https://t.me/share/url?url=${encodeURIComponent(referralStatus.share_url)}&text=${encodeURIComponent(text)}`
         try {
             if (window.Telegram?.WebApp?.openTelegramLink) {
@@ -122,15 +123,15 @@ export default function ProfilePage({
     const handleWithdrawReferral = async () => {
         if (!referralStatus) return
         if (referralStatus.real_account_required) {
-            toast.error("Create a real account first")
+            toast.error(t("profile.createRealAccountFirst", lang))
             return
         }
         if (!referralStatus.can_withdraw) {
-            toast.error(`Minimum referral balance for withdraw is ${referralStatus.min_withdraw_usd} USD`)
+            toast.error(t("profile.referralMinWithdraw", lang).replace("{amount}", String(referralStatus.min_withdraw_usd)))
             return
         }
         const raw = window.prompt(
-            `Withdraw amount in USD (min ${referralStatus.min_withdraw_usd}). Leave empty to withdraw full balance.`,
+            t("profile.referralWithdrawPrompt", lang).replace("{amount}", String(referralStatus.min_withdraw_usd)),
             referralStatus.balance
         )
         if (raw === null) return
@@ -139,9 +140,9 @@ export default function ProfilePage({
         try {
             await onReferralWithdraw(amount || undefined)
             await onRefreshReferral?.()
-            toast.success("Referral withdrawal completed")
+            toast.success(t("profile.referralWithdrawCompleted", lang))
         } catch (err: any) {
-            toast.error(err?.message || "Referral withdrawal failed")
+            toast.error(err?.message || t("profile.referralWithdrawFailed", lang))
         } finally {
             setReferralBusy(false)
         }
@@ -150,6 +151,7 @@ export default function ProfilePage({
     if (showProfitStages) {
         return (
             <ProfitStagesPage
+                lang={lang}
                 status={profitRewardStatus}
                 accounts={accounts}
                 onBack={() => setShowProfitStages(false)}
@@ -162,11 +164,11 @@ export default function ProfilePage({
     return (
         <div className="profile-page">
             <div className="profile-header">
-                <h2 className="profile-title">Profile</h2>
+                <h2 className="profile-title">{t("profile", lang)}</h2>
                 <button
                     onClick={() => setShowSettings(true)}
                     className="profile-settings-btn"
-                    aria-label="Open settings"
+                    aria-label={t("profile.openSettings", lang)}
                     type="button"
                 >
                     <Settings2 size={20} />
@@ -193,21 +195,23 @@ export default function ProfilePage({
             {referralStatus && (
                 <section className="profile-referral-card">
                     <div className="profile-referral-head">
-                        <h3>Referral</h3>
-                        <span>{referralStatus.referrals_total} invited</span>
+                        <h3>{t("profile.referral", lang)}</h3>
+                        <span>{t("profile.invitedCount", lang).replace("{count}", String(referralStatus.referrals_total))}</span>
                     </div>
                     <div className="profile-referral-balance">${referralStatus.balance}</div>
                     <div className="profile-referral-meta">
-                        <span>Earned ${referralStatus.total_earned}</span>
-                        <span>Withdrawn ${referralStatus.total_withdrawn}</span>
+                        <span>{t("profile.earned", lang)} ${referralStatus.total_earned}</span>
+                        <span>{t("profile.withdrawn", lang)} ${referralStatus.total_withdrawn}</span>
                     </div>
                     <div className="profile-referral-note">
-                        ${referralStatus.signup_reward_usd} per invite + {referralStatus.deposit_commission_percent}% from real deposits.
+                        {t("profile.referralNote", lang)
+                            .replace("{reward}", String(referralStatus.signup_reward_usd))
+                            .replace("{percent}", String(referralStatus.deposit_commission_percent))}
                     </div>
                     <div className="profile-referral-actions">
                         <button type="button" className="profile-referral-btn" onClick={handleShareReferral}>
                             <Share2 size={14} />
-                            <span>Share</span>
+                            <span>{t("profile.share", lang)}</span>
                         </button>
                         <button
                             type="button"
@@ -215,7 +219,7 @@ export default function ProfilePage({
                             onClick={handleWithdrawReferral}
                             disabled={referralBusy || !referralStatus.can_withdraw || referralStatus.real_account_required}
                         >
-                            <span>{referralBusy ? "..." : "Withdraw"}</span>
+                            <span>{referralBusy ? "..." : t("accounts.withdraw", lang)}</span>
                         </button>
                     </div>
                 </section>
@@ -225,30 +229,30 @@ export default function ProfilePage({
                 <div className="profile-kyc-head">
                     <div className="profile-kyc-chip">
                         <ShieldCheck size={14} />
-                        <span>Identity bonus</span>
+                        <span>{t("profile.identityBonus", lang)}</span>
                     </div>
                     <span className={`profile-kyc-state ${kycApproved ? "ok" : ""}`}>
-                        {kycApproved ? "Verified" : kycPending ? "In review" : "KYC"}
+                        {kycApproved ? t("profile.verified", lang) : kycPending ? t("profile.inReview", lang) : "KYC"}
                     </span>
                 </div>
                 <div className="profile-kyc-amount">+${kycBonusAmount}</div>
                 <p className="profile-kyc-text">
-                    One-time bonus after successful identity verification on Real Standard account.
+                    {t("profile.kycOneTimeBonus", lang)}
                 </p>
                 {kycPending && kycStatus?.pending_ticket ? (
-                    <div className="profile-kyc-note">Ticket: {kycStatus.pending_ticket}</div>
+                    <div className="profile-kyc-note">{t("profile.ticket", lang)}: {kycStatus.pending_ticket}</div>
                 ) : null}
                 {kycBlockedTemp && kycBlockedLabel ? (
-                    <div className="profile-kyc-note">Blocked for: {kycBlockedLabel}</div>
+                    <div className="profile-kyc-note">{t("profile.blockedFor", lang)}: {kycBlockedLabel}</div>
                 ) : null}
                 {kycBlockedPermanent ? (
-                    <div className="profile-kyc-note">Permanently blocked. Contact support/owner.</div>
+                    <div className="profile-kyc-note">{t("profile.blockedPermanent", lang)}</div>
                 ) : null}
                 {!isRealStandard ? (
-                    <div className="profile-kyc-note">Switch to active Real Standard account.</div>
+                    <div className="profile-kyc-note">{t("accounts.errors.switchRealStandard", lang)}</div>
                 ) : null}
                 {kycStatus && !kycStatus.is_review_configured ? (
-                    <div className="profile-kyc-note">Review chat is not configured yet.</div>
+                    <div className="profile-kyc-note">{t("profile.reviewChatNotConfigured", lang)}</div>
                 ) : null}
                 <button
                     type="button"
@@ -264,18 +268,19 @@ export default function ProfilePage({
                     }
                 >
                     {kycApproved
-                        ? "Already verified"
+                        ? t("profile.alreadyVerified", lang)
                         : kycPending
-                            ? "Pending review"
+                            ? t("profile.pendingReview", lang)
                             : kycBlockedTemp
-                                ? "Temporarily blocked"
+                                ? t("profile.temporarilyBlocked", lang)
                                 : kycBlockedPermanent
-                                    ? "Blocked"
-                                    : "Verify identity"}
+                                    ? t("profile.blocked", lang)
+                                    : t("profile.verifyIdentity", lang)}
                 </button>
             </section>
 
             <KYCVerificationModal
+                lang={lang}
                 open={kycModalOpen}
                 status={kycStatus}
                 loading={kycBusy}
@@ -287,10 +292,10 @@ export default function ProfilePage({
                     setKycBusy(true)
                     try {
                         await onRequestKYC(payload)
-                        toast.success("KYC request submitted")
+                        toast.success(t("profile.kycRequestSubmitted", lang))
                         setKycModalOpen(false)
                     } catch (err: any) {
-                        toast.error(err?.message || "Failed to submit KYC")
+                        toast.error(err?.message || t("profile.kycSubmitFailed", lang))
                     } finally {
                         setKycBusy(false)
                     }

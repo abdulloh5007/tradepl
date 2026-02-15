@@ -59,7 +59,7 @@ function isCashFlowHistoryOrder(order: Order): boolean {
   return side === "deposit" || side === "withdraw" || type === "balance"
 }
 
-function historyNotificationFromOrder(order: Order): { kind: AppNotification["kind"]; title: string; message: string } | null {
+function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNotification["kind"]; title: string; message: string } | null {
   const ticket = String(order.ticket || "").toLowerCase()
   const side = String(order.side || "").toLowerCase()
   const type = String(order.type || "").toLowerCase()
@@ -70,71 +70,73 @@ function historyNotificationFromOrder(order: Order): { kind: AppNotification["ki
     if (ticket.includes("bxdepstm")) {
       return {
         kind: "system",
-        title: "Negative balance protection",
-        message: `System covered ${amountAbs} USD after stop-out.`,
+        title: t("notifications.negativeBalanceProtection", lang),
+        message: t("notifications.systemCoveredAfterStopOut", lang).replace("{amount}", amountAbs),
       }
     }
     if (ticket.includes("bxkyc")) {
       return {
         kind: "bonus",
-        title: "KYC bonus credited",
-        message: `${amountAbs} USD identity verification bonus added to your account.`,
+        title: t("notifications.kycBonusCredited", lang),
+        message: t("notifications.kycBonusMessage", lang).replace("{amount}", amountAbs),
       }
     }
     if (ticket.includes("bxrew")) {
       return {
         kind: "bonus",
-        title: "Welcome bonus credited",
-        message: `${amountAbs} USD signup bonus added to your account.`,
+        title: t("notifications.welcomeBonusCredited", lang),
+        message: t("notifications.welcomeBonusMessage", lang).replace("{amount}", amountAbs),
       }
     }
     if (ticket.includes("bxbon")) {
       return {
         kind: "bonus",
-        title: "Deposit voucher bonus credited",
-        message: `${amountAbs} USD voucher bonus added to your account.`,
+        title: t("notifications.depositVoucherBonusCredited", lang),
+        message: t("notifications.depositVoucherBonusMessage", lang).replace("{amount}", amountAbs),
       }
     }
     if (ticket.includes("bxprf")) {
       return {
         kind: "bonus",
-        title: "Profit stage reward credited",
-        message: `${amountAbs} USD stage reward added to your account.`,
+        title: t("notifications.profitStageRewardCredited", lang),
+        message: t("notifications.profitStageRewardMessage", lang).replace("{amount}", amountAbs),
       }
     }
     if (ticket.includes("bxref")) {
       return {
         kind: "bonus",
-        title: "Referral balance payout",
-        message: `${amountAbs} USD moved from referral balance to trading account.`,
+        title: t("notifications.referralBalancePayout", lang),
+        message: t("notifications.referralBalancePayoutMessage", lang).replace("{amount}", amountAbs),
       }
     }
     if (side === "withdraw") {
       return {
         kind: "deposit",
-        title: "Withdrawal posted",
-        message: `${amountAbs} USD withdrawal recorded in account history.`,
+        title: t("notifications.withdrawalPosted", lang),
+        message: t("notifications.withdrawalPostedMessage", lang).replace("{amount}", amountAbs),
       }
     }
     return {
       kind: "deposit",
-      title: "Balance updated",
-      message: `${amountAbs} USD deposit posted to your account.`,
+      title: t("notifications.balanceUpdated", lang),
+      message: t("notifications.balanceUpdatedMessage", lang).replace("{amount}", amountAbs),
     }
   }
 
   if (type === "swap") {
     return {
       kind: "news",
-      title: "Swap update",
-      message: `${amountAbs} USD swap ${amount >= 0 ? "credited" : "charged"}.`,
+      title: t("notifications.swapUpdate", lang),
+      message: amount >= 0
+        ? t("notifications.swapCredited", lang).replace("{amount}", amountAbs)
+        : t("notifications.swapCharged", lang).replace("{amount}", amountAbs),
     }
   }
 
   return null
 }
 
-function newsNotificationFromEvent(event: MarketNewsEvent): { kind: AppNotification["kind"]; title: string; message: string; statusKey: "live" | "completed" } | null {
+function newsNotificationFromEvent(event: MarketNewsEvent, lang: Lang): { kind: AppNotification["kind"]; title: string; message: string; statusKey: "live" | "completed" } | null {
   const status = String(event.status || "").toLowerCase()
   const forecast = Number(event.forecast_value || 0)
   const actual = Number(event.actual_value ?? NaN)
@@ -143,20 +145,23 @@ function newsNotificationFromEvent(event: MarketNewsEvent): { kind: AppNotificat
   if (status === "live") {
     return {
       kind: "news",
-      title: `News started: ${event.title}`,
-      message: `Forecast ${formatVal(forecast)}. Market impact is now active.`,
+      title: t("notifications.newsStartedTitle", lang).replace("{title}", event.title),
+      message: t("notifications.newsStartedMessage", lang).replace("{forecast}", formatVal(forecast)),
       statusKey: "live",
     }
   }
 
   if (status === "completed") {
     const tone = Number.isFinite(actual)
-      ? (actual > forecast ? "above" : actual < forecast ? "below" : "in line with")
-      : "relative to"
+      ? (actual > forecast ? t("notifications.toneAbove", lang) : actual < forecast ? t("notifications.toneBelow", lang) : t("notifications.toneInLine", lang))
+      : t("notifications.toneRelative", lang)
     return {
       kind: "news",
-      title: `News result: ${event.title}`,
-      message: `Actual ${formatVal(actual)} is ${tone} forecast ${formatVal(forecast)}.`,
+      title: t("notifications.newsResultTitle", lang).replace("{title}", event.title),
+      message: t("notifications.newsResultMessage", lang)
+        .replace("{actual}", formatVal(actual))
+        .replace("{tone}", tone)
+        .replace("{forecast}", formatVal(forecast)),
       statusKey: "completed",
     }
   }
@@ -604,7 +609,11 @@ export default function App() {
         toast.message(notice)
         addNotification({
           kind: "system",
-          title: details?.kind === "stop_out" ? "Margin call stop-out" : details?.kind === "margin_call" ? "Margin call warning" : "System notice",
+          title: details?.kind === "stop_out"
+            ? t("notifications.marginCallStopOut", lang)
+            : details?.kind === "margin_call"
+              ? t("notifications.marginCallWarning", lang)
+              : t("notifications.systemNotice", lang),
           message: notice,
           accountID: requestAccountId,
           dedupeKey: detailKey ? `system:${requestAccountId}:${detailKey}` : `system:${requestAccountId}:${notice}`,
@@ -662,8 +671,8 @@ export default function App() {
         const amount = Number(status?.amount || 0)
         addNotification({
           kind: "bonus",
-          title: "Welcome bonus available",
-          message: `${formatNumber(amount, 2, 2)} USD is ready to claim on your real standard account.`,
+          title: t("notifications.welcomeBonusAvailable", lang),
+          message: t("notifications.welcomeBonusAvailableMessage", lang).replace("{amount}", formatNumber(amount, 2, 2)),
           accountID: requestAccountId,
           dedupeKey: `signup:available:${requestAccountId}:${amount}`,
         })
@@ -696,15 +705,15 @@ export default function App() {
       if (pending > prevState.pending) {
         addNotification({
           kind: "deposit",
-          title: "Deposit request pending",
-          message: `You have ${pending} deposit request(s) under review.`,
+          title: t("notifications.depositRequestPending", lang),
+          message: t("notifications.depositRequestPendingMessage", lang).replace("{count}", String(pending)),
           accountID: requestAccountId,
         })
       } else if (pending < prevState.pending) {
         addNotification({
           kind: "deposit",
-          title: "Deposit request reviewed",
-          message: "One of your deposit requests was reviewed. Check History for result.",
+          title: t("notifications.depositRequestReviewed", lang),
+          message: t("notifications.depositRequestReviewedMessage", lang),
           accountID: requestAccountId,
         })
       }
@@ -925,7 +934,7 @@ export default function App() {
         setView("accounts")
       } catch (err: any) {
         if (cancelled) return
-        setTelegramAuthError(err?.message || "Telegram authentication failed")
+        setTelegramAuthError(err?.message || t("auth.telegramFailed", lang))
         setCookie("lv_token", "")
       } finally {
         if (!cancelled) {
@@ -1109,7 +1118,7 @@ export default function App() {
 
       const merged = [...prev]
       for (const order of inChronologicalOrder) {
-        const next = historyNotificationFromOrder(order)
+        const next = historyNotificationFromOrder(order, lang)
         if (!next) continue
         const dedupeKey = `history:${accountKey}:${order.id}`
         if (dedupe.has(dedupeKey)) continue
@@ -1132,7 +1141,7 @@ export default function App() {
       }
       return merged
     })
-  }, [token, activeAccountId, orderHistory])
+  }, [token, activeAccountId, orderHistory, lang])
 
   // Prime history once per active account so notification sync also works outside History page.
   useEffect(() => {
@@ -1172,7 +1181,7 @@ export default function App() {
       return ta - tb
     })
     for (const item of ordered) {
-      const next = newsNotificationFromEvent(item)
+      const next = newsNotificationFromEvent(item, lang)
       if (!next) continue
       addNotification({
         kind: next.kind,
@@ -1181,7 +1190,7 @@ export default function App() {
         dedupeKey: `news:${item.id}:${next.statusKey}`,
       })
     }
-  }, [token, newsRecent, addNotification])
+  }, [token, newsRecent, addNotification, lang])
 
   // Fast polling for account metrics on live trading views.
   useEffect(() => {
@@ -1274,15 +1283,15 @@ export default function App() {
       return
     }
     if (!activeTradingAccount) {
-      toast.error("Select active account first")
+      toast.error(t("orders.selectActiveAccountFirst", lang))
       return
     }
     if (side === "buy") {
       const usdBalance = Number(activeTradingAccount.balance || 0)
       if (!Number.isFinite(usdBalance) || usdBalance <= 0) {
         toast.error(activeTradingAccount.mode === "demo"
-          ? "Demo account balance is 0. Use Top Up in Accounts."
-          : "Real account balance is 0. Deposit funds first.")
+          ? t("orders.demoBalanceZero", lang)
+          : t("orders.realBalanceZero", lang))
         return
       }
     }
@@ -1302,14 +1311,14 @@ export default function App() {
       ])
       refreshAccountSnapshots().catch(() => { })
     } catch (err: any) {
-      toast.error(err?.message || "Error")
+      toast.error(err?.message || t("common.error", lang))
     }
   }
 
   const handleClosePosition = async (orderId: string) => {
     try {
       await api.cancelOrder(orderId)
-      toast.success("Position closed")
+      toast.success(t("orders.positionClosed", lang))
       await Promise.all([
         refreshOrders().catch(() => { }),
         fetchOrderHistory(true).catch(() => { }),
@@ -1318,7 +1327,7 @@ export default function App() {
       ])
       refreshAccountSnapshots().catch(() => { })
     } catch (err: any) {
-      toast.error(err?.message || "Error")
+      toast.error(err?.message || t("common.error", lang))
     }
   }
 
@@ -1340,7 +1349,7 @@ export default function App() {
       total = Number(res?.total || 0)
     } catch (err: any) {
       setBulkClosing(false)
-      toast.error(err?.message || "Bulk close failed")
+      toast.error(err?.message || t("orders.bulkCloseFailed", lang))
       return
     }
 
@@ -1358,28 +1367,28 @@ export default function App() {
       return
     }
     if (failed > 0) {
-      toast.message(`Closed ${closed}, failed ${failed}`)
+      toast.message(t("orders.closedFailed", lang).replace("{closed}", String(closed)).replace("{failed}", String(failed)))
     } else {
-      toast.success(`Closed ${closed} positions`)
+      toast.success(t("orders.closedPositions", lang).replace("{count}", String(closed)))
     }
   }
 
   const handleCloseAllPositions = async () => {
-    await closeByScope("all", "No open positions to close")
+    await closeByScope("all", t("orders.noOpenToClose", lang))
   }
 
   const handleCloseProfitPositions = async () => {
-    await closeByScope("profit", "No profitable positions")
+    await closeByScope("profit", t("orders.noProfitable", lang))
   }
 
   const handleCloseLossPositions = async () => {
-    await closeByScope("loss", "No losing positions")
+    await closeByScope("loss", t("orders.noLosing", lang))
   }
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) {
-      toast.error("Please enter email and password")
+      toast.error(t("auth.enterEmailPassword", lang))
       return
     }
     setAuthLoading(true)
@@ -1392,9 +1401,9 @@ export default function App() {
       setCookie("lv_token", res.access_token)
       setCookie("lv_account_id", "")
       setActiveAccountId("")
-      toast.success(authMode === "login" ? "Logged in!" : "Registered!")
+      toast.success(authMode === "login" ? t("auth.loggedIn", lang) : t("auth.registered", lang))
     } catch (err: any) {
-      toast.error(err?.message || "Auth error")
+      toast.error(err?.message || t("auth.error", lang))
     } finally {
       setAuthLoading(false)
     }
@@ -1456,8 +1465,8 @@ export default function App() {
     if (claimed) {
       addNotification({
         kind: "bonus",
-        title: "Welcome bonus credited",
-        message: `${formatNumber(Number(claimed.amount || 0), 2, 2)} USD was credited to your account.`,
+        title: t("notifications.welcomeBonusCredited", lang),
+        message: t("notifications.welcomeBonusCreditedMessage", lang).replace("{amount}", formatNumber(Number(claimed.amount || 0), 2, 2)),
         accountID: activeAccountId,
         dedupeKey: `signup:claimed:${claimed.claimed_at || claimed.trading_account_id || activeAccountId}`,
       })
@@ -1482,7 +1491,7 @@ export default function App() {
       if (comma >= 0) resolve(out.slice(comma + 1))
       else resolve(out)
     }
-    reader.onerror = () => reject(new Error("failed to read proof file"))
+    reader.onerror = () => reject(new Error(t("kyc.error.readProofFailed", lang)))
     reader.readAsDataURL(file)
   })
 
@@ -1495,7 +1504,7 @@ export default function App() {
     }
     image.onerror = () => {
       URL.revokeObjectURL(url)
-      reject(new Error(`failed to decode image: ${file.name}`))
+      reject(new Error(t("kyc.error.decodeImageFailed", lang).replace("{file}", file.name)))
     }
     image.src = url
   })
@@ -1504,7 +1513,7 @@ export default function App() {
     new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
         if (!blob) {
-          reject(new Error("failed to build KYC proof image"))
+          reject(new Error(t("kyc.error.buildImageFailed", lang)))
           return
         }
         resolve(blob)
@@ -1532,7 +1541,7 @@ export default function App() {
     canvas.height = frontHeight + backHeight + gap + pad * 2
 
     const ctx = canvas.getContext("2d")
-    if (!ctx) throw new Error("failed to prepare KYC proof canvas")
+    if (!ctx) throw new Error(t("kyc.error.prepareCanvasFailed", lang))
 
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
@@ -1545,7 +1554,7 @@ export default function App() {
         return new File([blob], `kyc-${Date.now()}-front-back.jpg`, { type: "image/jpeg" })
       }
     }
-    throw new Error("KYC images are too large after merge (max 10MB)")
+    throw new Error(t("kyc.error.imagesTooLarge", lang))
   }
 
   const handleRequestRealDeposit = async (payload: {
@@ -1563,8 +1572,8 @@ export default function App() {
     })
     addNotification({
       kind: "deposit",
-      title: "Deposit request submitted",
-      message: `${formatNumber(Number(payload.amountUSD || 0), 2, 2)} USD submitted for review.`,
+      title: t("notifications.depositRequestSubmitted", lang),
+      message: t("notifications.depositRequestSubmittedMessage", lang).replace("{amount}", formatNumber(Number(payload.amountUSD || 0), 2, 2)),
       accountID: activeAccountId,
     })
     await Promise.all([
@@ -1594,8 +1603,8 @@ export default function App() {
     })
     addNotification({
       kind: "news",
-      title: "KYC submitted",
-      message: "Identity verification request was sent for review.",
+      title: t("notifications.kycSubmitted", lang),
+      message: t("notifications.kycSubmittedMessage", lang),
       accountID: activeAccountId,
     })
     await Promise.all([
@@ -1629,8 +1638,8 @@ export default function App() {
     const res = await api.referralWithdraw(payload)
     addNotification({
       kind: "bonus",
-      title: "Referral withdrawal completed",
-      message: `${formatNumber(Number(res?.amount_usd || 0), 2, 2)} USD moved to your real account.`,
+      title: t("notifications.referralWithdrawalCompleted", lang),
+      message: t("notifications.referralWithdrawalCompletedMessage", lang).replace("{amount}", formatNumber(Number(res?.amount_usd || 0), 2, 2)),
       accountID: activeAccountId,
       dedupeKey: `ref:withdraw:${Date.now()}`,
     })
@@ -1649,8 +1658,8 @@ export default function App() {
     const reward = Number(res?.reward_usd || 0)
     addNotification({
       kind: "bonus",
-      title: "Profit stage reward credited",
-      message: `${formatNumber(reward, 2, 2)} USD stage reward was credited.`,
+      title: t("notifications.profitStageRewardCredited", lang),
+      message: t("notifications.profitStageRewardCreditedMessage", lang).replace("{amount}", formatNumber(reward, 2, 2)),
       accountID: tradingAccountID || activeAccountId,
       dedupeKey: `profit_reward:${res?.stage_no || stageNo}:${res?.claimed_at || Date.now()}`,
     })

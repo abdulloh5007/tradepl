@@ -4,6 +4,7 @@ import TradingChart from "../../components/TradingChart"
 import MarketPanel from "../../components/MarketPanel"
 import type { Quote, Lang, MarketConfig, Order } from "../../types"
 import { setCookie, storedTradePanelOpen } from "../../utils/cookies"
+import { t } from "../../utils/i18n"
 import "./TradingPage.css"
 
 interface TradingPageProps {
@@ -77,8 +78,8 @@ export default function TradingPage({
                             type="button"
                             className={`chart-trade-toggle ${tradePanelOpen ? "open" : ""}`}
                             onClick={() => setTradePanelOpen(v => !v)}
-                            title={tradePanelOpen ? "Hide Trade Panel" : "Show Trade Panel"}
-                            aria-label={tradePanelOpen ? "Hide Trade Panel" : "Show Trade Panel"}
+                            title={tradePanelOpen ? t("trading.hideTradePanel", lang) : t("trading.showTradePanel", lang)}
+                            aria-label={tradePanelOpen ? t("trading.hideTradePanel", lang) : t("trading.showTradePanel", lang)}
                         >
                             <ChevronsUpDown size={14} />
                         </button>

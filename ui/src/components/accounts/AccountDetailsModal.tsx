@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { X } from "lucide-react"
 import { toast } from "sonner"
-import type { TradingAccount } from "../../types"
+import type { Lang, TradingAccount } from "../../types"
 import type { AccountSnapshot } from "./types"
 import { accountShortNumericId, formatPercent, formatUsd, getLeverage, leverageLabel, leverageOptions } from "./utils"
 import SmartDropdown from "../ui/SmartDropdown"
+import { t } from "../../utils/i18n"
 import "./SharedAccountSheet.css"
 
 interface AccountDetailsModalProps {
+  lang: Lang
   open: boolean
   account: TradingAccount | null
   snapshot: AccountSnapshot | null
@@ -18,6 +20,7 @@ interface AccountDetailsModalProps {
 }
 
 export default function AccountDetailsModal({
+  lang,
   open,
   account,
   snapshot,
@@ -44,21 +47,21 @@ export default function AccountDetailsModal({
   const statRows = useMemo(() => {
     const m = snapshot?.metrics
     const rows = [
-      { label: "Balance", value: `${formatUsd(m?.balance || 0)} USD` },
-      { label: "Equity", value: `${formatUsd(m?.equity || 0)} USD` },
-      { label: "Floating P/L", value: `${snapshot ? `${snapshot.pl >= 0 ? "+" : ""}${formatUsd(snapshot.pl)} USD` : "0.00 USD"}` },
-      { label: "Leverage", value: account ? leverageLabel(getLeverage(account)) : "—" }
+      { label: t("balance", lang), value: `${formatUsd(m?.balance || 0)} USD` },
+      { label: t("equity", lang), value: `${formatUsd(m?.equity || 0)} USD` },
+      { label: t("floatingPnL", lang), value: `${snapshot ? `${snapshot.pl >= 0 ? "+" : ""}${formatUsd(snapshot.pl)} USD` : "0.00 USD"}` },
+      { label: t("accounts.details.leverage", lang), value: account ? leverageLabel(getLeverage(account)) : "—" }
     ]
     const isUnlimited = account ? getLeverage(account) === 0 : false
     if (!isUnlimited) {
       rows.splice(3, 0,
-        { label: "Margin", value: `${formatUsd(m?.margin || 0)} USD` },
-        { label: "Free Margin", value: `${formatUsd(m?.free_margin || 0)} USD` },
-        { label: "Margin Level", value: `${formatPercent(m?.margin_level || 0)}` },
+        { label: t("margin", lang), value: `${formatUsd(m?.margin || 0)} USD` },
+        { label: t("freeMargin", lang), value: `${formatUsd(m?.free_margin || 0)} USD` },
+        { label: t("marginLevel", lang), value: `${formatPercent(m?.margin_level || 0)}` },
       )
     }
     return rows
-  }, [snapshot, account])
+  }, [snapshot, account, lang])
 
   const leverageItems = useMemo(() => {
     return leverageOptions.map(value => ({ value, label: leverageLabel(value) }))
@@ -79,7 +82,7 @@ export default function AccountDetailsModal({
             <X size={24} />
           </button>
           <div style={{ textAlign: "center" }}>
-            <h2 className="acm-title">Account Details</h2>
+            <h2 className="acm-title">{t("accounts.details.title", lang)}</h2>
             <div className="acm-note" style={{ fontSize: 10 }}>#{accountShortNumericId(account.id)}</div>
           </div>
           <div className="acm-spacer" />
@@ -88,8 +91,8 @@ export default function AccountDetailsModal({
         <div className="acm-content acm-details-content">
           <div className="acm-tabs-container">
             <div className="acm-tabs">
-              <button className={`acm-tab ${tab === "stats" ? "active" : ""}`} onClick={() => setTab("stats")}>Stats</button>
-              <button className={`acm-tab ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>Settings</button>
+              <button className={`acm-tab ${tab === "stats" ? "active" : ""}`} onClick={() => setTab("stats")}>{t("accounts.details.stats", lang)}</button>
+              <button className={`acm-tab ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>{t("settings", lang)}</button>
             </div>
           </div>
 
@@ -108,7 +111,7 @@ export default function AccountDetailsModal({
                   className="acm-danger-btn"
                   disabled={closingAll}
                   onClick={async () => {
-                    const ok = window.confirm("Close all open orders for this account?")
+                    const ok = window.confirm(t("accounts.details.closeAllConfirm", lang))
                     if (!ok) return
                     setClosingAll(true)
                     try {
@@ -118,14 +121,14 @@ export default function AccountDetailsModal({
                     }
                   }}
                 >
-                  <X size={14} /> {closingAll ? "Closing..." : "Close All Orders"}
+                  <X size={14} /> {closingAll ? t("accounts.details.closing", lang) : t("accounts.details.closeAllOrders", lang)}
                 </button>
               )}
             </div>
           ) : (
             <div className="acm-form">
               <label className="acm-label">
-                Account Name
+                {t("accounts.details.accountName", lang)}
                 <input
                   className="acm-input"
                   value={nameDraft}
@@ -146,35 +149,37 @@ export default function AccountDetailsModal({
                   }
                 }}
               >
-                {savingName ? "Saving..." : "Save Name"}
+                {savingName ? t("common.saving", lang) : t("accounts.details.saveName", lang)}
               </button>
 
               <div className="acm-list-item" style={{ cursor: "default", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-                <span className="acm-label">Commission</span>
+                <span className="acm-label">{t("accounts.details.commission", lang)}</span>
                 <strong>${(account.plan?.commission_per_lot || 0).toFixed(2)} / lot / side</strong>
               </div>
               <div className="acm-list-item" style={{ cursor: "default", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-                <span className="acm-label">Min Spread</span>
+                <span className="acm-label">{t("accounts.details.minSpread", lang)}</span>
                 <strong>x{(account.plan?.spread_multiplier || 1).toFixed(2)}</strong>
               </div>
               <div className="acm-list-item" style={{ cursor: "default", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-                <span className="acm-label">Swap</span>
+                <span className="acm-label">{t("history.swap", lang)}</span>
                 {account.plan?.is_swap_free ? (
-                  <strong>Swap-free</strong>
+                  <strong>{t("accounts.details.swapFree", lang)}</strong>
                 ) : (
                   <strong>
-                    Long {(account.plan?.swap_long_per_lot || 0).toFixed(2)} / Short {(account.plan?.swap_short_per_lot || 0).toFixed(2)} USD per lot/night
+                    {t("accounts.details.swapLongShort", lang)
+                      .replace("{long}", (account.plan?.swap_long_per_lot || 0).toFixed(2))
+                      .replace("{short}", (account.plan?.swap_short_per_lot || 0).toFixed(2))}
                   </strong>
                 )}
               </div>
 
               <label className="acm-label">
-                Leverage
+                {t("accounts.details.leverage", lang)}
                 <SmartDropdown
                   value={String(levDraft)}
                   options={leverageItems}
                   onChange={(next) => setLevDraft(Number(next))}
-                  ariaLabel="Select leverage"
+                  ariaLabel={t("accounts.details.selectLeverage", lang)}
                   className="acm-dropdown"
                   triggerClassName="acm-select-like"
                   menuClassName="acm-dropdown-menu"
@@ -182,7 +187,7 @@ export default function AccountDetailsModal({
               </label>
               {unlimitedBlockedByBalance && (
                 <div className="acm-note" style={{ textAlign: "left", color: "#f59e0b" }}>
-                  Unlimited is unavailable when balance is above 1000 USD.
+                  {t("accounts.details.unlimitedBlocked", lang)}
                 </div>
               )}
               <button
@@ -191,7 +196,7 @@ export default function AccountDetailsModal({
                 disabled={savingLev || levDraft === getLeverage(account) || unlimitedBlockedByBalance}
                 onClick={async () => {
                   if (unlimitedBlockedByBalance) {
-                    toast.error("Unlimited is unavailable when balance is above 1000 USD")
+                    toast.error(t("accounts.details.unlimitedBlocked", lang))
                     return
                   }
                   if (levDraft === 0 && getLeverage(account) !== 0) {
@@ -202,13 +207,13 @@ export default function AccountDetailsModal({
                   try {
                     await onUpdateLeverage(account.id, levDraft)
                   } catch (err: any) {
-                    toast.error(err?.message || "Failed to update leverage")
+                    toast.error(err?.message || t("accounts.details.leverageUpdateFailed", lang))
                   } finally {
                     setSavingLev(false)
                   }
                 }}
               >
-                {savingLev ? "Saving..." : "Apply Leverage"}
+                {savingLev ? t("common.saving", lang) : t("accounts.details.applyLeverage", lang)}
               </button>
             </div>
           )}
@@ -218,15 +223,15 @@ export default function AccountDetailsModal({
           <div className="acm-confirm-overlay" role="dialog" aria-modal="true">
             <div className="acm-confirm-backdrop" onClick={() => setUnlimitedConfirmOpen(false)} />
             <div className="acm-confirm-card">
-              <h3 className="acm-confirm-title">Enable Unlimited Leverage?</h3>
+              <h3 className="acm-confirm-title">{t("accounts.details.enableUnlimited", lang)}</h3>
               <p className="acm-confirm-text">
-                Read and confirm system rules:
+                {t("accounts.details.readRules", lang)}
               </p>
               <p className="acm-confirm-rule">
-                1. If balance becomes greater than 1000 USD, leverage will be auto-changed to 1:2000.
+                {t("accounts.details.rule1", lang)}
               </p>
               <p className="acm-confirm-rule">
-                2. If equity drops below 0, system will auto-close all orders and reset account balance to 0.
+                {t("accounts.details.rule2", lang)}
               </p>
               <div className="acm-confirm-actions">
                 <button
@@ -235,7 +240,7 @@ export default function AccountDetailsModal({
                   onClick={() => setUnlimitedConfirmOpen(false)}
                   disabled={savingLev}
                 >
-                  Cancel
+                  {t("accounts.details.cancel", lang)}
                 </button>
                 <button
                   type="button"
@@ -243,7 +248,7 @@ export default function AccountDetailsModal({
                   disabled={savingLev || accountBalance > 1000}
                   onClick={async () => {
                     if (accountBalance > 1000) {
-                      toast.error("Unlimited is unavailable when balance is above 1000 USD")
+                      toast.error(t("accounts.details.unlimitedBlocked", lang))
                       setUnlimitedConfirmOpen(false)
                       return
                     }
@@ -252,13 +257,13 @@ export default function AccountDetailsModal({
                       await onUpdateLeverage(account.id, 0)
                       setUnlimitedConfirmOpen(false)
                     } catch (err: any) {
-                      toast.error(err?.message || "Failed to update leverage")
+                      toast.error(err?.message || t("accounts.details.leverageUpdateFailed", lang))
                     } finally {
                       setSavingLev(false)
                     }
                   }}
                 >
-                  {savingLev ? "Saving..." : "Enable Unlimited"}
+                  {savingLev ? t("common.saving", lang) : t("accounts.details.enableUnlimitedAction", lang)}
                 </button>
               </div>
             </div>

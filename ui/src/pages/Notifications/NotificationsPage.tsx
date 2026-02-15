@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { KeyboardEvent as ReactKeyboardEvent } from "react"
 import { ArrowLeft, CheckCheck, Bell, ShieldAlert, Gift, Newspaper, X } from "lucide-react"
-import type { AppNotification } from "../../types"
+import type { AppNotification, Lang } from "../../types"
+import { t } from "../../utils/i18n"
 import "./NotificationsPage.css"
 
 interface NotificationsPageProps {
+  lang: Lang
   items: AppNotification[]
   onBack: () => void
   onMarkAllRead: () => void
@@ -31,10 +33,16 @@ const iconForKind = (kind: AppNotification["kind"]) => {
   return Bell
 }
 
-const formatMoney = (value?: string, fractionDigits = 2) => {
+const localeByLang = (lang: Lang) => {
+  if (lang === "ru") return "ru-RU"
+  if (lang === "uz") return "uz-UZ"
+  return "en-US"
+}
+
+const formatMoney = (value: string | undefined, lang: Lang, fractionDigits = 2) => {
   const num = Number(value || 0)
   if (!Number.isFinite(num)) return "0.00"
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(localeByLang(lang), {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   }).format(num)
@@ -46,7 +54,7 @@ const formatPercent = (value?: string) => {
   return `${num.toFixed(2)}%`
 }
 
-export default function NotificationsPage({ items, onBack, onMarkAllRead, onItemClick }: NotificationsPageProps) {
+export default function NotificationsPage({ lang, items, onBack, onMarkAllRead, onItemClick }: NotificationsPageProps) {
   const hasUnread = items.some(item => !item.read)
   const [visibleCount, setVisibleCount] = useState(pageSize)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -114,17 +122,17 @@ export default function NotificationsPage({ items, onBack, onMarkAllRead, onItem
           type="button"
           className="notifications-back-btn"
           onClick={onBack}
-          aria-label="Back to accounts"
+          aria-label={t("notifications.backToAccounts", lang)}
         >
           <ArrowLeft size={18} />
         </button>
-        <h2 className="notifications-title">Notifications</h2>
+        <h2 className="notifications-title">{t("notifications.title", lang)}</h2>
         <button
           type="button"
           className="notifications-read-btn"
           onClick={onMarkAllRead}
           disabled={!hasUnread}
-          aria-label="Mark all as read"
+          aria-label={t("notifications.markAllRead", lang)}
         >
           <CheckCheck size={18} />
         </button>
@@ -132,7 +140,7 @@ export default function NotificationsPage({ items, onBack, onMarkAllRead, onItem
 
       <div className="notifications-list">
         {items.length === 0 ? (
-          <div className="notifications-empty">No notifications yet</div>
+          <div className="notifications-empty">{t("notifications.empty", lang)}</div>
         ) : (
           visibleItems.map(item => {
             const Icon = iconForKind(item.kind)
@@ -161,7 +169,7 @@ export default function NotificationsPage({ items, onBack, onMarkAllRead, onItem
         )}
         {hasMore && (
           <div className="notifications-sentinel" ref={sentinelRef}>
-            <span className="notifications-loading">Loading more...</span>
+            <span className="notifications-loading">{t("notifications.loadingMore", lang)}</span>
           </div>
         )}
       </div>
@@ -175,7 +183,7 @@ export default function NotificationsPage({ items, onBack, onMarkAllRead, onItem
                 type="button"
                 className="notifications-detail-close"
                 onClick={() => setSelected(null)}
-                aria-label="Close details"
+                aria-label={t("notifications.closeDetails", lang)}
               >
                 <X size={17} />
               </button>
@@ -186,55 +194,55 @@ export default function NotificationsPage({ items, onBack, onMarkAllRead, onItem
                 <>
                   <div className="notifications-detail-grid">
                     <div className="notifications-detail-row">
-                      <span className="notifications-detail-label">Time</span>
+                      <span className="notifications-detail-label">{t("time", lang)}</span>
                       <span className="notifications-detail-value">{formatDate(selected.details.triggered_at || selected.created_at)}</span>
                     </div>
                     <div className="notifications-detail-row">
-                      <span className="notifications-detail-label">Reason</span>
-                      <span className="notifications-detail-value">{selected.details.reason || "Risk control rule was triggered."}</span>
+                      <span className="notifications-detail-label">{t("notifications.reason", lang)}</span>
+                      <span className="notifications-detail-value">{selected.details.reason || t("notifications.riskRuleTriggered", lang)}</span>
                     </div>
                     <div className="notifications-detail-row">
-                      <span className="notifications-detail-label">Closed orders</span>
+                      <span className="notifications-detail-label">{t("notifications.closedOrders", lang)}</span>
                       <span className="notifications-detail-value">{selected.details.closed_orders || 0}</span>
                     </div>
                     <div className="notifications-detail-row">
-                      <span className="notifications-detail-label">Total loss</span>
+                      <span className="notifications-detail-label">{t("notifications.totalLoss", lang)}</span>
                       <span className="notifications-detail-value">
-                        {formatMoney(selected.details.total_loss)} USD
-                        {selected.details.total_loss_estimated ? " (estimated)" : ""}
+                        {formatMoney(selected.details.total_loss, lang)} USD
+                        {selected.details.total_loss_estimated ? ` (${t("notifications.estimated", lang)})` : ""}
                       </span>
                     </div>
                     <div className="notifications-detail-row">
-                      <span className="notifications-detail-label">Balance</span>
+                      <span className="notifications-detail-label">{t("balance", lang)}</span>
                       <span className="notifications-detail-value">
-                        {formatMoney(selected.details.balance_before)}{" -> "}{formatMoney(selected.details.balance_after || selected.details.balance_before)} USD
+                        {formatMoney(selected.details.balance_before, lang)}{" -> "}{formatMoney(selected.details.balance_after || selected.details.balance_before, lang)} USD
                       </span>
                     </div>
                     <div className="notifications-detail-row">
-                      <span className="notifications-detail-label">Equity</span>
+                      <span className="notifications-detail-label">{t("equity", lang)}</span>
                       <span className="notifications-detail-value">
-                        {formatMoney(selected.details.equity_before)}{" -> "}{formatMoney(selected.details.equity_after || selected.details.equity_before)} USD
+                        {formatMoney(selected.details.equity_before, lang)}{" -> "}{formatMoney(selected.details.equity_after || selected.details.equity_before, lang)} USD
                       </span>
                     </div>
                     <div className="notifications-detail-row">
-                      <span className="notifications-detail-label">Margin level</span>
+                      <span className="notifications-detail-label">{t("marginLevel", lang)}</span>
                       <span className="notifications-detail-value">
                         {formatPercent(selected.details.margin_level_before)}{" -> "}{formatPercent(selected.details.margin_level_after || selected.details.margin_level_before)}
                       </span>
                     </div>
                     <div className="notifications-detail-row">
-                      <span className="notifications-detail-label">Stop-out level</span>
+                      <span className="notifications-detail-label">{t("notifications.stopOutLevel", lang)}</span>
                       <span className="notifications-detail-value">{formatPercent(selected.details.threshold_percent)}</span>
                     </div>
                   </div>
                   <div className="notifications-detail-tip">
-                    If equity keeps dropping and margin level stays below risk thresholds, the system will auto-close more orders to prevent deeper losses.
+                    {t("notifications.stopOutTip", lang)}
                   </div>
                 </>
               ) : (
                 <div className="notifications-detail-grid">
                   <div className="notifications-detail-row">
-                    <span className="notifications-detail-label">Time</span>
+                    <span className="notifications-detail-label">{t("time", lang)}</span>
                     <span className="notifications-detail-value">{formatDate(selected.created_at)}</span>
                   </div>
                 </div>

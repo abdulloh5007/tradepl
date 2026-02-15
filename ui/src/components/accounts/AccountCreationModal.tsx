@@ -3,9 +3,12 @@ import { useState, useRef, useEffect } from "react"
 import { X } from "lucide-react"
 import AccountTypeCard from "./AccountTypeCard"
 import { toast } from "sonner"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 import "./SharedAccountSheet.css"
 
 interface AccountCreationModalProps {
+    lang: Lang
     open: boolean
     onClose: () => void
     onCreate: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) => Promise<void>
@@ -14,51 +17,51 @@ interface AccountCreationModalProps {
 const PLANS = [
     {
         id: "standard",
-        title: "Standard",
-        badge: "Standard",
-        description: "Low minimum deposit with no commission. Made for all traders.",
-        minDeposit: "10 USD",
-        minSpread: "0.2 pips",
-        maxLeverage: "1:Unlimited",
-        commission: "No commission",
+        title: "accounts.plan.standard.title",
+        badge: "accounts.plan.standard.badge",
+        description: "accounts.plan.standard.description",
+        minDeposit: "accounts.plan.standard.minDeposit",
+        minSpread: "accounts.plan.standard.minSpread",
+        maxLeverage: "accounts.plan.standard.maxLeverage",
+        commission: "accounts.plan.standard.commission",
         image: "https://my.lightvidy.com/assets/standard-account.png"
     },
     {
         id: "pro",
-        title: "Pro",
-        badge: "Most Popular",
-        description: "Raw spreads from 0.0 pips with low commission.",
-        minDeposit: "100 USD",
-        minSpread: "0.0 pips",
-        maxLeverage: "1:Unlimited",
-        commission: "3.5 USD per lot",
+        title: "accounts.plan.pro.title",
+        badge: "accounts.plan.pro.badge",
+        description: "accounts.plan.pro.description",
+        minDeposit: "accounts.plan.pro.minDeposit",
+        minSpread: "accounts.plan.pro.minSpread",
+        maxLeverage: "accounts.plan.pro.maxLeverage",
+        commission: "accounts.plan.pro.commission",
         image: "https://my.lightvidy.com/assets/pro-account.png"
     },
     {
         id: "raw",
-        title: "Raw Spread",
-        badge: "Professional",
-        description: "Lowest possible spreads for scalpers and EAs.",
-        minDeposit: "500 USD",
-        minSpread: "0.0 pips",
-        maxLeverage: "1:Unlimited",
-        commission: "3.5 USD per lot",
+        title: "accounts.plan.raw.title",
+        badge: "accounts.plan.raw.badge",
+        description: "accounts.plan.raw.description",
+        minDeposit: "accounts.plan.raw.minDeposit",
+        minSpread: "accounts.plan.raw.minSpread",
+        maxLeverage: "accounts.plan.raw.maxLeverage",
+        commission: "accounts.plan.raw.commission",
         image: "https://my.lightvidy.com/assets/raw-account.png"
     },
     {
         id: "swapfree",
-        title: "Swap Free",
-        badge: "Islamic",
-        description: "Trade without swap fees on overnight positions.",
-        minDeposit: "100 USD",
-        minSpread: "0.5 pips",
-        maxLeverage: "1:Unlimited",
-        commission: "No commission",
+        title: "accounts.plan.swapfree.title",
+        badge: "accounts.plan.swapfree.badge",
+        description: "accounts.plan.swapfree.description",
+        minDeposit: "accounts.plan.swapfree.minDeposit",
+        minSpread: "accounts.plan.swapfree.minSpread",
+        maxLeverage: "accounts.plan.swapfree.maxLeverage",
+        commission: "accounts.plan.swapfree.commission",
         image: "https://my.lightvidy.com/assets/swapfree-account.png"
     }
 ]
 
-export default function AccountCreationModal({ open, onClose, onCreate }: AccountCreationModalProps): JSX.Element | null {
+export default function AccountCreationModal({ lang, open, onClose, onCreate }: AccountCreationModalProps): JSX.Element | null {
     const [mode, setMode] = useState<"real" | "demo">("demo")
     const [activeIndex, setActiveIndex] = useState(0)
     const [creating, setCreating] = useState(false)
@@ -100,14 +103,14 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
             await onCreate({
                 plan_id: plan.id,
                 mode: mode,
-                name: `${mode === "demo" ? "Demo" : "Real"} ${plan.title}`,
+                name: `${mode === "demo" ? t("accounts.modeDemo", lang) : t("accounts.modeReal", lang)} ${t(plan.title, lang)}`,
                 is_active: true
             })
-            toast.success(`${plan.title} account created`)
+            toast.success(t("accounts.createdWithPlan", lang).replace("{plan}", t(plan.title, lang)))
             onClose()
         } catch (err) {
             console.error(err)
-            toast.error("Failed to create account")
+            toast.error(t("accounts.errors.createFailed", lang))
         } finally {
             setCreating(false)
         }
@@ -124,7 +127,7 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
                     <button onClick={onClose} className="acm-close-btn">
                         <X size={24} />
                     </button>
-                    <h2 className="acm-title">Open account</h2>
+                    <h2 className="acm-title">{t("accounts.openAccount", lang)}</h2>
                     <div className="acm-spacer" />
                 </div>
 
@@ -137,13 +140,13 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
                                 onClick={() => setMode("real")}
                                 className={`acm-tab ${mode === "real" ? "active" : ""}`}
                             >
-                                Real
+                                {t("accounts.modeReal", lang)}
                             </button>
                             <button
                                 onClick={() => setMode("demo")}
                                 className={`acm-tab ${mode === "demo" ? "active" : ""}`}
                             >
-                                Demo
+                                {t("accounts.modeDemo", lang)}
                             </button>
                         </div>
                     </div>
@@ -157,7 +160,7 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
                         <div className="acm-cards-wrapper">
                             {PLANS.map((plan) => (
                                 <div key={plan.id} className="acm-card-slide">
-                                    <AccountTypeCard plan={plan} mode={mode} />
+                                    <AccountTypeCard lang={lang} plan={plan} mode={mode} />
                                 </div>
                             ))}
                         </div>
@@ -170,7 +173,7 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
                                 key={i}
                                 onClick={() => scrollToCard(i)}
                                 className={`acm-dot ${i === activeIndex ? "active" : ""}`}
-                                aria-label={`Scroll to account type ${i + 1}`}
+                                aria-label={t("accounts.scrollToType", lang).replace("{index}", String(i + 1))}
                                 type="button"
                             />
                         ))}
@@ -184,7 +187,7 @@ export default function AccountCreationModal({ open, onClose, onCreate }: Accoun
                         disabled={creating}
                         className="acm-submit-btn"
                     >
-                        {creating ? "Creating..." : "Continue"}
+                        {creating ? t("accounts.creating", lang) : t("common.continue", lang)}
                     </button>
                 </div>
             </div>

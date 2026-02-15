@@ -1,6 +1,7 @@
 import { toast } from "sonner"
 import type { Lang } from "../../types"
 import { formatNumber } from "../../utils/format"
+import { t } from "../../utils/i18n"
 import "./FaucetPage.css"
 
 interface FaucetPageProps {
@@ -14,30 +15,30 @@ interface FaucetPageProps {
     onLoginRequired: () => void
 }
 
-export default function FaucetPage({ api, onMetricsUpdate, token, onLoginRequired }: FaucetPageProps) {
+export default function FaucetPage({ api, onMetricsUpdate, token, onLoginRequired, lang }: FaucetPageProps) {
     const handleFaucet = async (amount: string) => {
         // Check if user is logged in
         if (!token) {
-            toast.error("Please login first!")
+            toast.error(t("faucet.loginFirst", lang))
             onLoginRequired()
             return
         }
 
         try {
             await api.faucet({ asset: "USD", amount, reference: "dev" })
-            toast.success(`Received $${amount}!`)
+            toast.success(t("faucet.received", lang).replace("{amount}", amount))
             const m = await api.metrics()
             onMetricsUpdate(m)
         } catch (err: any) {
-            toast.error(err?.message || "Error")
+            toast.error(err?.message || t("common.error", lang))
         }
     }
 
     return (
         <div style={{ maxWidth: 600 }}>
-            <h2 style={{ marginBottom: 16 }}>Test Faucet</h2>
+            <h2 style={{ marginBottom: 16 }}>{t("faucet.testFaucet", lang)}</h2>
             <p style={{ color: "var(--text-muted)", marginBottom: 24 }}>
-                Get test funds to start trading. This is for development only.
+                {t("faucet.description", lang)}
             </p>
 
             {!token && (
@@ -49,7 +50,7 @@ export default function FaucetPage({ api, onMetricsUpdate, token, onLoginRequire
                     marginBottom: 16,
                     color: "#ef4444"
                 }}>
-                    ⚠️ Please login to use the faucet
+                    ⚠️ {t("faucet.loginToUse", lang)}
                 </div>
             )}
 

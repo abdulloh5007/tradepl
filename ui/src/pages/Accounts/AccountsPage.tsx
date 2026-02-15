@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Bell, Gift, Plus, Sparkles, X } from "lucide-react"
 import type { DepositBonusStatus, SignupBonusStatus } from "../../api"
-import type { MarketNewsEvent, Metrics, TradingAccount } from "../../types"
+import type { Lang, MarketNewsEvent, Metrics, TradingAccount } from "../../types"
 import ActiveAccountCard from "../../components/accounts/ActiveAccountCard"
 import AccountsSwitcherSheet from "../../components/accounts/AccountsSwitcherSheet"
 import AccountFundingModal from "../../components/accounts/AccountFundingModal"
@@ -10,9 +10,11 @@ import AccountDetailsModal from "../../components/accounts/AccountDetailsModal"
 import AccountCreationModal from "../../components/accounts/AccountCreationModal"
 import RealDepositRequestModal from "../../components/accounts/RealDepositRequestModal"
 import type { AccountSnapshot } from "../../components/accounts/types"
+import { t } from "../../utils/i18n"
 import "./AccountsPage.css"
 
 interface AccountsPageProps {
+  lang: Lang
   accounts: TradingAccount[]
   activeAccountId: string
   metrics: Metrics
@@ -50,15 +52,16 @@ const normalizeVoucherKind = (value?: string): VoucherKind => {
 }
 
 const voucherLabel = (kind: VoucherKind) => {
-  if (kind === "gold") return "Gold bonus"
-  if (kind === "diamond") return "Diamond bonus"
-  return "Deposit bonus"
+  if (kind === "gold") return "accounts.voucher.gold"
+  if (kind === "diamond") return "accounts.voucher.diamond"
+  return "accounts.voucher.deposit"
 }
 
-const formatNewsTime = (raw: string) => {
+const formatNewsTime = (raw: string, lang: Lang) => {
   const d = new Date(raw)
   if (Number.isNaN(d.getTime())) return "—"
-  return new Intl.DateTimeFormat("en-GB", {
+  const locale = lang === "ru" ? "ru-RU" : lang === "uz" ? "uz-UZ" : "en-GB"
+  return new Intl.DateTimeFormat(locale, {
     timeZone: "Asia/Tashkent",
     year: "numeric",
     month: "2-digit",
@@ -75,12 +78,19 @@ const normalizeImpact = (impact: string) => {
   return "medium"
 }
 
+const newsImpactText = (impact: string) => {
+  const value = normalizeImpact(impact)
+  if (value === "high") return "accounts.news.impact.high"
+  if (value === "low") return "accounts.news.impact.low"
+  return "accounts.news.impact.medium"
+}
+
 const newsStatusText = (status: string) => {
   const value = String(status || "").toLowerCase()
-  if (value === "live") return "Live"
-  if (value === "pre") return "Pre-event"
-  if (value === "post") return "Cooling down"
-  return "Scheduled"
+  if (value === "live") return "accounts.news.status.live"
+  if (value === "pre") return "accounts.news.status.pre"
+  if (value === "post") return "accounts.news.status.post"
+  return "accounts.news.status.scheduled"
 }
 
 const formatNewsNumber = (value?: number | null) => {
@@ -90,6 +100,7 @@ const formatNewsNumber = (value?: number | null) => {
 }
 
 export default function AccountsPage({
+  lang,
   accounts,
   activeAccountId,
   metrics,
@@ -171,7 +182,7 @@ export default function AccountsPage({
 
   const openRealDeposit = (voucher: VoucherKind) => {
     if (!isRealStandard) {
-      toast.error("Switch to Real Standard account")
+      toast.error(t("accounts.errors.switchRealStandard", lang))
       return
     }
     setFundingVoucherKind(voucher)
@@ -182,13 +193,13 @@ export default function AccountsPage({
     return (
       <div className="accounts-page">
         <div className="accounts-header">
-          <h1 className="accounts-title">Accounts</h1>
+          <h1 className="accounts-title">{t("accounts", lang)}</h1>
           <div className="accounts-header-actions">
             <button
               type="button"
               className="accounts-notif-btn"
               onClick={onOpenNotifications}
-              aria-label="Open notifications"
+              aria-label={t("accounts.openNotifications", lang)}
             >
               <Bell size={18} />
               {hasUnreadNotifications ? <span className="accounts-notif-dot" /> : null}
@@ -203,11 +214,12 @@ export default function AccountsPage({
         </div>
 
         <section className="acc-active-card">
-          <h2>No accounts</h2>
-          <p className="acc-note">Create your first account to start trading.</p>
+          <h2>{t("accounts.noAccounts", lang)}</h2>
+          <p className="acc-note">{t("accounts.noAccountsHint", lang)}</p>
         </section>
 
         <AccountCreationModal
+          lang={lang}
           open={createModalOpen}
           onClose={() => setCreateModalOpen(false)}
           onCreate={onCreate}
@@ -221,13 +233,13 @@ export default function AccountsPage({
   return (
     <div className="accounts-page pb-24">
       <div className="accounts-header">
-        <h1 className="accounts-title">Accounts</h1>
+        <h1 className="accounts-title">{t("accounts", lang)}</h1>
         <div className="accounts-header-actions">
           <button
             type="button"
             className="accounts-notif-btn"
             onClick={onOpenNotifications}
-            aria-label="Open notifications"
+            aria-label={t("accounts.openNotifications", lang)}
           >
             <Bell size={18} />
             {hasUnreadNotifications ? <span className="accounts-notif-dot" /> : null}
@@ -248,16 +260,16 @@ export default function AccountsPage({
               <article className="accounts-bonus-card accounts-bonus-card-welcome">
                 <div className="accounts-bonus-chip">
                   <Gift size={14} />
-                  <span>Welcome</span>
+                  <span>{t("accounts.welcome", lang)}</span>
                 </div>
                 <div className="accounts-bonus-amount">+${signupBonusAmount}</div>
-                <p className="accounts-bonus-text">Real Standard only, one-time reward.</p>
+                <p className="accounts-bonus-text">{t("accounts.welcomeHint", lang)}</p>
                 <button
                   type="button"
                   className="accounts-bonus-claim-btn"
                   onClick={() => setBonusModalOpen(true)}
                 >
-                  Claim bonus
+                  {t("accounts.claimBonus", lang)}
                 </button>
               </article>
             )}
@@ -265,23 +277,23 @@ export default function AccountsPage({
             {isRealStandard && voucherCards.map(voucher => {
               const disabled = !voucher.available || voucherLocked
               const actionLabel = voucherLocked
-                ? "Pending review"
+                ? t("accounts.pendingReview", lang)
                 : voucher.available
                   ? voucher.id === "diamond"
-                    ? "Use from $200"
-                    : "Use on deposit"
-                  : "Used"
+                    ? t("accounts.useFrom200", lang)
+                    : t("accounts.useOnDeposit", lang)
+                  : t("accounts.used", lang)
               return (
                 <article key={voucher.id} className="accounts-bonus-card accounts-bonus-card-voucher">
                   <div className="accounts-bonus-chip">
                     <Sparkles size={14} />
-                    <span>{voucherLabel(voucher.id)}</span>
+                    <span>{t(voucherLabel(voucher.id), lang)}</span>
                   </div>
                   <div className="accounts-bonus-amount">+{voucher.percent}%</div>
                   <p className="accounts-bonus-text">
                     {voucher.id === "diamond"
-                      ? "Diamond voucher is available from $200 deposit."
-                      : "Each voucher can be used once on a real deposit."}
+                      ? t("accounts.voucherDiamondHint", lang)
+                      : t("accounts.voucherOnceHint", lang)}
                   </p>
                   <button
                     type="button"
@@ -298,13 +310,14 @@ export default function AccountsPage({
 
           {isRealStandard && (depositBonus?.pending_count || 0) > 0 && (
             <div className="accounts-bonus-note">
-              You have {depositBonus?.pending_count} pending real deposit request(s).
+              {t("accounts.pendingRequests", lang).replace("{count}", String(depositBonus?.pending_count || 0))}
             </div>
           )}
         </section>
       )}
 
       <ActiveAccountCard
+        lang={lang}
         account={activeAccount}
         snapshot={activeSnapshot || { pl: 0, openCount: 0, metrics: null }}
         loadingBalance={!liveDataReady && !activeSnapshot?.metrics}
@@ -325,8 +338,8 @@ export default function AccountsPage({
       {newsUpcoming.length > 0 && (
         <section className="accounts-news-rail-wrap">
           <div className="accounts-news-rail-title-row">
-            <h3 className="accounts-news-rail-title">Market calendar</h3>
-            <span className="accounts-news-rail-subtitle">Asia/Tashkent</span>
+            <h3 className="accounts-news-rail-title">{t("accounts.marketCalendar", lang)}</h3>
+            <span className="accounts-news-rail-subtitle">{t("accounts.timezone", lang)}</span>
           </div>
           <div className="accounts-news-rail">
             {newsUpcoming.slice(0, 3).map(item => {
@@ -334,14 +347,16 @@ export default function AccountsPage({
               return (
                 <article key={item.id} className={`accounts-news-card impact-${impact}`}>
                   <div className="accounts-news-card-top">
-                    <span className={`accounts-news-impact impact-${impact}`}>{impact.toUpperCase()}</span>
-                    <span className="accounts-news-status">{newsStatusText(item.status)}</span>
+                    <span className={`accounts-news-impact impact-${impact}`}>{t(newsImpactText(impact), lang)}</span>
+                    <span className="accounts-news-status">{t(newsStatusText(item.status), lang)}</span>
                   </div>
                   <h4 className="accounts-news-title">{item.title}</h4>
-                  <div className="accounts-news-time">{formatNewsTime(item.scheduled_at)}</div>
+                  <div className="accounts-news-time">{formatNewsTime(item.scheduled_at, lang)}</div>
                   <div className="accounts-news-values">
-                    <span>F: {formatNewsNumber(item.forecast_value)}</span>
-                    {item.actual_value != null ? <span>A: {formatNewsNumber(item.actual_value)}</span> : <span>A: —</span>}
+                    <span>{t("accounts.news.valueForecast", lang)}: {formatNewsNumber(item.forecast_value)}</span>
+                    {item.actual_value != null
+                      ? <span>{t("accounts.news.valueActual", lang)}: {formatNewsNumber(item.actual_value)}</span>
+                      : <span>{t("accounts.news.valueActual", lang)}: —</span>}
                   </div>
                 </article>
               )
@@ -351,6 +366,7 @@ export default function AccountsPage({
       )}
 
       <AccountsSwitcherSheet
+        lang={lang}
         open={switcherOpen}
         accounts={accounts}
         activeAccountId={activeAccountId}
@@ -360,6 +376,7 @@ export default function AccountsPage({
       />
 
       <AccountFundingModal
+        lang={lang}
         open={fundingOpen !== null && !isRealDepositFlow}
         mode={activeAccount.mode as "demo" | "real"}
         type={fundingOpen || "deposit"}
@@ -370,21 +387,21 @@ export default function AccountsPage({
         onSubmit={async () => {
           if (!fundingOpen) return
           if (!fundingAmount || Number(fundingAmount) <= 0) {
-            toast.error("Enter valid amount")
+            toast.error(t("accounts.errors.enterValidAmount", lang))
             return
           }
           setFundingBusy(true)
           try {
             if (fundingOpen === "deposit") {
               await onTopUpDemo(fundingAmount)
-              toast.success("Deposit completed")
+              toast.success(t("accounts.depositCompleted", lang))
             } else {
               await onWithdrawDemo(fundingAmount)
-              toast.success("Withdraw completed")
+              toast.success(t("accounts.withdrawCompleted", lang))
             }
             setFundingOpen(null)
           } catch (err: any) {
-            toast.error(err?.message || "Operation failed")
+            toast.error(err?.message || t("accounts.errors.operationFailed", lang))
           } finally {
             setFundingBusy(false)
           }
@@ -392,6 +409,7 @@ export default function AccountsPage({
       />
 
       <RealDepositRequestModal
+        lang={lang}
         open={isRealDepositFlow}
         status={depositBonus}
         allowVouchers={isRealStandard}
@@ -406,11 +424,11 @@ export default function AccountsPage({
           setFundingBusy(true)
           try {
             await onRequestRealDeposit(payload)
-            toast.success("Request submitted. It will be reviewed within 2 hours.")
+            toast.success(t("accounts.requestSubmittedReview", lang))
             setFundingOpen(null)
             setFundingVoucherKind("none")
           } catch (err: any) {
-            toast.error(err?.message || "Failed to submit request")
+            toast.error(err?.message || t("accounts.errors.submitFailed", lang))
           } finally {
             setFundingBusy(false)
           }
@@ -418,6 +436,7 @@ export default function AccountsPage({
       />
 
       <AccountDetailsModal
+        lang={lang}
         open={detailsOpen}
         account={activeAccount}
         snapshot={activeSnapshot}
@@ -428,6 +447,7 @@ export default function AccountsPage({
       />
 
       <AccountCreationModal
+        lang={lang}
         open={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreate={onCreate}
@@ -442,37 +462,37 @@ export default function AccountsPage({
           <div className="accounts-bonus-backdrop" />
           <div className="accounts-bonus-sheet" onClick={e => e.stopPropagation()}>
             <div className="accounts-bonus-sheet-head">
-              <h3>Claim welcome bonus</h3>
+              <h3>{t("accounts.claimWelcomeBonus", lang)}</h3>
               <button
                 type="button"
                 className="accounts-bonus-close"
-                onClick={() => {
-                  if (bonusBusy) return
-                  setBonusModalOpen(false)
-                  setBonusAccepted(false)
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="accounts-bonus-sheet-body">
-              <p className="accounts-bonus-sheet-text">
-                You will receive <strong>${signupBonusAmount}</strong> to your Real Standard account once.
-              </p>
-              <ul className="accounts-bonus-terms">
-                <li>Only one claim per user.</li>
-                <li>Total global limit: {signupBonus?.total_limit || 700} users.</li>
-                <li>Remaining claims: {signupBonus?.remaining ?? 0}.</li>
-                <li>Bonus balance is tradable after claim.</li>
-              </ul>
-              <label className="accounts-bonus-agree">
+              onClick={() => {
+                if (bonusBusy) return
+                setBonusModalOpen(false)
+                setBonusAccepted(false)
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="accounts-bonus-sheet-body">
+            <p className="accounts-bonus-sheet-text">
+                {t("accounts.welcomeModalText", lang).replace("{amount}", String(signupBonusAmount))}
+            </p>
+            <ul className="accounts-bonus-terms">
+                <li>{t("accounts.welcomeRuleOne", lang)}</li>
+                <li>{t("accounts.welcomeRuleLimit", lang).replace("{limit}", String(signupBonus?.total_limit || 700))}</li>
+                <li>{t("accounts.welcomeRuleRemaining", lang).replace("{remaining}", String(signupBonus?.remaining ?? 0))}</li>
+                <li>{t("accounts.welcomeRuleTradable", lang)}</li>
+            </ul>
+            <label className="accounts-bonus-agree">
                 <input
                   type="checkbox"
                   checked={bonusAccepted}
                   onChange={e => setBonusAccepted(e.target.checked)}
                   disabled={bonusBusy}
                 />
-                <span>I agree with the project terms.</span>
+                <span>{t("accounts.agreeTerms", lang)}</span>
               </label>
             </div>
             <div className="accounts-bonus-sheet-foot">
@@ -485,17 +505,17 @@ export default function AccountsPage({
                   setBonusBusy(true)
                   try {
                     await onClaimSignupBonus()
-                    toast.success("Bonus claimed")
+                    toast.success(t("accounts.bonusClaimed", lang))
                     setBonusModalOpen(false)
                     setBonusAccepted(false)
                   } catch (err: any) {
-                    toast.error(err?.message || "Failed to claim bonus")
+                    toast.error(err?.message || t("accounts.errors.claimFailed", lang))
                   } finally {
                     setBonusBusy(false)
                   }
                 }}
               >
-                {bonusBusy ? "Claiming..." : `Claim $${signupBonusAmount} bonus`}
+                {bonusBusy ? t("accounts.claiming", lang) : t("accounts.claimAmountBonus", lang).replace("{amount}", String(signupBonusAmount))}
               </button>
             </div>
           </div>

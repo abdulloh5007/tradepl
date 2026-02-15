@@ -106,7 +106,7 @@ export default function SettingsSheet({
                         {onOpenProfitStages ? (
                             <>
                                 <div className="acm-section-title" style={{ padding: '8px 0', color: '#6b7280', fontSize: 13, fontWeight: 600 }}>
-                                    Rewards
+                                    {t("profile.rewards", lang)}
                                 </div>
                                 <button
                                     type="button"
@@ -122,9 +122,9 @@ export default function SettingsSheet({
                                 >
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                         <Trophy size={14} />
-                                        Profit stages
+                                        {t("profile.profitStages", lang)}
                                     </span>
-                                    <span>Open</span>
+                                    <span>{t("profile.open", lang)}</span>
                                 </button>
                             </>
                         ) : null}

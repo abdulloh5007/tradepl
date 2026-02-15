@@ -1,7 +1,10 @@
 import { X } from "lucide-react"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 import "./SharedAccountSheet.css"
 
 interface AccountFundingModalProps {
+  lang: Lang
   open: boolean
   mode: "demo" | "real"
   type: "deposit" | "withdraw"
@@ -13,6 +16,7 @@ interface AccountFundingModalProps {
 }
 
 export default function AccountFundingModal({
+  lang,
   open,
   mode,
   type,
@@ -23,9 +27,9 @@ export default function AccountFundingModal({
   loading
 }: AccountFundingModalProps) {
   if (!open) return null
-  const title = type === "deposit" ? "Deposit" : "Withdraw"
+  const title = type === "deposit" ? t("accounts.deposit", lang) : t("accounts.withdraw", lang)
   const disabled = mode !== "demo"
-  const disabledText = type === "deposit" ? "Real deposit is not available yet" : "Real withdraw is not available yet"
+  const disabledText = type === "deposit" ? t("accounts.realDepositUnavailable", lang) : t("accounts.realWithdrawUnavailable", lang)
 
   return (
     <div className="acm-overlay" role="dialog" aria-modal="true">
@@ -35,7 +39,7 @@ export default function AccountFundingModal({
           <button onClick={onClose} className="acm-close-btn">
             <X size={24} />
           </button>
-          <h2 className="acm-title">{title} - {mode === "demo" ? "Demo" : "Real"}</h2>
+          <h2 className="acm-title">{title} - {mode === "demo" ? t("accounts.modeDemo", lang) : t("accounts.modeReal", lang)}</h2>
           <div className="acm-spacer" />
         </div>
 
@@ -46,7 +50,7 @@ export default function AccountFundingModal({
             ) : (
               <>
                 <label className="acm-label">
-                  Amount (USD)
+                  {t("accounts.amountUsd", lang)}
                   <input
                     className="acm-input"
                     type="number"
@@ -54,11 +58,11 @@ export default function AccountFundingModal({
                     step="0.01"
                     value={amount}
                     onChange={e => onAmountChange(e.target.value)}
-                    placeholder="100.00"
+                    placeholder={t("accounts.amountPlaceholder", lang)}
                   />
                 </label>
                 <div className="acm-note" style={{ textAlign: "left" }}>
-                  {type === "deposit" ? "Funds will be credited instantly to demo account." : "Funds will be removed from demo account."}
+                  {type === "deposit" ? t("accounts.demoDepositHint", lang) : t("accounts.demoWithdrawHint", lang)}
                 </div>
               </>
             )}
@@ -74,7 +78,7 @@ export default function AccountFundingModal({
               onSubmit().catch(() => { })
             }}
           >
-            {loading ? "Processing..." : title}
+            {loading ? t("common.processing", lang) : title}
           </button>
         </div>
       </div>

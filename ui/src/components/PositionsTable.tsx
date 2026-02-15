@@ -45,7 +45,7 @@ export default function PositionsTable({ orders, quote, marketPair, marketConfig
                             <th style={{ padding: 8 }}>{t("type", lang)}</th>
                             <th style={{ padding: 8 }}>{t("pair", lang)}</th>
                             <th style={{ padding: 8 }}>{t("volume", lang)}</th>
-                            <th style={{ padding: 8 }}>Open</th>
+                            <th style={{ padding: 8 }}>{t("positions.openPrice", lang)}</th>
                             <th style={{ padding: 8 }}>{t("profit", lang)}</th>
                             <th style={{ padding: 8 }} />
                         </tr>
@@ -54,7 +54,7 @@ export default function PositionsTable({ orders, quote, marketPair, marketConfig
                         {orders.length === 0 ? (
                             <tr>
                                 <td colSpan={6} style={{ padding: 16, textAlign: "center", color: "var(--text-muted)" }}>
-                                    No open positions
+                                    {t("positions.noOpen", lang)}
                                 </td>
                             </tr>
                         ) : (

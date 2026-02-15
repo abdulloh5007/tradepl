@@ -48,7 +48,7 @@ export default function AppAuthGate({
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)", alignItems: "center", justifyContent: "center", gap: 10 }}>
         <Toaster position="top-right" />
         <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-base)" }}>
-          {authFlowMode === "production" && isTelegramMiniApp() ? "Connecting Telegram..." : "Loading..."}
+          {authFlowMode === "production" && isTelegramMiniApp() ? t("auth.connectingTelegram", lang) : t("common.loading", lang)}
         </div>
       </div>
     )
@@ -59,15 +59,15 @@ export default function AppAuthGate({
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)", alignItems: "center", justifyContent: "center", padding: 20 }}>
         <Toaster position="top-right" />
         <div style={{ background: "var(--card-bg)", padding: 24, borderRadius: 12, width: 360, textAlign: "center" }}>
-          <h2 style={{ marginBottom: 12 }}>LV Trade</h2>
+          <h2 style={{ marginBottom: 12 }}>{t("title", lang)}</h2>
           {!isTelegramMiniApp() ? (
             <p style={{ color: "var(--text-muted)", margin: 0 }}>
-              Open this app from Telegram Mini App to continue.
+              {t("auth.openFromTelegram", lang)}
             </p>
           ) : (
             <>
               <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-                Telegram authentication failed.
+                {t("auth.telegramFailed", lang)}
               </p>
               {telegramAuthError && (
                 <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
@@ -90,7 +90,7 @@ export default function AppAuthGate({
                   cursor: "pointer",
                 }}
               >
-                Retry
+                {t("auth.retry", lang)}
               </button>
             </>
           )}
@@ -103,16 +103,16 @@ export default function AppAuthGate({
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-base)", alignItems: "center", justifyContent: "center" }}>
       <Toaster position="top-right" />
       <div style={{ background: "var(--card-bg)", padding: 32, borderRadius: 12, width: 360 }}>
-        <h2 style={{ marginBottom: 24, textAlign: "center" }}>LV Trade</h2>
+        <h2 style={{ marginBottom: 24, textAlign: "center" }}>{t("title", lang)}</h2>
 
         <form onSubmit={onSubmit}>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Email</label>
+            <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{t("email", lang)}</label>
             <input
               type="email"
               value={email}
               onChange={e => onEmailChange(e.target.value)}
-              placeholder="user@example.com"
+              placeholder={t("auth.emailPlaceholder", lang)}
               style={{
                 width: "100%",
                 padding: "10px 12px",
@@ -125,12 +125,12 @@ export default function AppAuthGate({
             />
           </div>
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Password</label>
+            <label style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{t("password", lang)}</label>
             <input
               type="password"
               value={password}
               onChange={e => onPasswordChange(e.target.value)}
-              placeholder="••••••••"
+              placeholder={t("auth.passwordPlaceholder", lang)}
               style={{
                 width: "100%",
                 padding: "10px 12px",
@@ -164,13 +164,12 @@ export default function AppAuthGate({
 
         <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
           {authMode === "login" ? (
-            <>No account? <button onClick={() => onAuthModeChange("register")} style={{ background: "none", border: "none", color: "var(--accent-text)", cursor: "pointer" }}>{t("register", lang)}</button></>
+            <>{t("auth.noAccount", lang)} <button onClick={() => onAuthModeChange("register")} style={{ background: "none", border: "none", color: "var(--accent-text)", cursor: "pointer" }}>{t("register", lang)}</button></>
           ) : (
-            <>Have account? <button onClick={() => onAuthModeChange("login")} style={{ background: "none", border: "none", color: "var(--accent-text)", cursor: "pointer" }}>{t("login", lang)}</button></>
+            <>{t("auth.haveAccount", lang)} <button onClick={() => onAuthModeChange("login")} style={{ background: "none", border: "none", color: "var(--accent-text)", cursor: "pointer" }}>{t("login", lang)}</button></>
           )}
         </div>
       </div>
     </div>
   )
 }
-

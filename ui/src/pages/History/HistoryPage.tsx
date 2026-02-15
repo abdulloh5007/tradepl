@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Filter, X } from "lucide-react"
 import type { Lang, Order } from "../../types"
 import { formatNumber } from "../../utils/format"
+import { t } from "../../utils/i18n"
 import "./HistoryPage.css"
 import "../../components/accounts/SharedAccountSheet.css"
 import HistoryFilterModal, { DateRange } from "./HistoryFilterModal"
@@ -80,13 +81,13 @@ const formatDate = (ts?: string) => {
     return `${yyyy}.${mm}.${dd} ${hh}:${min}:${ss}`
 }
 
-const getSymbolDesc = (symbol: string) => {
-    if (symbol.includes("BTC")) return "Bitcoin vs US Dollar"
-    if (symbol.includes("ETH")) return "Ethereum vs US Dollar"
-    if (symbol.includes("XAU")) return "Gold vs US Dollar"
-    if (symbol.includes("EUR")) return "Euro vs US Dollar"
-    if (symbol.includes("UZS")) return "Uzbek Som vs US Dollar"
-    return "Spot Market"
+const getSymbolDesc = (symbol: string, lang: Lang) => {
+    if (symbol.includes("BTC")) return t("history.symbolDesc.btc", lang)
+    if (symbol.includes("ETH")) return t("history.symbolDesc.eth", lang)
+    if (symbol.includes("XAU")) return t("history.symbolDesc.xau", lang)
+    if (symbol.includes("EUR")) return t("history.symbolDesc.eur", lang)
+    if (symbol.includes("UZS")) return t("history.symbolDesc.uzs", lang)
+    return t("history.symbolDesc.spot", lang)
 }
 
 const hashTicketFromID = (id: string) => {
@@ -103,8 +104,8 @@ const isCashFlowOrder = (order: Order) => {
     return side === "deposit" || side === "withdraw" || type === "balance"
 }
 
-const cashFlowLabel = (order: Order) => (
-    String(order.side || "").toLowerCase() === "withdraw" ? "Withdraw" : "Deposit"
+const cashFlowLabel = (order: Order, lang: Lang) => (
+    String(order.side || "").toLowerCase() === "withdraw" ? t("history.withdraw", lang) : t("history.deposit", lang)
 )
 
 const formatTicket = (order: Order) => {
@@ -115,7 +116,7 @@ const formatTicket = (order: Order) => {
     return `#BX-${String(value).padStart(7, "0")}`
 }
 
-export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore }: HistoryPageProps) {
+export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore }: HistoryPageProps) {
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
     const [showFilter, setShowFilter] = useState(false)
     const [dateRange, setDateRange] = useState<DateRange>({ type: "month" })
@@ -191,7 +192,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
         ? selectedClosePrice - selectedOpenPrice
         : 0
     const selectedIsCashFlow = selectedOrder ? isCashFlowOrder(selectedOrder) : false
-    const selectedCashFlowLabel = selectedOrder ? cashFlowLabel(selectedOrder) : "Deposit"
+    const selectedCashFlowLabel = selectedOrder ? cashFlowLabel(selectedOrder, lang) : t("history.deposit", lang)
 
     useEffect(() => {
         if (!loading) {
@@ -264,8 +265,8 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
         <div className="history-container">
             <div className="history-header">
                 <div style={{ width: 36 }} />
-                <h3 className="history-title">History</h3>
-                <button className="history-filter-btn" onClick={() => setShowFilter(true)} aria-label="Open history filters">
+                <h3 className="history-title">{t("history", lang)}</h3>
+                <button className="history-filter-btn" onClick={() => setShowFilter(true)} aria-label={t("history.openFilters", lang)}>
                     <Filter size={20} />
                 </button>
             </div>
@@ -274,13 +275,13 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                 <div className="history-list" ref={listRef}>
                     {hasMore && <div ref={loadSentinelTopRef} className="history-sentinel history-sentinel-top" aria-hidden="true" />}
                     {filteredOrders.length === 0 ? (
-                        <div className="history-empty">No history for this period</div>
+                        <div className="history-empty">{t("history.emptyForPeriod", lang)}</div>
                     ) : (
                         filteredOrders.map(order => {
                             const profit = toNumber(order.profit)
                             const isProfit = profit >= 0
                             const isCashFlow = isCashFlowOrder(order)
-                            const cashLabel = cashFlowLabel(order)
+                            const cashLabel = cashFlowLabel(order, lang)
                             const displaySymbol = resolveOrderSymbol(order)
                             const derivedRawPrice = deriveRawPriceFromSpent(order)
                             const openPrice = resolveDisplayPrice(displaySymbol, order.price, Number.isFinite(derivedRawPrice) ? derivedRawPrice : order.close_price)
@@ -290,7 +291,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                                     <div className="h-row">
                                         <div className="h-symbol-group">
                                             <span className="h-symbol">{isCashFlow ? "USD" : displaySymbol}</span>
-                                            <span className={`h-side ${order.side}`}>{order.side}</span>
+                                            <span className={`h-side ${order.side}`}>{order.side === "buy" ? t("buy", lang) : order.side === "sell" ? t("sell", lang) : order.side}</span>
                                             <span className={`h-qty h-side ${order.side}`}>{order.qty}</span>
                                         </div>
                                         <div className={`h-pl ${isProfit ? "profit" : "loss"}`}>
@@ -316,33 +317,33 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                         })
                     )}
 
-                    {loading && <div className="history-loading">Loading...</div>}
+                    {loading && <div className="history-loading">{t("history.loading", lang)}</div>}
                 </div>
 
                 <div className="history-footer">
                     <div className="summary-row">
-                        <span>Deposit</span>
+                        <span>{t("history.deposit", lang)}</span>
                         <span className="summary-val">{formatNumber(totals.deposit, 2, 2)}</span>
                     </div>
                     <div className="summary-row">
-                        <span>Withdraw</span>
+                        <span>{t("history.withdraw", lang)}</span>
                         <span className="summary-val">{formatNumber(totals.withdraw, 2, 2)}</span>
                     </div>
                     <div className="summary-row">
-                        <span>Profit</span>
+                        <span>{t("profit", lang)}</span>
                         <span className="summary-val">{formatNumber(totals.profit, 2, 2)}</span>
                     </div>
                     <div className="summary-row">
-                        <span>Swap</span>
+                        <span>{t("history.swap", lang)}</span>
                         <span className="summary-val">{formatNumber(totals.swap, 2, 2)}</span>
                     </div>
                     <div className="summary-row">
-                        <span>Commission</span>
+                        <span>{t("history.commission", lang)}</span>
                         <span className="summary-val">{formatNumber(totals.commission, 2, 2)}</span>
                     </div>
                     <div className="summary-split" />
                     <div className="summary-row balance-total">
-                        <span>Balance</span>
+                        <span>{t("balance", lang)}</span>
                         <span className="summary-val">{formatNumber(balance, 2, 2)}</span>
                     </div>
                 </div>
@@ -364,7 +365,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                             {selectedIsCashFlow ? (
                                 <div className="hm-cash-body">
                                     <div className="hm-cash-top-row">
-                                        <div className="hm-cash-balance">Balance</div>
+                                        <div className="hm-cash-balance">{t("balance", lang)}</div>
                                         <div className="hm-cash-ticket">{formatTicket(selectedOrder)}</div>
                                     </div>
                                     <div className="hm-cash-bottom-row">
@@ -377,7 +378,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
                             ) : (
                                 <div className="hm-body">
                                     <div className="hm-desc" style={{ textAlign: "center", paddingBottom: 12 }}>
-                                        {getSymbolDesc(selectedSymbol)}
+                                        {getSymbolDesc(selectedSymbol, lang)}
                                     </div>
 
                                     <div className="hm-main-row">
@@ -398,27 +399,27 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
 
                                     <div className="hm-grid">
                                         <div className="hm-grid-item">
-                                            <span className="hm-label">Type:</span>
-                                            <span className={`hm-side ${selectedOrder.side}`}>{selectedOrder.side.toUpperCase()}</span>
+                                            <span className="hm-label">{t("type", lang)}:</span>
+                                            <span className={`hm-side ${selectedOrder.side}`}>{selectedOrder.side === "buy" ? t("buy", lang).toUpperCase() : selectedOrder.side === "sell" ? t("sell", lang).toUpperCase() : selectedOrder.side.toUpperCase()}</span>
                                         </div>
                                         <div className="hm-grid-item">
-                                            <span className="hm-label">Volume:</span>
+                                            <span className="hm-label">{t("volume", lang)}:</span>
                                             <span className="hm-val">{selectedOrder.qty}</span>
                                         </div>
                                         <div className="hm-grid-item hm-grid-item-time">
-                                            <span className="hm-label">Open:</span>
+                                            <span className="hm-label">{t("history.openTime", lang)}:</span>
                                             <span className="hm-val">{formatDate(selectedOrder.created_at)}</span>
                                         </div>
                                         <div className="hm-grid-item hm-grid-item-time">
-                                            <span className="hm-label">Close:</span>
+                                            <span className="hm-label">{t("history.closeTime", lang)}:</span>
                                             <span className="hm-val">{formatDate(selectedOrder.close_time || selectedOrder.created_at)}</span>
                                         </div>
                                         <div className="hm-grid-item">
-                                            <span className="hm-label">Swap:</span>
+                                            <span className="hm-label">{t("history.swap", lang)}:</span>
                                             <span className="hm-val">{formatNumber(toNumber(selectedOrder.swap), 2, 2)}</span>
                                         </div>
                                         <div className="hm-grid-item">
-                                            <span className="hm-label">Commission:</span>
+                                            <span className="hm-label">{t("history.commission", lang)}:</span>
                                             <span className="hm-val">{formatNumber(toNumber(selectedOrder.commission), 2, 2)}</span>
                                         </div>
                                     </div>
@@ -431,6 +432,7 @@ export default function HistoryPage({ orders, lang: _lang, loading, hasMore, onR
 
             <HistoryFilterModal
                 open={showFilter}
+                lang={lang}
                 currentRange={dateRange}
                 onClose={() => setShowFilter(false)}
                 onApply={setDateRange}

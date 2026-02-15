@@ -14,7 +14,6 @@ interface MarketPanelProps {
 export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSell, lang }: MarketPanelProps) {
   const bid = quote?.bid || "—"
   const ask = quote?.ask || "—"
-  const qtyHint = "0.01 - 999.99"
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -113,7 +112,7 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
               className={`lot-menu-toggle-new ${menuOpen ? "active" : ""}`}
               onClick={() => setMenuOpen(v => !v)}
             >
-              Presets
+              {t("trading.presets", lang)}
             </button>
             {menuOpen && (
               <div className="lot-menu-new">
@@ -157,4 +156,3 @@ export default function MarketPanel({ quote, quickQty, setQuickQty, onBuy, onSel
     </div>
   )
 }
-

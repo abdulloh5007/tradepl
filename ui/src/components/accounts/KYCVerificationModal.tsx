@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from "react"
 import { CheckCircle2, IdCard, X } from "lucide-react"
 import { toast } from "sonner"
 import type { KYCStatus } from "../../api"
+import type { Lang } from "../../types"
 import SmartDropdown from "../ui/SmartDropdown"
 import type { SmartDropdownOption } from "../ui/SmartDropdown"
+import { t } from "../../utils/i18n"
 import "./KYCVerificationModal.css"
 
 type KYCDocumentType = "passport" | "id_card" | "driver_license" | "other"
 
 interface KYCVerificationModalProps {
+  lang: Lang
   open: boolean
   status: KYCStatus | null
   loading: boolean
@@ -24,12 +27,6 @@ interface KYCVerificationModalProps {
 }
 
 const MAX_KYC_PROOF_SIZE = 10 * 1024 * 1024
-const KYC_DOCUMENT_OPTIONS: SmartDropdownOption[] = [
-  { value: "passport", label: "Passport" },
-  { value: "id_card", label: "ID card" },
-  { value: "driver_license", label: "Driver license" },
-  { value: "other", label: "Other" },
-]
 
 const formatDocumentNumberInput = (raw: string) => {
   const lettersOnly = raw.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2)
@@ -44,6 +41,7 @@ const normalizeDocumentNumber = (formatted: string) =>
   formatted.toUpperCase().replace(/[^A-Z0-9]/g, "")
 
 export default function KYCVerificationModal({
+  lang,
   open,
   status,
   loading,
@@ -74,11 +72,11 @@ export default function KYCVerificationModal({
   const pickProof = (side: "front" | "back", file?: File | null) => {
     if (!file) return
     if (!file.type.startsWith("image/")) {
-      toast.error("Only image files are allowed for KYC")
+      toast.error(t("kyc.imagesOnly", lang))
       return
     }
     if (file.size > MAX_KYC_PROOF_SIZE) {
-      toast.error("Proof file is too large (max 10MB)")
+      toast.error(t("kyc.fileTooLarge", lang))
       return
     }
     if (side === "front") {
@@ -99,6 +97,12 @@ export default function KYCVerificationModal({
     backProofFile
   )
   const reviewHours = Number(status?.review_eta_hours || 8)
+  const KYC_DOCUMENT_OPTIONS: SmartDropdownOption[] = [
+    { value: "passport", label: t("kyc.document.passport", lang) },
+    { value: "id_card", label: t("kyc.document.idCard", lang) },
+    { value: "driver_license", label: t("kyc.document.driverLicense", lang) },
+    { value: "other", label: t("kyc.document.other", lang) },
+  ]
 
   return (
     <div className="acm-overlay" role="dialog" aria-modal="true">
@@ -112,39 +116,39 @@ export default function KYCVerificationModal({
           }} className="acm-close-btn">
             <X size={24} />
           </button>
-          <h2 className="acm-title">Identity Verification</h2>
+          <h2 className="acm-title">{t("kyc.title", lang)}</h2>
           <div className="acm-spacer" />
         </div>
 
         <div className="acm-content">
           <div className="acm-form kyc-form">
             <label className="acm-label">
-              Document type
+              {t("kyc.documentType", lang)}
               <SmartDropdown
                 className="acm-dropdown"
                 value={documentType}
                 options={KYC_DOCUMENT_OPTIONS}
                 onChange={(value) => setDocumentType(String(value) as KYCDocumentType)}
                 disabled={loading}
-                ariaLabel="Document type"
+                ariaLabel={t("kyc.documentType", lang)}
               />
             </label>
 
             <label className="acm-label">
-              Full name
+              {t("kyc.fullName", lang)}
               <input
                 className="acm-input"
                 type="text"
                 value={fullName}
                 onChange={e => setFullName(e.target.value)}
-                placeholder="As in your document"
+                placeholder={t("kyc.fullNamePlaceholder", lang)}
                 maxLength={140}
                 disabled={loading}
               />
             </label>
 
             <label className="acm-label">
-              Document number
+              {t("kyc.documentNumber", lang)}
               <input
                 className="acm-input"
                 type="text"
@@ -157,12 +161,12 @@ export default function KYCVerificationModal({
             </label>
 
             <label className="acm-label">
-              Residence address
+              {t("kyc.residenceAddress", lang)}
               <textarea
                 className="acm-input kyc-textarea"
                 value={residenceAddress}
                 onChange={e => setResidenceAddress(e.target.value)}
-                placeholder="City, district, street, house"
+                placeholder={t("kyc.addressPlaceholder", lang)}
                 maxLength={280}
                 disabled={loading}
               />
@@ -173,14 +177,14 @@ export default function KYCVerificationModal({
                 <div className="kyc-side-icon front" aria-hidden="true">
                   <IdCard size={24} />
                 </div>
-                <div className="kyc-drop-title">Front side</div>
+                <div className="kyc-drop-title">{t("kyc.frontSide", lang)}</div>
                 <button
                   type="button"
                   className="kyc-choose-btn"
                   disabled={loading}
                   onClick={() => frontFileInputRef.current?.click()}
                 >
-                  Choose front
+                  {t("kyc.chooseFront", lang)}
                 </button>
                 <input
                   ref={frontFileInputRef}
@@ -201,14 +205,14 @@ export default function KYCVerificationModal({
                 <div className="kyc-side-icon back" aria-hidden="true">
                   <IdCard size={24} />
                 </div>
-                <div className="kyc-drop-title">Back side</div>
+                <div className="kyc-drop-title">{t("kyc.backSide", lang)}</div>
                 <button
                   type="button"
                   className="kyc-choose-btn"
                   disabled={loading}
                   onClick={() => backFileInputRef.current?.click()}
                 >
-                  Choose back
+                  {t("kyc.chooseBack", lang)}
                 </button>
                 <input
                   ref={backFileInputRef}
@@ -227,7 +231,7 @@ export default function KYCVerificationModal({
             </div>
 
             <div className="acm-note" style={{ textAlign: "left" }}>
-              Review usually takes about {reviewHours} hour(s). If rejected, next submission can be temporarily blocked.
+              {t("kyc.reviewEta", lang).replace("{hours}", String(reviewHours))}
             </div>
           </div>
         </div>
@@ -239,11 +243,11 @@ export default function KYCVerificationModal({
             disabled={!canSubmit}
             onClick={async () => {
               if (!status?.can_submit) {
-                toast.error(status?.message || "KYC submission is not available now")
+                toast.error(status?.message || t("kyc.unavailable", lang))
                 return
               }
               if (!frontProofFile || !backProofFile) {
-                toast.error("Upload both front and back images")
+                toast.error(t("kyc.uploadBothSides", lang))
                 return
               }
               await onSubmit({
@@ -256,7 +260,7 @@ export default function KYCVerificationModal({
               })
             }}
           >
-            {loading ? "Submitting..." : "Submit KYC"}
+            {loading ? t("common.submitting", lang) : t("kyc.submit", lang)}
           </button>
         </div>
       </div>

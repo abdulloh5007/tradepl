@@ -1,8 +1,11 @@
 
 import { AnimationPlayer } from "../ui/AnimationPlayer"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 import "./AccountTypeCard.css"
 
 interface AccountTypeProps {
+    lang: Lang
     plan: {
         id: string
         title: string
@@ -24,14 +27,14 @@ const TGS_PATHS: Record<string, string> = {
     swapfree: "/assets/tgs/swapfree.tgs"
 }
 
-export default function AccountTypeCard({ plan, mode }: AccountTypeProps): JSX.Element {
+export default function AccountTypeCard({ lang, plan, mode }: AccountTypeProps): JSX.Element {
     const tgsSrc = TGS_PATHS[plan.id] || TGS_PATHS.standard
 
     return (
         <div className="atc-card">
             {/* Ribbon */}
             <div className={`atc-ribbon atc-ribbon-${mode}`}>
-                <span>{mode === "real" ? "REAL" : "DEMO"}</span>
+                <span>{mode === "real" ? t("accounts.modeReal", lang).toUpperCase() : t("accounts.modeDemo", lang).toUpperCase()}</span>
             </div>
 
             {/* TGS Animation */}
@@ -44,21 +47,21 @@ export default function AccountTypeCard({ plan, mode }: AccountTypeProps): JSX.E
                 </div>
             </div>
 
-            <h3 className="atc-title">{plan.title}</h3>
+            <h3 className="atc-title">{t(plan.title, lang)}</h3>
 
             <span className="atc-badge">
-                {plan.badge}
+                {t(plan.badge, lang)}
             </span>
 
             <p className="atc-description">
-                {plan.description}
+                {t(plan.description, lang)}
             </p>
 
             <div className="atc-details">
-                <Row label="Min deposit" value={plan.minDeposit} />
-                <Row label="Min spread" value={plan.minSpread} />
-                <Row label="Max leverage" value={plan.maxLeverage} />
-                <Row label="Commission" value={plan.commission} />
+                <Row label={t("accounts.plan.minDeposit", lang)} value={t(plan.minDeposit, lang)} />
+                <Row label={t("accounts.plan.minSpread", lang)} value={t(plan.minSpread, lang)} />
+                <Row label={t("accounts.plan.maxLeverage", lang)} value={t(plan.maxLeverage, lang)} />
+                <Row label={t("accounts.plan.commission", lang)} value={t(plan.commission, lang)} />
             </div>
         </div>
     )

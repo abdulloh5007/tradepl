@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react"
 import { X } from "lucide-react"
-import type { TradingAccount } from "../../types"
+import type { Lang, TradingAccount } from "../../types"
 import type { AccountSnapshot } from "./types"
 import { accountShortNumericId, formatUsd, openCountLabel } from "./utils"
+import { t } from "../../utils/i18n"
 import "./SharedAccountSheet.css"
 
 interface AccountsSwitcherSheetProps {
+  lang: Lang
   open: boolean
   accounts: TradingAccount[]
   activeAccountId: string
@@ -15,6 +17,7 @@ interface AccountsSwitcherSheetProps {
 }
 
 export default function AccountsSwitcherSheet({
+  lang,
   open,
   accounts,
   activeAccountId,
@@ -42,7 +45,7 @@ export default function AccountsSwitcherSheet({
           <button onClick={onClose} className="acm-close-btn">
             <X size={24} />
           </button>
-          <h2 className="acm-title">Switch Account</h2>
+          <h2 className="acm-title">{t("accounts.switchAccount", lang)}</h2>
           <div className="acm-spacer" />
         </div>
 
@@ -54,21 +57,21 @@ export default function AccountsSwitcherSheet({
                 className={`acm-tab ${tab === "demo" ? "active" : ""}`}
                 onClick={() => setTab("demo")}
               >
-                Demo
+                {t("accounts.modeDemo", lang)}
               </button>
               <button
                 type="button"
                 className={`acm-tab ${tab === "real" ? "active" : ""}`}
                 onClick={() => setTab("real")}
               >
-                Real
+                {t("accounts.modeReal", lang)}
               </button>
             </div>
           </div>
 
           <div className="acm-list">
             {filtered.length === 0 ? (
-              <div className="acm-note" style={{ padding: 20 }}>No {tab} accounts</div>
+              <div className="acm-note" style={{ padding: 20 }}>{t("accounts.noModeAccounts", lang).replace("{mode}", tab === "real" ? t("accounts.modeReal", lang) : t("accounts.modeDemo", lang))}</div>
             ) : filtered.map(account => {
               const shot = snapshots[account.id]
               const active = account.id === activeAccountId
@@ -92,10 +95,10 @@ export default function AccountsSwitcherSheet({
                 >
                   <div className="acm-label">
                     <strong>{account.name}</strong>
-                    <span style={{ fontSize: 12 }}>{account.plan?.name || "Standard"} • #{accountShortNumericId(account.id)}</span>
+                    <span style={{ fontSize: 12 }}>{account.plan?.name || t("accounts.planStandard", lang)} • #{accountShortNumericId(account.id)}</span>
                   </div>
                   <div className="acm-label" style={{ alignItems: "flex-end" }}>
-                    <span style={{ color: plColor, fontWeight: 600 }}>{!shot ? "Updating..." : `${plPrefix}${formatUsd(shot.pl)} USD`}</span>
+                    <span style={{ color: plColor, fontWeight: 600 }}>{!shot ? t("common.updating", lang) : `${plPrefix}${formatUsd(shot.pl)} USD`}</span>
                     <span>{!shot ? "—" : openCountLabel(shot.openCount)}</span>
                   </div>
                 </button>

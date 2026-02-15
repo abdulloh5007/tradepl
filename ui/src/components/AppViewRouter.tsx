@@ -1,11 +1,24 @@
-import type { ComponentProps } from "react"
+import { Suspense, lazy } from "react"
+import type { ReactNode } from "react"
 import type { DepositBonusStatus, KYCStatus, ProfitRewardStatus, ReferralStatus, SignupBonusStatus, UserProfile } from "../api"
 import type { AppNotification, Lang, MarketConfig, MarketNewsEvent, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
-import { AccountsPage, ApiPage, FaucetPage, HistoryPage, NotificationsPage, PositionsPage, ProfilePage, TradingPage } from "../pages"
+import { t } from "../utils/i18n"
+import TradingPage from "../pages/Trading/TradingPage"
+import PositionsPage from "../pages/Positions/PositionsPage"
 import type { AccountSnapshot } from "./accounts/types"
 
 type CandlePoint = { time: number; open: number; high: number; low: number; close: number }
-type FaucetApi = ComponentProps<typeof FaucetPage>["api"]
+type FaucetApi = {
+  faucet: (payload: { asset: string; amount: string; reference?: string }) => Promise<{ status: string }>
+  metrics: () => Promise<{ balance: string; equity: string; margin: string; free_margin: string; margin_level: string; pl: string }>
+}
+
+const HistoryPage = lazy(() => import("../pages/History/HistoryPage"))
+const AccountsPage = lazy(() => import("../pages/Accounts/AccountsPage"))
+const NotificationsPage = lazy(() => import("../pages/Notifications/NotificationsPage"))
+const ProfilePage = lazy(() => import("../pages/Settings/ProfilePage"))
+const ApiPage = lazy(() => import("../pages/Api/ApiPage"))
+const FaucetPage = lazy(() => import("../pages/Faucet/FaucetPage"))
 
 interface AppViewRouterProps {
   view: View
@@ -92,6 +105,18 @@ interface AppViewRouterProps {
   onLoginRequired: () => void
   isUnlimitedLeverage: boolean
 }
+
+const ViewFallback = ({ lang }: { lang: Lang }) => (
+  <div style={{ padding: "20px 8px", color: "var(--muted)", textAlign: "center", fontSize: 13 }}>
+    {t("common.loading", lang)}
+  </div>
+)
+
+const LazyView = ({ children, lang }: { children: ReactNode; lang: Lang }) => (
+  <Suspense fallback={<ViewFallback lang={lang} />}>
+    {children}
+  </Suspense>
+)
 
 export default function AppViewRouter({
   view,
@@ -214,92 +239,110 @@ export default function AppViewRouter({
 
   if (view === "history") {
     return (
-      <HistoryPage
-        orders={orderHistory}
-        lang={lang}
-        loading={historyLoading}
-        hasMore={historyHasMore}
-        onRefresh={onRefreshHistory}
-        onLoadMore={onLoadMoreHistory}
-      />
+      <LazyView lang={lang}>
+        <HistoryPage
+          orders={orderHistory}
+          lang={lang}
+          loading={historyLoading}
+          hasMore={historyHasMore}
+          onRefresh={onRefreshHistory}
+          onLoadMore={onLoadMoreHistory}
+        />
+      </LazyView>
     )
   }
 
   if (view === "accounts") {
     return (
-      <AccountsPage
-        accounts={accounts}
-        activeAccountId={activeAccountId}
-        metrics={metrics}
-        activeOpenOrdersCount={activeOpenOrdersCount}
-        liveDataReady={liveDataReady}
-        snapshots={snapshots}
-        onSwitch={onSwitchAccount}
-        onCreate={onCreateAccount}
-        onUpdateLeverage={onUpdateAccountLeverage}
-        onRenameAccount={onRenameAccount}
-        onTopUpDemo={onTopUpDemo}
-        onWithdrawDemo={onWithdrawDemo}
-        signupBonus={signupBonus}
-        depositBonus={depositBonus}
-        onClaimSignupBonus={onClaimSignupBonus}
-        onRequestRealDeposit={onRequestRealDeposit}
-        newsUpcoming={newsUpcoming}
-        onCloseAll={async () => {
-          await onCloseAll()
-        }}
-        onGoTrade={onGoTrade}
-        hasUnreadNotifications={hasUnreadNotifications}
-        onOpenNotifications={onOpenNotifications}
-      />
+      <LazyView lang={lang}>
+        <AccountsPage
+          lang={lang}
+          accounts={accounts}
+          activeAccountId={activeAccountId}
+          metrics={metrics}
+          activeOpenOrdersCount={activeOpenOrdersCount}
+          liveDataReady={liveDataReady}
+          snapshots={snapshots}
+          onSwitch={onSwitchAccount}
+          onCreate={onCreateAccount}
+          onUpdateLeverage={onUpdateAccountLeverage}
+          onRenameAccount={onRenameAccount}
+          onTopUpDemo={onTopUpDemo}
+          onWithdrawDemo={onWithdrawDemo}
+          signupBonus={signupBonus}
+          depositBonus={depositBonus}
+          onClaimSignupBonus={onClaimSignupBonus}
+          onRequestRealDeposit={onRequestRealDeposit}
+          newsUpcoming={newsUpcoming}
+          onCloseAll={async () => {
+            await onCloseAll()
+          }}
+          onGoTrade={onGoTrade}
+          hasUnreadNotifications={hasUnreadNotifications}
+          onOpenNotifications={onOpenNotifications}
+        />
+      </LazyView>
     )
   }
 
   if (view === "notifications") {
     return (
-      <NotificationsPage
-        items={notifications}
-        onBack={onBackFromNotifications}
-        onMarkAllRead={onMarkAllNotificationsRead}
-        onItemClick={onNotificationClick}
-      />
+      <LazyView lang={lang}>
+        <NotificationsPage
+          lang={lang}
+          items={notifications}
+          onBack={onBackFromNotifications}
+          onMarkAllRead={onMarkAllNotificationsRead}
+          onItemClick={onNotificationClick}
+        />
+      </LazyView>
     )
   }
 
   if (view === "profile") {
     return (
-      <ProfilePage
-        lang={lang}
-        setLang={setLang}
-        theme={theme}
-        setTheme={setTheme}
-        onLogout={onLogout}
-        profile={profile}
-        activeAccount={activeAccount}
-        kycStatus={kycStatus}
-        onRequestKYC={onRequestKYC}
-        referralStatus={referralStatus}
-        onReferralWithdraw={onReferralWithdraw}
-        onRefreshReferral={onRefreshReferral}
-        profitRewardStatus={profitRewardStatus}
-        onRefreshProfitReward={onRefreshProfitReward}
-        onClaimProfitReward={onClaimProfitReward}
-        accounts={accounts}
-      />
+      <LazyView lang={lang}>
+        <ProfilePage
+          lang={lang}
+          setLang={setLang}
+          theme={theme}
+          setTheme={setTheme}
+          onLogout={onLogout}
+          profile={profile}
+          activeAccount={activeAccount}
+          kycStatus={kycStatus}
+          onRequestKYC={onRequestKYC}
+          referralStatus={referralStatus}
+          onReferralWithdraw={onReferralWithdraw}
+          onRefreshReferral={onRefreshReferral}
+          profitRewardStatus={profitRewardStatus}
+          onRefreshProfitReward={onRefreshProfitReward}
+          onClaimProfitReward={onClaimProfitReward}
+          accounts={accounts}
+        />
+      </LazyView>
     )
   }
 
-  if (view === "api") return <ApiPage />
+  if (view === "api") {
+    return (
+      <LazyView lang={lang}>
+        <ApiPage lang={lang} />
+      </LazyView>
+    )
+  }
 
   if (view === "faucet") {
     return (
-      <FaucetPage
-        api={api}
-        onMetricsUpdate={onMetricsUpdate}
-        lang={lang}
-        token={token}
-        onLoginRequired={onLoginRequired}
-      />
+      <LazyView lang={lang}>
+        <FaucetPage
+          api={api}
+          onMetricsUpdate={onMetricsUpdate}
+          lang={lang}
+          token={token}
+          onLoginRequired={onLoginRequired}
+        />
+      </LazyView>
     )
   }
 
