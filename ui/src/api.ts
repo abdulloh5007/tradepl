@@ -185,6 +185,32 @@ export type ReferralEvent = {
   created_at: string
 }
 
+export type ProfitRewardStageStatus = {
+  stage_no: number
+  target_profit_usd: string
+  reward_usd: string
+  achieved: boolean
+  claimed: boolean
+  can_claim: boolean
+  claimed_at?: string
+  claimed_account_id?: string
+}
+
+export type ProfitRewardStatus = {
+  track: string
+  currency: string
+  progress_usd: string
+  total_stages: number
+  claimed_stages: number
+  available_claims: number
+  stages: ProfitRewardStageStatus[]
+}
+
+export type ProfitRewardClaimPayload = {
+  stage_no: number
+  trading_account_id: string
+}
+
 const parseBody = (text: string) => {
   const trimmed = text.trim()
   if (!trimmed) return null
@@ -244,6 +270,14 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     claimSignupBonus: (payload: { accept_terms: boolean }) =>
       request<SignupBonusStatus>("/v1/rewards/signup/claim", "POST", payload, true),
     depositBonusStatus: () => request<DepositBonusStatus>("/v1/rewards/deposit", "GET", undefined, true),
+    profitRewardStatus: () => request<ProfitRewardStatus>("/v1/rewards/profit", "GET", undefined, true),
+    claimProfitReward: (payload: ProfitRewardClaimPayload) =>
+      request<{ status: string; stage_no: number; reward_usd: string; trading_account_id: string; claimed_at: string; progress_usd: string }>(
+        "/v1/rewards/profit/claim",
+        "POST",
+        payload,
+        true
+      ),
     requestRealDeposit: (payload: RealDepositRequestPayload) =>
       request<RealDepositRequestResponse>("/v1/deposits/real/request", "POST", payload, true),
     kycStatus: () => request<KYCStatus>("/v1/kyc/status", "GET", undefined, true),

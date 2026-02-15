@@ -1,4 +1,4 @@
-import { X, Moon, Sun, Globe, LogOut } from "lucide-react"
+import { X, Moon, Sun, LogOut, Trophy } from "lucide-react"
 import type { Lang, Theme } from "../../types"
 import { t } from "../../utils/i18n"
 import "../../components/accounts/SharedAccountSheet.css"
@@ -11,6 +11,7 @@ interface SettingsSheetProps {
     theme: Theme
     setTheme: (theme: Theme) => void
     onLogout: () => void
+    onOpenProfitStages?: () => void
 }
 
 export default function SettingsSheet({
@@ -20,7 +21,8 @@ export default function SettingsSheet({
     setLang,
     theme,
     setTheme,
-    onLogout
+    onLogout,
+    onOpenProfitStages
 }: SettingsSheetProps) {
     if (!open) return null
 
@@ -100,6 +102,32 @@ export default function SettingsSheet({
                                 <Sun size={16} /> {t("light", lang)}
                             </button>
                         </div>
+
+                        {onOpenProfitStages ? (
+                            <>
+                                <div className="acm-section-title" style={{ padding: '8px 0', color: '#6b7280', fontSize: 13, fontWeight: 600 }}>
+                                    Rewards
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={onOpenProfitStages}
+                                    className="acm-list-item"
+                                    style={{
+                                        marginBottom: 16,
+                                        background: 'rgba(59,130,246,0.08)',
+                                        borderColor: 'rgba(59,130,246,0.25)',
+                                        color: '#dbeafe',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                        <Trophy size={14} />
+                                        Profit stages
+                                    </span>
+                                    <span>Open</span>
+                                </button>
+                            </>
+                        ) : null}
                     </div>
                 </div>
 

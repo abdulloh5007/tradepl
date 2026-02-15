@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react"
-import type { DepositBonusStatus, KYCStatus, ReferralStatus, SignupBonusStatus, UserProfile } from "../api"
+import type { DepositBonusStatus, KYCStatus, ProfitRewardStatus, ReferralStatus, SignupBonusStatus, UserProfile } from "../api"
 import type { AppNotification, Lang, MarketConfig, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
 import { AccountsPage, ApiPage, FaucetPage, HistoryPage, NotificationsPage, PositionsPage, ProfilePage, TradingPage } from "../pages"
 import type { AccountSnapshot } from "./accounts/types"
@@ -71,12 +71,16 @@ interface AppViewRouterProps {
   referralStatus: ReferralStatus | null
   onReferralWithdraw: (amountUSD?: string) => Promise<void>
   onRefreshReferral: () => Promise<void> | void
+  profitRewardStatus: ProfitRewardStatus | null
+  onRefreshProfitReward: () => Promise<void> | void
+  onClaimProfitReward: (stageNo: number, tradingAccountID: string) => Promise<void>
   onGoTrade: () => void
   hasUnreadNotifications: boolean
   onOpenNotifications: () => void
   notifications: AppNotification[]
   onBackFromNotifications: () => void
   onMarkAllNotificationsRead: () => void
+  onNotificationClick: (notificationID: string) => void
   profile: UserProfile | null
   setLang: (lang: Lang) => void
   setTheme: (theme: Theme) => void
@@ -141,12 +145,16 @@ export default function AppViewRouter({
   referralStatus,
   onReferralWithdraw,
   onRefreshReferral,
+  profitRewardStatus,
+  onRefreshProfitReward,
+  onClaimProfitReward,
   onGoTrade,
   hasUnreadNotifications,
   onOpenNotifications,
   notifications,
   onBackFromNotifications,
   onMarkAllNotificationsRead,
+  onNotificationClick,
   profile,
   setLang,
   setTheme,
@@ -250,6 +258,7 @@ export default function AppViewRouter({
         items={notifications}
         onBack={onBackFromNotifications}
         onMarkAllRead={onMarkAllNotificationsRead}
+        onItemClick={onNotificationClick}
       />
     )
   }
@@ -269,6 +278,10 @@ export default function AppViewRouter({
         referralStatus={referralStatus}
         onReferralWithdraw={onReferralWithdraw}
         onRefreshReferral={onRefreshReferral}
+        profitRewardStatus={profitRewardStatus}
+        onRefreshProfitReward={onRefreshProfitReward}
+        onClaimProfitReward={onClaimProfitReward}
+        accounts={accounts}
       />
     )
   }

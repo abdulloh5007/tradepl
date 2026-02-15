@@ -10,6 +10,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from aiogram import Bot, Dispatcher, F, types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import BotCommand, BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -217,6 +218,26 @@ def parse_review_callback_data(raw: str, prefix: str):
     if action not in ("approve", "reject") or not request_id:
         return None, None
     return action, request_id
+
+
+async def safe_callback_answer(query: types.CallbackQuery, text: str, show_alert: bool = False) -> bool:
+    try:
+        await query.answer(text, show_alert=show_alert)
+        return True
+    except TelegramBadRequest as err:
+        msg = str(err).lower()
+        if (
+            "query is too old" in msg
+            or "query id is invalid" in msg
+            or "response timeout expired" in msg
+        ):
+            logger.info("Callback answer skipped (expired callback query): %s", err)
+            return False
+        logger.exception("Failed to answer callback query: %s", err)
+        return False
+    except Exception as err:
+        logger.exception("Failed to answer callback query: %s", err)
+        return False
 
 
 def _internal_post_sync(path: str, payload: dict):
@@ -708,22 +729,25 @@ async def cmd_off(message: types.Message):
 async def callback_deposit_review(query: types.CallbackQuery):
     action, request_id = parse_review_callback_data(query.data, "dep")
     if not action or not request_id:
-        await query.answer("Invalid callback data", show_alert=True)
+        await safe_callback_answer(query, "Invalid callback data", show_alert=True)
         return
     if not query.message:
-        await query.answer("Message context is missing", show_alert=True)
+        await safe_callback_answer(query, "Message context is missing", show_alert=True)
         return
 
     deposit_chat_raw, _ = await db.get_review_chats()
     deposit_chat_id = parse_chat_id(deposit_chat_raw)
     if not deposit_chat_id or query.message.chat.id != deposit_chat_id:
-        await query.answer("Wrong deposit review chat", show_alert=True)
+        await safe_callback_answer(query, "Wrong deposit review chat", show_alert=True)
         return
 
     allowed = await db.is_deposit_reviewer_allowed(query.from_user.id, OWNER_TELEGRAM_ID)
     if not allowed:
-        await query.answer("You are not allowed to review deposits", show_alert=True)
+        await safe_callback_answer(query, "You are not allowed to review deposits", show_alert=True)
         return
+
+    # Ack early to avoid Telegram callback timeout while decision is processed.
+    await safe_callback_answer(query, "Processing decision...", show_alert=False)
 
     status, payload = await internal_post(
         "/v1/internal/telegram/reviews/deposit/decision",
@@ -735,7 +759,13 @@ async def callback_deposit_review(query: types.CallbackQuery):
     )
     if status != 200:
         error_text = str((payload or {}).get("error") or "Review decision failed")
-        await query.answer(error_text[:180], show_alert=True)
+        await safe_callback_answer(query, error_text[:180], show_alert=True)
+        with contextlib.suppress(Exception):
+            await bot.send_message(
+                chat_id=query.message.chat.id,
+                text=f"❌ Deposit review failed: {html.escape(error_text)}",
+                parse_mode="HTML",
+            )
         return
 
     outcome = payload or {}
@@ -757,29 +787,32 @@ async def callback_deposit_review(query: types.CallbackQuery):
     )
     await bot.send_message(chat_id=query.message.chat.id, text=text, parse_mode="HTML")
     await send_deposit_user_notification(request_id, outcome)
-    await query.answer("Decision applied", show_alert=False)
+    await safe_callback_answer(query, "Decision applied", show_alert=False)
 
 
 @dp.callback_query(F.data.startswith("kyc:"))
 async def callback_kyc_review(query: types.CallbackQuery):
     action, request_id = parse_review_callback_data(query.data, "kyc")
     if not action or not request_id:
-        await query.answer("Invalid callback data", show_alert=True)
+        await safe_callback_answer(query, "Invalid callback data", show_alert=True)
         return
     if not query.message:
-        await query.answer("Message context is missing", show_alert=True)
+        await safe_callback_answer(query, "Message context is missing", show_alert=True)
         return
 
     _, kyc_chat_raw = await db.get_review_chats()
     kyc_chat_id = parse_chat_id(kyc_chat_raw)
     if not kyc_chat_id or query.message.chat.id != kyc_chat_id:
-        await query.answer("Wrong KYC review chat", show_alert=True)
+        await safe_callback_answer(query, "Wrong KYC review chat", show_alert=True)
         return
 
     allowed = await db.is_kyc_reviewer_allowed(query.from_user.id, OWNER_TELEGRAM_ID)
     if not allowed:
-        await query.answer("You are not allowed to review KYC", show_alert=True)
+        await safe_callback_answer(query, "You are not allowed to review KYC", show_alert=True)
         return
+
+    # Ack early to avoid Telegram callback timeout while decision is processed.
+    await safe_callback_answer(query, "Processing decision...", show_alert=False)
 
     status, payload = await internal_post(
         "/v1/internal/telegram/reviews/kyc/decision",
@@ -791,7 +824,13 @@ async def callback_kyc_review(query: types.CallbackQuery):
     )
     if status != 200:
         error_text = str((payload or {}).get("error") or "Review decision failed")
-        await query.answer(error_text[:180], show_alert=True)
+        await safe_callback_answer(query, error_text[:180], show_alert=True)
+        with contextlib.suppress(Exception):
+            await bot.send_message(
+                chat_id=query.message.chat.id,
+                text=f"❌ KYC review failed: {html.escape(error_text)}",
+                parse_mode="HTML",
+            )
         return
 
     outcome = payload or {}
@@ -821,7 +860,7 @@ async def callback_kyc_review(query: types.CallbackQuery):
 
     await bot.send_message(chat_id=query.message.chat.id, text="\n".join(lines), parse_mode="HTML")
     await send_kyc_user_notification(request_id, outcome)
-    await query.answer("Decision applied", show_alert=False)
+    await safe_callback_answer(query, "Decision applied", show_alert=False)
 
 
 @dp.message(Command("getownerpanel"))

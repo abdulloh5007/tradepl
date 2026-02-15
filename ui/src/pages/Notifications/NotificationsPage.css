@@ -65,11 +65,22 @@
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(15, 23, 42, 0.38);
   padding: 10px 11px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.notification-item:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.7);
+  outline-offset: 1px;
 }
 
 .notification-item.unread {
   border-color: rgba(59, 130, 246, 0.42);
   background: rgba(30, 64, 175, 0.14);
+}
+
+.notification-item.read {
+  cursor: default;
 }
 
 .notification-icon {
@@ -117,6 +128,17 @@
   font-size: 13px;
   color: #cbd5e1;
   line-height: 1.35;
+}
+
+.notifications-sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 2px;
+}
+
+.notifications-loading {
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 html[data-theme="light"] .notifications-back-btn,

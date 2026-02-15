@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { KeyboardEvent as ReactKeyboardEvent } from "react"
 import { ArrowLeft, CheckCheck, Bell, ShieldAlert, Gift, Newspaper } from "lucide-react"
 import type { AppNotification } from "../../types"
 import "./NotificationsPage.css"
@@ -6,7 +8,10 @@ interface NotificationsPageProps {
   items: AppNotification[]
   onBack: () => void
   onMarkAllRead: () => void
+  onItemClick: (notificationID: string) => void
 }
+
+const pageSize = 30
 
 const formatDate = (raw: string) => {
   const d = new Date(raw)
@@ -26,8 +31,57 @@ const iconForKind = (kind: AppNotification["kind"]) => {
   return Bell
 }
 
-export default function NotificationsPage({ items, onBack, onMarkAllRead }: NotificationsPageProps) {
+export default function NotificationsPage({ items, onBack, onMarkAllRead, onItemClick }: NotificationsPageProps) {
   const hasUnread = items.some(item => !item.read)
+  const [visibleCount, setVisibleCount] = useState(pageSize)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setVisibleCount(prev => {
+      const base = prev > pageSize ? prev : pageSize
+      return Math.min(base, Math.max(items.length, pageSize))
+    })
+  }, [items.length])
+
+  const visibleItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount])
+  const hasMore = visibleCount < items.length
+
+  const loadMore = useCallback(() => {
+    setVisibleCount(prev => {
+      if (prev >= items.length) return prev
+      return Math.min(prev + pageSize, items.length)
+    })
+  }, [items.length])
+
+  useEffect(() => {
+    if (!hasMore) return
+    const target = sentinelRef.current
+    if (!target) return
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          loadMore()
+          break
+        }
+      }
+    }, {
+      root: null,
+      rootMargin: "160px 0px",
+      threshold: 0,
+    })
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [hasMore, loadMore, visibleItems.length])
+
+  const handleItemClick = useCallback((item: AppNotification) => {
+    if (!item.read) onItemClick(item.id)
+  }, [onItemClick])
+
+  const handleItemKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>, item: AppNotification) => {
+    if (event.key !== "Enter" && event.key !== " ") return
+    event.preventDefault()
+    if (!item.read) onItemClick(item.id)
+  }, [onItemClick])
 
   return (
     <div className="notifications-page">
@@ -56,10 +110,17 @@ export default function NotificationsPage({ items, onBack, onMarkAllRead }: Noti
         {items.length === 0 ? (
           <div className="notifications-empty">No notifications yet</div>
         ) : (
-          items.map(item => {
+          visibleItems.map(item => {
             const Icon = iconForKind(item.kind)
             return (
-              <article key={item.id} className={`notification-item ${item.read ? "read" : "unread"}`}>
+              <article
+                key={item.id}
+                className={`notification-item ${item.read ? "read" : "unread"}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleItemClick(item)}
+                onKeyDown={(event) => handleItemKeyDown(event, item)}
+              >
                 <div className="notification-icon">
                   <Icon size={14} />
                 </div>
@@ -73,6 +134,11 @@ export default function NotificationsPage({ items, onBack, onMarkAllRead }: Noti
               </article>
             )
           })
+        )}
+        {hasMore && (
+          <div className="notifications-sentinel" ref={sentinelRef}>
+            <span className="notifications-loading">Loading more...</span>
+          </div>
         )}
       </div>
     </div>

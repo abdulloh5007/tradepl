@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Settings2, Share2, ShieldCheck, User } from "lucide-react"
-import type { KYCStatus, ReferralStatus, UserProfile } from "../../api"
+import type { KYCStatus, ProfitRewardStatus, ReferralStatus, UserProfile } from "../../api"
 import type { Lang, Theme, TradingAccount } from "../../types"
 import KYCVerificationModal from "../../components/accounts/KYCVerificationModal"
+import ProfitStagesPage from "./ProfitStagesPage"
 import SettingsSheet from "./SettingsSheet"
 import "./ProfilePage.css"
 
@@ -27,6 +28,10 @@ interface ProfilePageProps {
     referralStatus: ReferralStatus | null
     onReferralWithdraw: (amountUSD?: string) => Promise<void>
     onRefreshReferral?: () => Promise<void> | void
+    profitRewardStatus: ProfitRewardStatus | null
+    onRefreshProfitReward: () => Promise<void> | void
+    onClaimProfitReward: (stageNo: number, tradingAccountID: string) => Promise<void>
+    accounts: TradingAccount[]
 }
 
 const formatDuration = (seconds: number) => {
@@ -52,11 +57,16 @@ export default function ProfilePage({
     referralStatus,
     onReferralWithdraw,
     onRefreshReferral,
+    profitRewardStatus,
+    onRefreshProfitReward,
+    onClaimProfitReward,
+    accounts,
 }: ProfilePageProps) {
     const [showSettings, setShowSettings] = useState(false)
     const [kycModalOpen, setKycModalOpen] = useState(false)
     const [kycBusy, setKycBusy] = useState(false)
     const [referralBusy, setReferralBusy] = useState(false)
+    const [showProfitStages, setShowProfitStages] = useState(false)
 
     const displayName = useMemo(() => {
         const preferred = (profile?.display_name || "").trim()
@@ -135,6 +145,18 @@ export default function ProfilePage({
         } finally {
             setReferralBusy(false)
         }
+    }
+
+    if (showProfitStages) {
+        return (
+            <ProfitStagesPage
+                status={profitRewardStatus}
+                accounts={accounts}
+                onBack={() => setShowProfitStages(false)}
+                onRefresh={onRefreshProfitReward}
+                onClaim={onClaimProfitReward}
+            />
+        )
     }
 
     return (
@@ -283,6 +305,10 @@ export default function ProfilePage({
                 theme={theme}
                 setTheme={setTheme}
                 onLogout={onLogout}
+                onOpenProfitStages={() => {
+                    setShowSettings(false)
+                    setShowProfitStages(true)
+                }}
             />
         </div>
     )

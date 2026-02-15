@@ -1426,6 +1426,8 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 			ticket = formatKYCRewardTicket(accountMode, sequence, entryID)
 		} else if eventType == string(types.LedgerEntryTypeDeposit) && isDepositBonusRef(txRef) {
 			ticket = formatDepositBonusTicket(accountMode, sequence, entryID)
+		} else if eventType == string(types.LedgerEntryTypeDeposit) && isProfitRewardRef(txRef) {
+			ticket = formatProfitRewardTicket(accountMode, sequence, entryID)
 		} else if isReferralRef(txRef) {
 			ticket = formatReferralTicket(accountMode, sequence, entryID)
 		}
@@ -1664,6 +1666,12 @@ func formatReferralTicket(accountMode string, sequence int64, seed string) strin
 	return modeTicketPrefix(accountMode) + "BXref" + digits + letters
 }
 
+func formatProfitRewardTicket(accountMode string, sequence int64, seed string) string {
+	digits := normalizeTicketNumber(sequence, seed)
+	letters := ticketSeedLetters(fmt.Sprintf("cash:profit_reward:%d:%s", sequence, seed))
+	return modeTicketPrefix(accountMode) + "BXprf-" + digits + letters
+}
+
 func isUndefinedTableError(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "42P01"
@@ -1692,6 +1700,11 @@ func isDepositBonusRef(ref string) bool {
 func isReferralRef(ref string) bool {
 	ref = strings.ToLower(strings.TrimSpace(ref))
 	return strings.HasPrefix(ref, "referral_withdraw:")
+}
+
+func isProfitRewardRef(ref string) bool {
+	ref = strings.ToLower(strings.TrimSpace(ref))
+	return strings.HasPrefix(ref, "profit_reward:")
 }
 
 func (s *Service) CloseOrdersByScope(ctx context.Context, userID, accountID, scope string) (CloseOrdersResult, error) {

@@ -12,7 +12,7 @@ import { calcDisplayedOrderProfit } from "./utils/trading"
 import { useMarketWebSocket } from "./hooks/useMarketWebSocket"
 
 // API
-import { createApiClient, type DepositBonusStatus, type KYCStatus, type ReferralStatus, type SignupBonusStatus, type UserProfile } from "./api"
+import { createApiClient, type DepositBonusStatus, type KYCStatus, type ProfitRewardStatus, type ReferralStatus, type SignupBonusStatus, type UserProfile } from "./api"
 
 // Components
 import BottomNav from "./components/BottomNav"
@@ -31,7 +31,7 @@ const candleLimit = 1000   // Initial load
 const lazyLoadLimit = 500  // Load more when scrolling
 const historyPageLimit = 50
 const notificationsStorageKey = "lv_notifications_v1"
-const notificationsLimit = 200
+const notificationsLimit = 1000
 const MAX_KYC_PROOF_BYTES = 10 * 1024 * 1024
 
 type PollKey = "metrics" | "orders"
@@ -93,6 +93,13 @@ function historyNotificationFromOrder(order: Order): { kind: AppNotification["ki
         kind: "bonus",
         title: "Deposit voucher bonus credited",
         message: `${amountAbs} USD voucher bonus added to your account.`,
+      }
+    }
+    if (ticket.includes("bxprf")) {
+      return {
+        kind: "bonus",
+        title: "Profit stage reward credited",
+        message: `${amountAbs} USD stage reward added to your account.`,
       }
     }
     if (ticket.includes("bxref")) {
@@ -221,13 +228,12 @@ export default function App() {
   const [depositBonus, setDepositBonus] = useState<DepositBonusStatus | null>(null)
   const [kycStatus, setKycStatus] = useState<KYCStatus | null>(null)
   const [referralStatus, setReferralStatus] = useState<ReferralStatus | null>(null)
+  const [profitRewardStatus, setProfitRewardStatus] = useState<ProfitRewardStatus | null>(null)
   const [notifications, setNotifications] = useState<AppNotification[]>(readStoredNotifications)
   const telegramRedirectedRef = useRef(false)
   const telegramWriteAccessRequestedRef = useRef(false)
   const signupBonusStateRef = useRef<{ canClaim: boolean; claimed: boolean }>({ canClaim: false, claimed: false })
   const depositPendingByAccountRef = useRef<Record<string, { initialized: boolean; pending: number }>>({})
-  const seenHistoryNotificationsRef = useRef<Record<string, true>>({})
-  const historyNotificationSeededRef = useRef<Record<string, boolean>>({})
 
   const logout = useCallback(() => {
     setToken("")
@@ -243,6 +249,7 @@ export default function App() {
     setDepositBonus(null)
     setKycStatus(null)
     setReferralStatus(null)
+    setProfitRewardStatus(null)
     setHistoryAccountId("")
     setMetricsAccountId("")
     setOrdersAccountId("")
@@ -257,8 +264,6 @@ export default function App() {
     systemNoticeByAccountRef.current = {}
     signupBonusStateRef.current = { canClaim: false, claimed: false }
     depositPendingByAccountRef.current = {}
-    seenHistoryNotificationsRef.current = {}
-    historyNotificationSeededRef.current = {}
     setNotifications([])
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(notificationsStorageKey)
@@ -296,6 +301,20 @@ export default function App() {
 
   const markAllNotificationsRead = useCallback(() => {
     setNotifications(prev => prev.map(item => (item.read ? item : { ...item, read: true })))
+  }, [])
+
+  const markNotificationRead = useCallback((notificationID: string) => {
+    const id = String(notificationID || "").trim()
+    if (!id) return
+    setNotifications(prev => {
+      let changed = false
+      const next = prev.map(item => {
+        if (item.id !== id || item.read) return item
+        changed = true
+        return { ...item, read: true }
+      })
+      return changed ? next : prev
+    })
   }, [])
 
   const hasUnreadNotifications = useMemo(() => notifications.some(item => !item.read), [notifications])
@@ -654,6 +673,19 @@ export default function App() {
     }
   }, [api, token])
 
+  const refreshProfitRewardStatus = useCallback(async () => {
+    if (!token) {
+      setProfitRewardStatus(null)
+      return
+    }
+    try {
+      const status = await api.profitRewardStatus()
+      setProfitRewardStatus(status || null)
+    } catch {
+      setProfitRewardStatus(null)
+    }
+  }, [api, token])
+
   const refreshAccountSnapshots = useCallback(async (sourceAccounts?: TradingAccount[]) => {
     if (!token) return
     const list = sourceAccounts || accounts
@@ -707,6 +739,7 @@ export default function App() {
       setDepositBonus(null)
       setKycStatus(null)
       setReferralStatus(null)
+      setProfitRewardStatus(null)
       setHistoryAccountId("")
       setMetricsAccountId("")
       setOrdersAccountId("")
@@ -731,15 +764,17 @@ export default function App() {
       setDepositBonus(null)
       setKycStatus(null)
       setReferralStatus(null)
+      setProfitRewardStatus(null)
       return
     }
     Promise.all([
       refreshSignupBonus().catch(() => { }),
       refreshDepositBonus().catch(() => { }),
       refreshKYCStatus().catch(() => { }),
-      refreshReferralStatus().catch(() => { })
+      refreshReferralStatus().catch(() => { }),
+      refreshProfitRewardStatus().catch(() => { })
     ]).catch(() => { })
-  }, [token, activeAccountId, refreshSignupBonus, refreshDepositBonus, refreshKYCStatus, refreshReferralStatus])
+  }, [token, activeAccountId, refreshSignupBonus, refreshDepositBonus, refreshKYCStatus, refreshReferralStatus, refreshProfitRewardStatus])
 
   useEffect(() => {
     let cancelled = false
@@ -962,37 +997,51 @@ export default function App() {
     if (orderHistory.length === 0) return
 
     const accountKey = activeAccountId
-    const seenMap = seenHistoryNotificationsRef.current
-    const seeded = historyNotificationSeededRef.current[accountKey] === true
     const inChronologicalOrder = [...orderHistory].sort((a, b) => {
       const la = Date.parse(String(a.close_time || a.created_at || "")) || 0
       const lb = Date.parse(String(b.close_time || b.created_at || "")) || 0
       return la - lb
     })
 
-    if (!seeded) {
-      for (const order of inChronologicalOrder) {
-        seenMap[`${accountKey}:${order.id}`] = true
+    setNotifications(prev => {
+      const dedupe = new Set<string>()
+      for (const item of prev) {
+        if (item.dedupe_key) dedupe.add(item.dedupe_key)
       }
-      historyNotificationSeededRef.current[accountKey] = true
-      return
-    }
 
-    for (const order of inChronologicalOrder) {
-      const seenKey = `${accountKey}:${order.id}`
-      if (seenMap[seenKey]) continue
-      seenMap[seenKey] = true
-      const next = historyNotificationFromOrder(order)
-      if (!next) continue
-      addNotification({
-        kind: next.kind,
-        title: next.title,
-        message: next.message,
-        accountID: accountKey,
-        dedupeKey: `history:${accountKey}:${order.id}`,
-      })
-    }
-  }, [token, activeAccountId, orderHistory, addNotification])
+      const merged = [...prev]
+      for (const order of inChronologicalOrder) {
+        const next = historyNotificationFromOrder(order)
+        if (!next) continue
+        const dedupeKey = `history:${accountKey}:${order.id}`
+        if (dedupe.has(dedupeKey)) continue
+        dedupe.add(dedupeKey)
+        const createdAt = String(order.close_time || order.created_at || new Date().toISOString())
+        merged.unshift({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${order.id}`,
+          kind: next.kind,
+          title: next.title,
+          message: next.message,
+          created_at: createdAt,
+          read: false,
+          dedupe_key: dedupeKey,
+          account_id: accountKey,
+        })
+      }
+
+      if (merged.length > notificationsLimit) {
+        return merged.slice(0, notificationsLimit)
+      }
+      return merged
+    })
+  }, [token, activeAccountId, orderHistory])
+
+  // Prime history once per active account so notification sync also works outside History page.
+  useEffect(() => {
+    if (!token || !activeAccountId) return
+    if (historyAccountId === activeAccountId && orderHistory.length > 0) return
+    fetchOrderHistory(true).catch(() => { })
+  }, [token, activeAccountId, historyAccountId, orderHistory.length, fetchOrderHistory])
 
   // Fast polling for account metrics on live trading views.
   useEffect(() => {
@@ -1124,7 +1173,8 @@ export default function App() {
       await Promise.all([
         refreshOrders().catch(() => { }),
         fetchOrderHistory(true).catch(() => { }),
-        refreshMetrics().catch(() => { })
+        refreshMetrics().catch(() => { }),
+        refreshProfitRewardStatus().catch(() => { })
       ])
       refreshAccountSnapshots().catch(() => { })
     } catch (err: any) {
@@ -1157,7 +1207,8 @@ export default function App() {
     await Promise.all([
       refreshOrders().catch(() => { }),
       fetchOrderHistory(true).catch(() => { }),
-      refreshMetrics().catch(() => { })
+      refreshMetrics().catch(() => { }),
+      refreshProfitRewardStatus().catch(() => { })
     ])
     refreshAccountSnapshots().catch(() => { })
 
@@ -1453,6 +1504,26 @@ export default function App() {
     refreshAccountSnapshots().catch(() => { })
   }
 
+  const handleClaimProfitReward = async (stageNo: number, tradingAccountID: string) => {
+    const res = await api.claimProfitReward({ stage_no: stageNo, trading_account_id: tradingAccountID })
+    const reward = Number(res?.reward_usd || 0)
+    addNotification({
+      kind: "bonus",
+      title: "Profit stage reward credited",
+      message: `${formatNumber(reward, 2, 2)} USD stage reward was credited.`,
+      accountID: tradingAccountID || activeAccountId,
+      dedupeKey: `profit_reward:${res?.stage_no || stageNo}:${res?.claimed_at || Date.now()}`,
+    })
+    await Promise.all([
+      refreshProfitRewardStatus().catch(() => { }),
+      refreshAccounts(tradingAccountID || activeAccountId).catch(() => { }),
+      refreshMetrics().catch(() => { }),
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { }),
+    ])
+    refreshAccountSnapshots().catch(() => { })
+  }
+
   if (!token) {
     return (
       <AppAuthGate
@@ -1536,12 +1607,16 @@ export default function App() {
           referralStatus={referralStatus}
           onReferralWithdraw={handleReferralWithdraw}
           onRefreshReferral={refreshReferralStatus}
+          profitRewardStatus={profitRewardStatus}
+          onRefreshProfitReward={refreshProfitRewardStatus}
+          onClaimProfitReward={handleClaimProfitReward}
           onGoTrade={() => setView("chart")}
           hasUnreadNotifications={hasUnreadNotifications}
           onOpenNotifications={() => setView("notifications")}
           notifications={notifications}
           onBackFromNotifications={() => setView("accounts")}
           onMarkAllNotificationsRead={markAllNotificationsRead}
+          onNotificationClick={markNotificationRead}
           profile={profile}
           setLang={setLang}
           setTheme={setTheme}

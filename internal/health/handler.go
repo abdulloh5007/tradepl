@@ -184,6 +184,24 @@ func (h *Handler) uptime(now time.Time) time.Duration {
 	return uptime
 }
 
+func formatUptimeCompact(uptime time.Duration) string {
+	if uptime < 0 {
+		uptime = 0
+	}
+	totalSeconds := int64(uptime / time.Second)
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm %ds", hours, minutes, seconds)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
+}
+
 func secureTokenEqual(a, b string) bool {
 	if len(a) != len(b) {
 		return false
@@ -269,7 +287,7 @@ func (h *Handler) Live(w http.ResponseWriter, r *http.Request) {
 		Status:    "ok",
 		Timestamp: now.Format(time.RFC3339),
 		UptimeSec: int64(uptime.Seconds()),
-		Uptime:    uptime.String(),
+		Uptime:    formatUptimeCompact(uptime),
 	})
 }
 
@@ -288,7 +306,7 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 		Status:    status,
 		Timestamp: now.Format(time.RFC3339),
 		UptimeSec: int64(uptime.Seconds()),
-		Uptime:    uptime.String(),
+		Uptime:    formatUptimeCompact(uptime),
 		Database: readinessDBStat{
 			Reachable:  db.Reachable,
 			PingMs:     db.PingMs,
@@ -355,7 +373,7 @@ func (h *Handler) fullTrusted(w http.ResponseWriter, r *http.Request) {
 		Status:    status,
 		Timestamp: now.Format(time.RFC3339),
 		UptimeSec: int64(uptime.Seconds()),
-		Uptime:    uptime.String(),
+		Uptime:    formatUptimeCompact(uptime),
 		App: appStats{
 			HTTPAddr:     h.httpAddr,
 			AuthMode:     h.authMode,
