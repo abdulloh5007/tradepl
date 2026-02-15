@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { toast, Toaster } from "sonner"
 
 // Types
-import type { AppNotification, Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics } from "./types"
+import type { AppNotification, MarketNewsEvent, Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics } from "./types"
 
 // Utils
 import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId, storedTimeframe } from "./utils/cookies"
@@ -134,6 +134,36 @@ function historyNotificationFromOrder(order: Order): { kind: AppNotification["ki
   return null
 }
 
+function newsNotificationFromEvent(event: MarketNewsEvent): { kind: AppNotification["kind"]; title: string; message: string; statusKey: "live" | "completed" } | null {
+  const status = String(event.status || "").toLowerCase()
+  const forecast = Number(event.forecast_value || 0)
+  const actual = Number(event.actual_value ?? NaN)
+  const formatVal = (value: number) => formatNumber(Number.isFinite(value) ? value : 0, 2, 2)
+
+  if (status === "live") {
+    return {
+      kind: "news",
+      title: `News started: ${event.title}`,
+      message: `Forecast ${formatVal(forecast)}. Market impact is now active.`,
+      statusKey: "live",
+    }
+  }
+
+  if (status === "completed") {
+    const tone = Number.isFinite(actual)
+      ? (actual > forecast ? "above" : actual < forecast ? "below" : "in line with")
+      : "relative to"
+    return {
+      kind: "news",
+      title: `News result: ${event.title}`,
+      message: `Actual ${formatVal(actual)} is ${tone} forecast ${formatVal(forecast)}.`,
+      statusKey: "completed",
+    }
+  }
+
+  return null
+}
+
 function readStoredNotifications(): AppNotification[] {
   if (typeof window === "undefined") return []
   try {
@@ -229,6 +259,8 @@ export default function App() {
   const [kycStatus, setKycStatus] = useState<KYCStatus | null>(null)
   const [referralStatus, setReferralStatus] = useState<ReferralStatus | null>(null)
   const [profitRewardStatus, setProfitRewardStatus] = useState<ProfitRewardStatus | null>(null)
+  const [newsUpcoming, setNewsUpcoming] = useState<MarketNewsEvent[]>([])
+  const [newsRecent, setNewsRecent] = useState<MarketNewsEvent[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>(readStoredNotifications)
   const telegramRedirectedRef = useRef(false)
   const telegramWriteAccessRequestedRef = useRef(false)
@@ -250,6 +282,8 @@ export default function App() {
     setKycStatus(null)
     setReferralStatus(null)
     setProfitRewardStatus(null)
+    setNewsUpcoming([])
+    setNewsRecent([])
     setHistoryAccountId("")
     setMetricsAccountId("")
     setOrdersAccountId("")
@@ -686,6 +720,32 @@ export default function App() {
     }
   }, [api, token])
 
+  const refreshNewsUpcoming = useCallback(async () => {
+    if (!token) {
+      setNewsUpcoming([])
+      return
+    }
+    try {
+      const items = await api.newsUpcoming({ pair: marketPair, limit: 3 })
+      setNewsUpcoming(Array.isArray(items) ? items : [])
+    } catch {
+      setNewsUpcoming([])
+    }
+  }, [api, token, marketPair])
+
+  const refreshNewsRecent = useCallback(async () => {
+    if (!token) {
+      setNewsRecent([])
+      return
+    }
+    try {
+      const items = await api.newsRecent({ pair: marketPair, limit: 20 })
+      setNewsRecent(Array.isArray(items) ? items : [])
+    } catch {
+      setNewsRecent([])
+    }
+  }, [api, token, marketPair])
+
   const refreshAccountSnapshots = useCallback(async (sourceAccounts?: TradingAccount[]) => {
     if (!token) return
     const list = sourceAccounts || accounts
@@ -740,6 +800,8 @@ export default function App() {
       setKycStatus(null)
       setReferralStatus(null)
       setProfitRewardStatus(null)
+      setNewsUpcoming([])
+      setNewsRecent([])
       setHistoryAccountId("")
       setMetricsAccountId("")
       setOrdersAccountId("")
@@ -765,6 +827,8 @@ export default function App() {
       setKycStatus(null)
       setReferralStatus(null)
       setProfitRewardStatus(null)
+      setNewsUpcoming([])
+      setNewsRecent([])
       return
     }
     Promise.all([
@@ -1042,6 +1106,48 @@ export default function App() {
     if (historyAccountId === activeAccountId && orderHistory.length > 0) return
     fetchOrderHistory(true).catch(() => { })
   }, [token, activeAccountId, historyAccountId, orderHistory.length, fetchOrderHistory])
+
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const poll = async () => {
+      if (cancelled) return
+      await Promise.all([
+        refreshNewsUpcoming().catch(() => { }),
+        refreshNewsRecent().catch(() => { }),
+      ])
+      if (!cancelled) {
+        timer = setTimeout(poll, 15000)
+      }
+    }
+
+    poll()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [token, refreshNewsUpcoming, refreshNewsRecent])
+
+  useEffect(() => {
+    if (!token || newsRecent.length === 0) return
+    const ordered = [...newsRecent].sort((a, b) => {
+      const ta = Date.parse(String(a.updated_at || a.scheduled_at || "")) || 0
+      const tb = Date.parse(String(b.updated_at || b.scheduled_at || "")) || 0
+      return ta - tb
+    })
+    for (const item of ordered) {
+      const next = newsNotificationFromEvent(item)
+      if (!next) continue
+      addNotification({
+        kind: next.kind,
+        title: next.title,
+        message: next.message,
+        dedupeKey: `news:${item.id}:${next.statusKey}`,
+      })
+    }
+  }, [token, newsRecent, addNotification])
 
   // Fast polling for account metrics on live trading views.
   useEffect(() => {
@@ -1601,6 +1707,7 @@ export default function App() {
           depositBonus={depositBonus}
           onClaimSignupBonus={handleClaimSignupBonus}
           onRequestRealDeposit={handleRequestRealDeposit}
+          newsUpcoming={newsUpcoming}
           activeAccount={activeTradingAccount}
           kycStatus={kycStatus}
           onRequestKYC={handleRequestKYC}

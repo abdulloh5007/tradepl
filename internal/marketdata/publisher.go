@@ -212,6 +212,8 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 	var activeEvent *sessions.PriceEvent
 	var eventEndTime time.Time
 	var previousTrend string // To restore after event
+	newsEffect := economicNewsEffect{}
+	lastNewsScheduleRefresh := time.Time{}
 
 	// Channels for config updates
 	sessionCh := sessions.SessionChangeChannel()
@@ -229,6 +231,10 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 	eventTicker := time.NewTicker(5 * time.Second)
 	defer eventTicker.Stop()
 
+	// Economic news lifecycle ticker
+	newsTicker := time.NewTicker(2 * time.Second)
+	defer newsTicker.Stop()
+
 	// Volatility refresh ticker (every 1 second)
 	volTicker := time.NewTicker(1 * time.Second)
 	defer volTicker.Stop()
@@ -238,7 +244,17 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 		case <-ticker.C:
 			// Apply trend bias to price change
 			// Pass UpdateRateMs to scale the step size
-			change := calculatePriceChange(pair, config.TrendBias, config.Volatility, config.UpdateRateMs, currentPrice, trendDyn)
+			effectiveTrend := config.TrendBias
+			effectiveVolatility := config.Volatility
+			if newsEffect.Active {
+				if newsEffect.Trend != "" {
+					effectiveTrend = newsEffect.Trend
+				}
+				if newsEffect.VolatilityMultiplier > 0 {
+					effectiveVolatility = config.Volatility * newsEffect.VolatilityMultiplier
+				}
+			}
+			change := calculatePriceChange(pair, effectiveTrend, effectiveVolatility, config.UpdateRateMs, currentPrice, trendDyn)
 
 			// If there's an active price event, check if it should end
 			if activeEvent != nil {
@@ -482,6 +498,21 @@ func runPublisher(bus *Bus, pair string, dir string, prec int, lastPrice float64
 					}
 				}
 			}
+		case <-newsTicker.C:
+			if sessStore == nil {
+				continue
+			}
+			now := time.Now().UTC()
+			if lastNewsScheduleRefresh.IsZero() || now.Sub(lastNewsScheduleRefresh) >= 30*time.Minute {
+				ensureEconomicNewsCalendar(sessStore, pair, now)
+				lastNewsScheduleRefresh = now
+			}
+			nextEffect, err := updateEconomicNewsLifecycle(sessStore, pair, now)
+			if err != nil {
+				log.Printf("[Publisher] economic news lifecycle error: %v", err)
+				continue
+			}
+			newsEffect = nextEffect
 		}
 	}
 }

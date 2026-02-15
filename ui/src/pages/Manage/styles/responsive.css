@@ -47,6 +47,26 @@
     grid-template-columns: 1fr;
   }
 
+  .admin-tabs-shell {
+    margin-bottom: 14px;
+  }
+
+  .admin-tabs {
+    gap: 8px;
+    border-radius: 12px;
+    padding: 4px;
+  }
+
+  .admin-tab-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .admin-tab-caption {
+    margin: 6px 2px 0;
+    font-size: 11px;
+  }
+
   .admin-card {
     border-radius: 16px;
     padding: 18px;
@@ -198,6 +218,17 @@
   .admin-card {
     padding: 14px;
     border-radius: 14px;
+  }
+
+  .admin-tabs {
+    border-radius: 10px;
+  }
+
+  .admin-tab-btn {
+    padding: 7px 9px;
+    border-radius: 9px;
+    font-size: 11px;
+    gap: 6px;
   }
 
   .admin-card-header {

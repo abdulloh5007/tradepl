@@ -211,6 +211,29 @@ export type ProfitRewardClaimPayload = {
   trading_account_id: string
 }
 
+export type MarketNewsEvent = {
+  id: number
+  pair: string
+  title: string
+  impact: "low" | "medium" | "high" | string
+  rule_key: string
+  source: "manual" | "auto" | string
+  forecast_value: number
+  actual_value?: number | null
+  actual_auto: boolean
+  pre_seconds: number
+  event_seconds: number
+  post_seconds: number
+  scheduled_at: string
+  live_started_at?: string
+  post_started_at?: string
+  completed_at?: string
+  status: "pending" | "pre" | "live" | "post" | "completed" | "cancelled" | string
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 const parseBody = (text: string) => {
   const trimmed = text.trim()
   if (!trimmed) return null
@@ -369,7 +392,27 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       time_in_force?: string
       status: string
       created_at: string
-      }> | null>(url, "GET", undefined, true)
+	      }> | null>(url, "GET", undefined, true)
+	    },
+    newsUpcoming: (params?: { pair?: string; limit?: number }) => {
+      const pair = params?.pair ? String(params.pair) : "UZS-USD"
+      const limit = params?.limit && params.limit > 0 ? params.limit : 3
+      return request<MarketNewsEvent[] | null>(
+        `/v1/news/upcoming?pair=${encodeURIComponent(pair)}&limit=${limit}`,
+        "GET",
+        undefined,
+        true
+      )
+    },
+    newsRecent: (params?: { pair?: string; limit?: number }) => {
+      const pair = params?.pair ? String(params.pair) : "UZS-USD"
+      const limit = params?.limit && params.limit > 0 ? params.limit : 20
+      return request<MarketNewsEvent[] | null>(
+        `/v1/news/recent?pair=${encodeURIComponent(pair)}&limit=${limit}`,
+        "GET",
+        undefined,
+        true
+      )
     },
     closeOrders: (scope: "all" | "profit" | "loss") =>
       request<{ scope: string; total: number; closed: number; failed: number }>("/v1/orders/close", "POST", { scope }, true),

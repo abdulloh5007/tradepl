@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react"
 import type { DepositBonusStatus, KYCStatus, ProfitRewardStatus, ReferralStatus, SignupBonusStatus, UserProfile } from "../api"
-import type { AppNotification, Lang, MarketConfig, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
+import type { AppNotification, Lang, MarketConfig, MarketNewsEvent, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
 import { AccountsPage, ApiPage, FaucetPage, HistoryPage, NotificationsPage, PositionsPage, ProfilePage, TradingPage } from "../pages"
 import type { AccountSnapshot } from "./accounts/types"
 
@@ -58,6 +58,7 @@ interface AppViewRouterProps {
     voucherKind: "none" | "gold" | "diamond"
     proofFile: File
   }) => Promise<void>
+  newsUpcoming: MarketNewsEvent[]
   activeAccount: TradingAccount | null
   kycStatus: KYCStatus | null
   onRequestKYC: (payload: {
@@ -139,6 +140,7 @@ export default function AppViewRouter({
   depositBonus,
   onClaimSignupBonus,
   onRequestRealDeposit,
+  newsUpcoming,
   activeAccount,
   kycStatus,
   onRequestKYC,
@@ -242,6 +244,7 @@ export default function AppViewRouter({
         depositBonus={depositBonus}
         onClaimSignupBonus={onClaimSignupBonus}
         onRequestRealDeposit={onRequestRealDeposit}
+        newsUpcoming={newsUpcoming}
         onCloseAll={async () => {
           await onCloseAll()
         }}

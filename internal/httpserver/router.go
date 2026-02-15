@@ -301,6 +301,8 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.OrderHandler.OrderHistory(w, r, userID)
 			})
+			r.Get("/news/upcoming", d.SessionsHandler.PublicNewsUpcoming)
+			r.Get("/news/recent", d.SessionsHandler.PublicNewsRecent)
 			r.Post("/orders/close", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {
@@ -393,6 +395,10 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.With(admin.RequireRight("events")).Get("/events/active", d.SessionsHandler.GetActiveEvent)
 				r.With(admin.RequireRight("events")).Post("/events", d.SessionsHandler.CreateEvent)
 				r.With(admin.RequireRight("events")).Delete("/events/{id}", d.SessionsHandler.CancelEvent)
+				// Economic news calendar (owner-only)
+				r.With(admin.RequireOwner).Get("/news/events", d.SessionsHandler.AdminNewsEvents)
+				r.With(admin.RequireOwner).Post("/news/events", d.SessionsHandler.AdminCreateNewsEvent)
+				r.With(admin.RequireOwner).Delete("/news/events/{id}", d.SessionsHandler.AdminCancelNewsEvent)
 				// Volatility
 				r.With(admin.RequireRight("volatility")).Get("/volatility", d.VolatilityHandler.GetSettings)
 				r.With(admin.RequireRight("volatility")).Post("/volatility/activate", d.VolatilityHandler.SetActive)

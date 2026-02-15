@@ -119,3 +119,26 @@ export interface AppNotification {
     dedupe_key?: string
     account_id?: string
 }
+
+export interface MarketNewsEvent {
+    id: number
+    pair: string
+    title: string
+    impact: "low" | "medium" | "high" | string
+    rule_key: string
+    source: "manual" | "auto" | string
+    forecast_value: number
+    actual_value?: number | null
+    actual_auto: boolean
+    pre_seconds: number
+    event_seconds: number
+    post_seconds: number
+    scheduled_at: string
+    live_started_at?: string
+    post_started_at?: string
+    completed_at?: string
+    status: "pending" | "pre" | "live" | "post" | "completed" | "cancelled" | string
+    created_by: string
+    created_at: string
+    updated_at: string
+}

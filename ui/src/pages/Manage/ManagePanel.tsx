@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSearchParams, useNavigate } from "react-router-dom"
-import { LogOut, Sun, Moon, Settings, AlertCircle, X } from "lucide-react"
+import { LogOut, Sun, Moon, Settings, AlertCircle, X, Target, ShieldAlert, Shield, Activity } from "lucide-react"
 import Skeleton from "../../components/Skeleton"
 
 // Components
@@ -8,6 +8,7 @@ import SessionsCard from "../../components/admin/SessionsCard"
 import VolatilityCard from "../../components/admin/VolatilityCard"
 import TrendCard from "../../components/admin/TrendCard"
 import PriceEventsCard from "../../components/admin/PriceEventsCard"
+import EconomicNewsCard from "../../components/admin/EconomicNewsCard"
 import PanelAdmins from "../../components/admin/PanelAdmins"
 import TradingRiskCard from "../../components/admin/TradingRiskCard"
 import TradingPairsCard from "../../components/admin/TradingPairsCard"
@@ -18,6 +19,7 @@ import {
     SessionConfig,
     VolatilityConfig,
     PriceEvent,
+    EconomicNewsEvent,
     FilterType,
     TradingRiskConfig,
     TradingPairSpec
@@ -28,6 +30,16 @@ interface ManagePanelProps {
     baseUrl: string
     theme: "dark" | "light"
     onThemeToggle: () => void
+}
+
+type ManageTabId = "market" | "events" | "trading" | "admins" | "system"
+
+const MANAGE_TAB_STORAGE_KEY = "manage.panel.active-tab"
+const MANAGE_TAB_IDS: ManageTabId[] = ["market", "events", "trading", "admins", "system"]
+
+const isManageTabId = (value: string | null): value is ManageTabId => {
+    if (!value) return false
+    return MANAGE_TAB_IDS.includes(value as ManageTabId)
 }
 
 // Helper to get date range for filter type
@@ -94,6 +106,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [eventsTotal, setEventsTotal] = useState(0)
     const [eventsLoading, setEventsLoading] = useState(false)
     const EVENTS_LIMIT = 20
+    const [newsEvents, setNewsEvents] = useState<EconomicNewsEvent[]>([])
+    const [newsOffset, setNewsOffset] = useState(0)
+    const [newsTotal, setNewsTotal] = useState(0)
+    const [newsLoading, setNewsLoading] = useState(false)
+    const NEWS_LIMIT = 20
 
     // Events filter state
     const [filterType, setFilterType] = useState<FilterType>("1d")
@@ -113,6 +130,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const [isMobileHeader, setIsMobileHeader] = useState<boolean>(() => {
         if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
         return window.matchMedia("(max-width: 768px)").matches
+    })
+    const [activeTab, setActiveTab] = useState<ManageTabId>(() => {
+        if (typeof window === "undefined") return "market"
+        const stored = window.localStorage.getItem(MANAGE_TAB_STORAGE_KEY)
+        return isManageTabId(stored) ? stored : "market"
     })
 
     // Error logging flags
@@ -222,6 +244,70 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const canVolatility = canAccess("volatility")
     const canTradingConfig = userRole === "owner"
 
+    const tabs = useMemo(() => {
+        const list: Array<{
+            id: ManageTabId
+            label: string
+            description: string
+            icon: typeof Settings
+            visible: boolean
+        }> = [
+                {
+                    id: "market",
+                    label: "Market",
+                    description: "Sessions, trend and volatility",
+                    icon: Settings,
+                    visible: canSessions || canTrend || canVolatility,
+                },
+                {
+                    id: "events",
+                    label: "Events",
+                    description: userRole === "owner" ? "Price events and economic news" : "Scheduled price events",
+                    icon: Target,
+                    visible: canEvents || userRole === "owner",
+                },
+                {
+                    id: "trading",
+                    label: "Trading",
+                    description: "Risk limits and pair specifications",
+                    icon: ShieldAlert,
+                    visible: canTradingConfig,
+                },
+                {
+                    id: "admins",
+                    label: "Team",
+                    description: "Panel admins and access rights",
+                    icon: Shield,
+                    visible: userRole === "owner",
+                },
+                {
+                    id: "system",
+                    label: "System",
+                    description: "Health and runtime metrics",
+                    icon: Activity,
+                    visible: userRole === "owner",
+                },
+            ]
+
+        return list.filter(tab => tab.visible)
+    }, [canSessions, canTrend, canVolatility, canEvents, canTradingConfig, userRole])
+
+    const activeTabMeta = useMemo(() => {
+        return tabs.find(tab => tab.id === activeTab) || null
+    }, [tabs, activeTab])
+
+    useEffect(() => {
+        if (tabs.length === 0) return
+        if (!tabs.some(tab => tab.id === activeTab)) {
+            setActiveTab(tabs[0].id)
+        }
+    }, [tabs, activeTab])
+
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        window.localStorage.setItem(MANAGE_TAB_STORAGE_KEY, activeTab)
+    }, [activeTab])
+
     const fetchTradingConfig = useCallback(async () => {
         if (!adminToken || !canTradingConfig) return
         setTradingConfigLoading(true)
@@ -282,6 +368,40 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         }
         setEventsLoading(false)
     }, [adminToken, canEvents, baseUrl, headers, filterType, customDateFrom, customDateTo, eventsOffset])
+
+    const fetchNewsEvents = useCallback(async (reset = false) => {
+        if (!adminToken || userRole !== "owner") return
+        setNewsLoading(true)
+        const offset = reset ? 0 : newsOffset
+        const now = new Date()
+        const from = new Date(now.getTime() - 35 * 24 * 60 * 60 * 1000)
+        const to = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000)
+        try {
+            const params = new URLSearchParams({
+                pair: "UZS-USD",
+                limit: String(NEWS_LIMIT),
+                offset: String(offset),
+                date_from: from.toISOString(),
+                date_to: to.toISOString(),
+            })
+            const res = await fetch(`${baseUrl}/v1/admin/news/events?${params}`, { headers })
+            if (res.ok) {
+                const data = await res.json()
+                if (reset) {
+                    setNewsEvents(data.events || [])
+                    setNewsOffset(NEWS_LIMIT)
+                } else {
+                    setNewsEvents(prev => [...prev, ...(data.events || [])])
+                    setNewsOffset(prev => prev + NEWS_LIMIT)
+                }
+                setNewsTotal(data.total || 0)
+            }
+        } catch (e) {
+            console.error("[ManagePanel] Fetch news events error:", e)
+        } finally {
+            setNewsLoading(false)
+        }
+    }, [adminToken, userRole, baseUrl, headers, newsOffset])
 
     // Fetch other data
     const fetchData = useCallback(async () => {
@@ -442,8 +562,9 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             fetchData()
             if (canEvents) fetchEvents(true)
             if (canTradingConfig) fetchTradingConfig()
+            if (userRole === "owner") fetchNewsEvents(true)
         }
-    }, [isAuthorized, adminToken, canEvents, canTradingConfig, fetchData, fetchEvents, fetchTradingConfig])
+    }, [isAuthorized, adminToken, canEvents, canTradingConfig, fetchData, fetchEvents, fetchTradingConfig, userRole, fetchNewsEvents])
 
     // Reset events when filter changes
     useEffect(() => {
@@ -588,6 +709,64 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         setLoading(false)
     }
 
+    const createNewsEvent = async (payload: {
+        title: string
+        impact: "low" | "medium" | "high"
+        forecastValue: number
+        scheduledAt: string
+        preSeconds: number
+        eventSeconds: number
+        postSeconds: number
+    }) => {
+        if (userRole !== "owner") return
+        setNewsLoading(true)
+        try {
+            const res = await fetch(`${baseUrl}/v1/admin/news/events`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                    pair: "UZS-USD",
+                    title: payload.title,
+                    impact: payload.impact,
+                    forecast_value: payload.forecastValue,
+                    scheduled_at: payload.scheduledAt,
+                    pre_seconds: payload.preSeconds,
+                    event_seconds: payload.eventSeconds,
+                    post_seconds: payload.postSeconds,
+                })
+            })
+            if (!res.ok) {
+                const data = await res.json().catch(() => null)
+                throw new Error(data?.error || "Failed to create news event")
+            }
+            await fetchNewsEvents(true)
+        } catch (e: any) {
+            setError(e?.message || "Failed to create news event")
+        } finally {
+            setNewsLoading(false)
+        }
+    }
+
+    const cancelNewsEvent = async (id: number) => {
+        if (userRole !== "owner") return
+        setNewsLoading(true)
+        try {
+            const res = await fetch(`${baseUrl}/v1/admin/news/events/${id}`, {
+                method: "DELETE",
+                headers,
+            })
+            if (!res.ok) {
+                const data = await res.json().catch(() => null)
+                throw new Error(data?.error || "Failed to cancel news event")
+            }
+            await fetchNewsEvents(true)
+        } catch (e: any) {
+            setError(e?.message || "Failed to cancel news event")
+        } finally {
+            setNewsLoading(false)
+        }
+    }
+
     const saveTradingRisk = async (next: TradingRiskConfig) => {
         if (!canTradingConfig) return
         setTradingConfigLoading(true)
@@ -688,85 +867,148 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                 </div>
             )}
 
-            <div className="admin-grid">
-                <SessionsCard
-                    sessions={sessions}
-                    activeSession={activeSession}
-                    mode={mode}
-                    loading={loading}
-                    initialLoad={initialLoad}
-                    canAccess={canSessions}
-                    onSwitchSession={switchSession}
-                    onToggleMode={toggleMode}
-                />
+            {tabs.length > 0 && (
+                <div className="admin-tabs-shell">
+                    <div className="admin-tabs" role="tablist" aria-label="Admin sections">
+                        {tabs.map(tab => {
+                            const Icon = tab.icon
+                            const isActive = activeTab === tab.id
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={isActive}
+                                    className={`admin-tab-btn ${isActive ? "active" : ""}`}
+                                    onClick={() => setActiveTab(tab.id)}
+                                >
+                                    <Icon size={16} />
+                                    <span>{tab.label}</span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                    {activeTabMeta && (
+                        <p className="admin-tab-caption">{activeTabMeta.description}</p>
+                    )}
+                </div>
+            )}
 
-                <VolatilityCard
-                    configs={volConfigs}
-                    activeId={activeVol}
-                    mode={volMode}
-                    loading={loading}
-                    initialLoad={initialLoad}
-                    canAccess={canVolatility}
-                    onActivate={switchVolatility}
-                    onToggleMode={toggleVolMode}
-                />
+            {tabs.length === 0 ? (
+                <div className="admin-card full-width">
+                    <div className="no-events">
+                        <AlertCircle size={20} />
+                        <span>No sections available for your rights</span>
+                    </div>
+                </div>
+            ) : (
+                <div className="admin-grid">
+                    {activeTab === "market" && (
+                        <>
+                            <SessionsCard
+                                sessions={sessions}
+                                activeSession={activeSession}
+                                mode={mode}
+                                loading={loading}
+                                initialLoad={initialLoad}
+                                canAccess={canSessions}
+                                onSwitchSession={switchSession}
+                                onToggleMode={toggleMode}
+                            />
 
-                <TradingRiskCard
-                    value={tradingRisk}
-                    loading={tradingConfigLoading}
-                    initialLoad={initialLoad}
-                    canAccess={canTradingConfig}
-                    onSave={saveTradingRisk}
-                />
+                            <VolatilityCard
+                                configs={volConfigs}
+                                activeId={activeVol}
+                                mode={volMode}
+                                loading={loading}
+                                initialLoad={initialLoad}
+                                canAccess={canVolatility}
+                                onActivate={switchVolatility}
+                                onToggleMode={toggleVolMode}
+                            />
 
-                <TrendCard
-                    currentTrend={currentTrend}
-                    mode={trendMode}
-                    autoTrendState={autoTrendState}
-                    activeEventState={activeEventState}
-                    loading={loading}
-                    initialLoad={initialLoad}
-                    eventLoading={eventLoading}
-                    canAccess={canTrend}
-                    onSetTrend={setTrend}
-                    onToggleMode={toggleTrendMode}
-                />
+                            <TrendCard
+                                currentTrend={currentTrend}
+                                mode={trendMode}
+                                autoTrendState={autoTrendState}
+                                activeEventState={activeEventState}
+                                loading={loading}
+                                initialLoad={initialLoad}
+                                eventLoading={eventLoading}
+                                canAccess={canTrend}
+                                onSetTrend={setTrend}
+                                onToggleMode={toggleTrendMode}
+                            />
+                        </>
+                    )}
 
-                <PriceEventsCard
-                    events={events}
-                    total={eventsTotal}
-                    loading={eventsLoading}
-                    initialLoad={initialLoad}
-                    canAccess={canEvents}
-                    filterType={filterType}
-                    customDateFrom={customDateFrom}
-                    customDateTo={customDateTo}
-                    onCreate={createEvent}
-                    onCancel={cancelEvent}
-                    onLoadMore={() => fetchEvents(false)}
-                    onFilterChange={handleFilterChange}
-                />
+                    {activeTab === "events" && (
+                        <>
+                            <PriceEventsCard
+                                events={events}
+                                total={eventsTotal}
+                                loading={eventsLoading}
+                                initialLoad={initialLoad}
+                                canAccess={canEvents}
+                                filterType={filterType}
+                                customDateFrom={customDateFrom}
+                                customDateTo={customDateTo}
+                                onCreate={createEvent}
+                                onCancel={cancelEvent}
+                                onLoadMore={() => fetchEvents(false)}
+                                onFilterChange={handleFilterChange}
+                            />
 
-                <TradingPairsCard
-                    pairs={tradingPairs}
-                    loading={tradingConfigLoading}
-                    initialLoad={initialLoad}
-                    canAccess={canTradingConfig}
-                    onSave={saveTradingPair}
-                />
+                            <EconomicNewsCard
+                                canAccess={userRole === "owner"}
+                                events={newsEvents}
+                                total={newsTotal}
+                                loading={newsLoading}
+                                onRefresh={() => fetchNewsEvents(true)}
+                                onLoadMore={() => fetchNewsEvents(false)}
+                                onCreate={createNewsEvent}
+                                onCancel={cancelNewsEvent}
+                            />
+                        </>
+                    )}
 
-                <PanelAdmins
-                    baseUrl={baseUrl}
-                    headers={headers}
-                    userRole={userRole}
-                />
+                    {activeTab === "trading" && (
+                        <>
+                            <TradingRiskCard
+                                value={tradingRisk}
+                                loading={tradingConfigLoading}
+                                initialLoad={initialLoad}
+                                canAccess={canTradingConfig}
+                                onSave={saveTradingRisk}
+                            />
 
-                <SystemHealthCard
-                    baseUrl={baseUrl}
-                    headers={headers}
-                    canAccess={userRole === "owner"}
-                />
-            </div>
+                            <TradingPairsCard
+                                pairs={tradingPairs}
+                                loading={tradingConfigLoading}
+                                initialLoad={initialLoad}
+                                canAccess={canTradingConfig}
+                                onSave={saveTradingPair}
+                            />
+                        </>
+                    )}
+
+                    {activeTab === "admins" && (
+                        <PanelAdmins
+                            baseUrl={baseUrl}
+                            headers={headers}
+                            userRole={userRole}
+                        />
+                    )}
+
+                    {activeTab === "system" && (
+                        <SystemHealthCard
+                            baseUrl={baseUrl}
+                            headers={headers}
+                            canAccess={userRole === "owner"}
+                        />
+                    )}
+                </div>
+            )}
         </div>
     )
 }

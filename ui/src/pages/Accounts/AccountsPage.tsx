@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Bell, Gift, Plus, Sparkles, X } from "lucide-react"
 import type { DepositBonusStatus, SignupBonusStatus } from "../../api"
-import type { Metrics, TradingAccount } from "../../types"
+import type { MarketNewsEvent, Metrics, TradingAccount } from "../../types"
 import ActiveAccountCard from "../../components/accounts/ActiveAccountCard"
 import AccountsSwitcherSheet from "../../components/accounts/AccountsSwitcherSheet"
 import AccountFundingModal from "../../components/accounts/AccountFundingModal"
@@ -33,6 +33,7 @@ interface AccountsPageProps {
     voucherKind: "none" | "gold" | "diamond"
     proofFile: File
   }) => Promise<void>
+  newsUpcoming: MarketNewsEvent[]
   onCloseAll: () => Promise<void>
   onGoTrade: () => void
   hasUnreadNotifications: boolean
@@ -54,6 +55,40 @@ const voucherLabel = (kind: VoucherKind) => {
   return "Deposit bonus"
 }
 
+const formatNewsTime = (raw: string) => {
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return "—"
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tashkent",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d)
+}
+
+const normalizeImpact = (impact: string) => {
+  const value = String(impact || "").toLowerCase()
+  if (value === "high" || value === "medium" || value === "low") return value
+  return "medium"
+}
+
+const newsStatusText = (status: string) => {
+  const value = String(status || "").toLowerCase()
+  if (value === "live") return "Live"
+  if (value === "pre") return "Pre-event"
+  if (value === "post") return "Cooling down"
+  return "Scheduled"
+}
+
+const formatNewsNumber = (value?: number | null) => {
+  const n = Number(value ?? 0)
+  if (!Number.isFinite(n)) return "0.00"
+  return n.toFixed(2)
+}
+
 export default function AccountsPage({
   accounts,
   activeAccountId,
@@ -71,6 +106,7 @@ export default function AccountsPage({
   depositBonus,
   onClaimSignupBonus,
   onRequestRealDeposit,
+  newsUpcoming,
   onCloseAll,
   onGoTrade,
   hasUnreadNotifications,
@@ -285,6 +321,34 @@ export default function AccountsPage({
         }}
         onDetails={() => setDetailsOpen(true)}
       />
+
+      {newsUpcoming.length > 0 && (
+        <section className="accounts-news-rail-wrap">
+          <div className="accounts-news-rail-title-row">
+            <h3 className="accounts-news-rail-title">Market calendar</h3>
+            <span className="accounts-news-rail-subtitle">Asia/Tashkent</span>
+          </div>
+          <div className="accounts-news-rail">
+            {newsUpcoming.slice(0, 3).map(item => {
+              const impact = normalizeImpact(item.impact)
+              return (
+                <article key={item.id} className={`accounts-news-card impact-${impact}`}>
+                  <div className="accounts-news-card-top">
+                    <span className={`accounts-news-impact impact-${impact}`}>{impact.toUpperCase()}</span>
+                    <span className="accounts-news-status">{newsStatusText(item.status)}</span>
+                  </div>
+                  <h4 className="accounts-news-title">{item.title}</h4>
+                  <div className="accounts-news-time">{formatNewsTime(item.scheduled_at)}</div>
+                  <div className="accounts-news-values">
+                    <span>F: {formatNewsNumber(item.forecast_value)}</span>
+                    {item.actual_value != null ? <span>A: {formatNewsNumber(item.actual_value)}</span> : <span>A: —</span>}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <AccountsSwitcherSheet
         open={switcherOpen}
