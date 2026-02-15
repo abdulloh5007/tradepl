@@ -219,3 +219,55 @@
   cursor: not-allowed;
   transform: none;
 }
+
+html[data-theme="light"] .acc-active-card {
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+
+html[data-theme="light"] .acc-active-title-row h2 {
+  color: var(--text);
+}
+
+html[data-theme="light"] .acc-mini-id {
+  color: var(--muted);
+}
+
+html[data-theme="light"] .acc-mode-pill,
+html[data-theme="light"] .acc-platform-pill,
+html[data-theme="light"] .acc-plan-pill {
+  background: color-mix(in srgb, var(--accent-2) 14%, #ffffff);
+  color: color-mix(in srgb, var(--accent-2) 78%, #0f172a);
+}
+
+html[data-theme="light"] .acc-switch-toggle {
+  background: var(--panel-alt);
+  color: var(--text);
+}
+
+html[data-theme="light"] .acc-switch-toggle:hover {
+  background: color-mix(in srgb, var(--accent-2) 12%, var(--panel-alt));
+}
+
+html[data-theme="light"] .acc-pl-block {
+  color: var(--text);
+}
+
+html[data-theme="light"] .acc-balance-skeleton {
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.18) 25%, rgba(148, 163, 184, 0.34) 50%, rgba(148, 163, 184, 0.18) 75%);
+}
+
+html[data-theme="light"] .acc-action-btn {
+  background: var(--panel-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+html[data-theme="light"] .acc-action-btn:hover {
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--panel-alt));
+}
+
+html[data-theme="light"] .acc-action-label {
+  color: var(--muted);
+}

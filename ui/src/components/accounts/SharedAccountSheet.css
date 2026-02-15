@@ -9,14 +9,35 @@
     flex-direction: column;
     justify-content: flex-end;
     align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.22s ease, visibility 0.22s step-end;
+}
+
+.acm-overlay.is-open,
+.acm-overlay.is-closing {
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.acm-overlay.is-open {
+    opacity: 1;
+    transition: opacity 0.22s ease;
+}
+
+.acm-overlay.is-closing {
+    opacity: 0;
 }
 
 .acm-backdrop {
     position: absolute;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background-color: var(--overlay-backdrop);
+    backdrop-filter: blur(var(--overlay-blur));
     z-index: 1;
+    opacity: 0;
+    transition: opacity 0.22s ease;
 }
 
 /* Modal Container (The Sheet) */
@@ -25,26 +46,37 @@
     z-index: 2;
     width: 100%;
     max-width: 420px;
-    background-color: #13141b;
+    background-color: var(--sheet-surface);
+    border: 1px solid color-mix(in srgb, var(--sheet-border) 85%, transparent);
     border-radius: 20px 20px 0 0;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--sheet-shadow);
     display: flex;
     flex-direction: column;
     max-height: 90vh;
-    color: #ffffff;
+    color: var(--text);
     font-family: 'Space Grotesk', sans-serif;
-    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
+    transform: translateY(20px) scale(0.99);
+    opacity: 0;
+    transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
 }
 
-@keyframes slideUp {
-    from {
-        transform: translateY(100%);
-    }
+.acm-overlay.is-open .acm-backdrop {
+    opacity: 1;
+}
 
-    to {
-        transform: translateY(0);
-    }
+.acm-overlay.is-open .acm-sheet {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+.acm-overlay.is-closing .acm-backdrop {
+    opacity: 0;
+}
+
+.acm-overlay.is-closing .acm-sheet {
+    transform: translateY(22px) scale(0.99);
+    opacity: 0;
 }
 
 /* Header */
@@ -54,14 +86,14 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    background-color: #13141b;
+    border-bottom: 1px solid color-mix(in srgb, var(--sheet-border) 75%, transparent);
+    background-color: var(--sheet-surface);
 }
 
 .acm-close-btn {
     padding: 8px;
     margin-left: -8px;
-    color: #9ca3af;
+    color: var(--sheet-muted);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -73,8 +105,8 @@
 }
 
 .acm-close-btn:hover {
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    background-color: color-mix(in srgb, var(--sheet-surface-alt) 85%, transparent);
 }
 
 .acm-title {
@@ -109,7 +141,7 @@
 .acm-tabs {
     display: flex;
     padding: 4px;
-    background-color: #1c1e26;
+    background-color: var(--sheet-surface-alt);
     border-radius: 12px;
 }
 
@@ -121,19 +153,19 @@
     border-radius: 8px;
     border: none;
     background: transparent;
-    color: #9ca3af;
+    color: var(--sheet-muted);
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .acm-tab:hover {
-    color: #d1d5db;
+    color: var(--text);
 }
 
 .acm-tab.active {
-    background-color: #2a2d3a;
-    color: #ffffff;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    background-color: color-mix(in srgb, var(--sheet-surface) 92%, transparent);
+    color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--sheet-border) 80%, transparent);
 }
 
 /* Scroll Container for Cards/Content */
@@ -179,7 +211,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: color-mix(in srgb, var(--sheet-muted) 32%, transparent);
     transition: all 0.3s;
     border: none;
     cursor: pointer;
@@ -187,7 +219,7 @@
 }
 
 .acm-dot.active {
-    background-color: #ffffff;
+    background-color: var(--text);
     transform: scale(1.25);
 }
 
@@ -196,15 +228,15 @@
     flex-shrink: 0;
     padding: 24px;
     padding-top: 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    background-color: #13141b;
+    border-top: 1px solid color-mix(in srgb, var(--sheet-border) 75%, transparent);
+    background-color: var(--sheet-surface);
 }
 
 .acm-submit-btn {
     width: 100%;
     padding: 14px;
     background-color: #fbbf24;
-    color: #000000;
+    color: #0b1020;
     font-weight: 700;
     border: none;
     border-radius: 14px;
@@ -224,13 +256,13 @@
 
 .acm-submit-btn.ghost {
     background-color: transparent;
-    color: #9ca3af;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--sheet-muted);
+    border: 1px solid color-mix(in srgb, var(--sheet-border) 78%, transparent);
 }
 
 .acm-submit-btn.ghost:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    color: #fff;
+    background-color: color-mix(in srgb, var(--sheet-surface-alt) 85%, transparent);
+    color: var(--text);
 }
 
 /* Generic form elements for shared usage */
@@ -246,16 +278,16 @@
     flex-direction: column;
     gap: 8px;
     font-size: 14px;
-    color: #9ca3af;
+    color: var(--sheet-muted);
 }
 
 .acm-input,
 .acm-select {
     padding: 12px;
-    background-color: #1c1e26;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: var(--sheet-surface-alt);
+    border: 1px solid color-mix(in srgb, var(--sheet-border) 80%, transparent);
     border-radius: 12px;
-    color: #fff;
+    color: var(--text);
     font-family: inherit;
     font-size: 16px;
     outline: none;
@@ -267,9 +299,9 @@
 }
 
 .acm-dropdown .ui-dropdown-trigger {
-    background-color: #1c1e26;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
+    background-color: var(--sheet-surface-alt);
+    border-color: color-mix(in srgb, var(--sheet-border) 80%, transparent);
+    color: var(--text);
 }
 
 .acm-dropdown .ui-dropdown-trigger:focus-visible {
@@ -278,14 +310,14 @@
 }
 
 .acm-dropdown .ui-dropdown-menu {
-    background-color: #1c1e26;
-    border-color: rgba(255, 255, 255, 0.1);
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+    background-color: var(--sheet-surface-alt);
+    border-color: color-mix(in srgb, var(--sheet-border) 80%, transparent);
+    box-shadow: var(--sheet-shadow);
 }
 
 .acm-dropdown .ui-dropdown-option {
-    color: #ffffff;
-    border-bottom-color: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    border-bottom-color: color-mix(in srgb, var(--sheet-border) 75%, transparent);
 }
 
 .acm-dropdown .ui-dropdown-option:hover:not(:disabled),
@@ -296,7 +328,7 @@
 
 .acm-note {
     font-size: 12px;
-    color: #6b7280;
+    color: var(--sheet-muted);
     line-height: 1.4;
     text-align: center;
 }
@@ -312,19 +344,19 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background-color: #1c1e26;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: var(--sheet-surface-alt);
+    border: 1px solid color-mix(in srgb, var(--sheet-border) 72%, transparent);
     border-radius: 12px;
     margin-bottom: 8px;
-    color: #fff;
+    color: var(--text);
     cursor: pointer;
     transition: all 0.2s;
     text-align: left;
 }
 
 .acm-list-item:hover {
-    background-color: #2a2d3a;
-    border-color: rgba(255, 255, 255, 0.1);
+    background-color: color-mix(in srgb, var(--accent-2) 8%, var(--sheet-surface-alt));
+    border-color: color-mix(in srgb, var(--sheet-border) 88%, transparent);
 }
 
 .acm-list-item.active {
@@ -364,7 +396,7 @@
 .acm-confirm-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.62);
+    background: var(--overlay-backdrop);
 }
 
 .acm-confirm-card {
@@ -404,4 +436,136 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
+}
+
+html[data-theme="light"] .acm-backdrop {
+    background-color: rgba(15, 23, 42, 0.36);
+}
+
+html[data-theme="light"] .acm-sheet,
+html[data-theme="light"] .acm-header,
+html[data-theme="light"] .acm-footer {
+    background-color: var(--panel);
+    color: var(--text);
+    border-color: var(--border);
+}
+
+html[data-theme="light"] .acm-sheet {
+    box-shadow: var(--shadow);
+}
+
+html[data-theme="light"] .acm-close-btn {
+    color: var(--muted);
+}
+
+html[data-theme="light"] .acm-close-btn:hover {
+    color: var(--text);
+    background-color: var(--panel-alt);
+}
+
+html[data-theme="light"] .acm-tabs {
+    background-color: var(--panel-alt);
+}
+
+html[data-theme="light"] .acm-tab {
+    color: var(--muted);
+}
+
+html[data-theme="light"] .acm-tab:hover {
+    color: var(--text);
+}
+
+html[data-theme="light"] .acm-tab.active {
+    background-color: #ffffff;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+html[data-theme="light"] .acm-dot {
+    background-color: rgba(100, 116, 139, 0.3);
+}
+
+html[data-theme="light"] .acm-dot.active {
+    background-color: var(--text);
+}
+
+html[data-theme="light"] .acm-submit-btn.ghost {
+    color: var(--muted);
+    border-color: var(--border);
+}
+
+html[data-theme="light"] .acm-submit-btn.ghost:hover {
+    background-color: var(--panel-alt);
+    color: var(--text);
+}
+
+html[data-theme="light"] .acm-label,
+html[data-theme="light"] .acm-note {
+    color: var(--muted);
+}
+
+html[data-theme="light"] .acm-input,
+html[data-theme="light"] .acm-select,
+html[data-theme="light"] .acm-dropdown .ui-dropdown-trigger {
+    background-color: var(--panel-alt);
+    border-color: var(--border);
+    color: var(--text);
+}
+
+html[data-theme="light"] .acm-dropdown .ui-dropdown-menu {
+    background-color: var(--panel);
+    border-color: var(--border);
+    box-shadow: var(--shadow);
+}
+
+html[data-theme="light"] .acm-dropdown .ui-dropdown-option {
+    color: var(--text);
+    border-bottom-color: color-mix(in srgb, var(--border) 75%, transparent);
+}
+
+html[data-theme="light"] .acm-dropdown .ui-dropdown-option:hover:not(:disabled),
+html[data-theme="light"] .acm-dropdown .ui-dropdown-option.active {
+    background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: color-mix(in srgb, var(--accent) 80%, #0f172a);
+}
+
+html[data-theme="light"] .acm-list-item {
+    background-color: var(--panel-alt);
+    border-color: var(--border);
+    color: var(--text);
+}
+
+html[data-theme="light"] .acm-list-item:hover {
+    background-color: color-mix(in srgb, var(--accent-2) 8%, var(--panel-alt));
+}
+
+html[data-theme="light"] .acm-list-item.active {
+    background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+html[data-theme="light"] .acm-danger-btn {
+    background-color: rgba(239, 68, 68, 0.08);
+}
+
+html[data-theme="light"] .acm-confirm-backdrop {
+    background: rgba(15, 23, 42, 0.38);
+}
+
+html[data-theme="light"] .acm-confirm-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    box-shadow: var(--shadow);
+}
+
+html[data-theme="light"] .acm-confirm-title {
+    color: var(--text);
+}
+
+html[data-theme="light"] .acm-confirm-text {
+    color: color-mix(in srgb, var(--text) 75%, #ffffff);
+}
+
+html[data-theme="light"] .acm-confirm-rule {
+    color: color-mix(in srgb, var(--text) 82%, #ffffff);
 }

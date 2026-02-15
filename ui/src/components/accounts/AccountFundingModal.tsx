@@ -1,6 +1,7 @@
 import { X } from "lucide-react"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "./SharedAccountSheet.css"
 
 interface AccountFundingModalProps {
@@ -26,13 +27,14 @@ export default function AccountFundingModal({
   onSubmit,
   loading
 }: AccountFundingModalProps) {
-  if (!open) return null
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+  if (!shouldRender) return null
   const title = type === "deposit" ? t("accounts.deposit", lang) : t("accounts.withdraw", lang)
   const disabled = mode !== "demo"
   const disabledText = type === "deposit" ? t("accounts.realDepositUnavailable", lang) : t("accounts.realWithdrawUnavailable", lang)
 
   return (
-    <div className="acm-overlay" role="dialog" aria-modal="true">
+    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
       <div className="acm-backdrop" onClick={onClose} />
       <div className="acm-sheet">
         <div className="acm-header">

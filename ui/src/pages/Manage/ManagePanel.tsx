@@ -24,6 +24,9 @@ import {
     TradingRiskConfig,
     TradingPairSpec
 } from "../../components/admin/types"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
+import { storedLang } from "../../utils/cookies"
 import "./ManagePanel.css"
 
 interface ManagePanelProps {
@@ -63,6 +66,7 @@ const getDateRange = (type: FilterType, customFrom?: Date, customTo?: Date) => {
 }
 
 export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePanelProps) {
+    const [lang] = useState<Lang>(storedLang)
     const [searchParams] = useSearchParams()
     const navigate = useNavigate()
     const urlToken = searchParams.get("token")
@@ -254,43 +258,43 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         }> = [
                 {
                     id: "market",
-                    label: "Market",
-                    description: "Sessions, trend and volatility",
+                    label: t("manage.tab.market", lang),
+                    description: t("manage.tab.marketDesc", lang),
                     icon: Settings,
                     visible: canSessions || canTrend || canVolatility,
                 },
                 {
                     id: "events",
-                    label: "Events",
-                    description: userRole === "owner" ? "Price events and economic news" : "Scheduled price events",
+                    label: t("manage.tab.events", lang),
+                    description: userRole === "owner" ? t("manage.tab.eventsDescOwner", lang) : t("manage.tab.eventsDescAdmin", lang),
                     icon: Target,
                     visible: canEvents || userRole === "owner",
                 },
                 {
                     id: "trading",
-                    label: "Trading",
-                    description: "Risk limits and pair specifications",
+                    label: t("manage.tab.trading", lang),
+                    description: t("manage.tab.tradingDesc", lang),
                     icon: ShieldAlert,
                     visible: canTradingConfig,
                 },
                 {
                     id: "admins",
-                    label: "Team",
-                    description: "Panel admins and access rights",
+                    label: t("manage.tab.admins", lang),
+                    description: t("manage.tab.adminsDesc", lang),
                     icon: Shield,
                     visible: userRole === "owner",
                 },
                 {
                     id: "system",
-                    label: "System",
-                    description: "Health and runtime metrics",
+                    label: t("manage.tab.system", lang),
+                    description: t("manage.tab.systemDesc", lang),
                     icon: Activity,
                     visible: userRole === "owner",
                 },
             ]
 
         return list.filter(tab => tab.visible)
-    }, [canSessions, canTrend, canVolatility, canEvents, canTradingConfig, userRole])
+    }, [canSessions, canTrend, canVolatility, canEvents, canTradingConfig, userRole, lang])
 
     const activeTabMeta = useMemo(() => {
         return tabs.find(tab => tab.id === activeTab) || null
@@ -737,11 +741,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             })
             if (!res.ok) {
                 const data = await res.json().catch(() => null)
-                throw new Error(data?.error || "Failed to create news event")
+                throw new Error(data?.error || t("manage.news.error.create", lang))
             }
             await fetchNewsEvents(true)
         } catch (e: any) {
-            setError(e?.message || "Failed to create news event")
+            setError(e?.message || t("manage.news.error.create", lang))
         } finally {
             setNewsLoading(false)
         }
@@ -757,11 +761,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             })
             if (!res.ok) {
                 const data = await res.json().catch(() => null)
-                throw new Error(data?.error || "Failed to cancel news event")
+                throw new Error(data?.error || t("manage.news.error.cancel", lang))
             }
             await fetchNewsEvents(true)
         } catch (e: any) {
-            setError(e?.message || "Failed to cancel news event")
+            setError(e?.message || t("manage.news.error.cancel", lang))
         } finally {
             setNewsLoading(false)
         }
@@ -778,13 +782,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             })
             if (!res.ok) {
                 const err = await res.json().catch(() => null)
-                throw new Error(err?.error || "Failed to save trading risk")
+                throw new Error(err?.error || t("manage.risk.error.save", lang))
             }
             const data = await res.json()
             setTradingRisk(data || null)
             setError(null)
         } catch (e: any) {
-            setError(e?.message || "Failed to save trading risk")
+            setError(e?.message || t("manage.risk.error.save", lang))
         } finally {
             setTradingConfigLoading(false)
         }
@@ -801,12 +805,12 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             })
             if (!res.ok) {
                 const err = await res.json().catch(() => null)
-                throw new Error(err?.error || `Failed to save ${symbol}`)
+                throw new Error(err?.error || t("manage.pairs.error.saveSymbol", lang).replace("{symbol}", symbol))
             }
             setError(null)
             await fetchTradingConfig()
         } catch (e: any) {
-            setError(e?.message || `Failed to save ${symbol}`)
+            setError(e?.message || t("manage.pairs.error.saveSymbol", lang).replace("{symbol}", symbol))
         } finally {
             setTradingConfigLoading(false)
         }
@@ -841,11 +845,11 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             <header className={`admin-header ${isMobileHeader && isHeaderCompact ? "compact" : ""}`}>
                 <div className="admin-header-left">
                     <Settings size={24} className="admin-title-icon" />
-                    <h1>Panel</h1>
+                    <h1>{t("manage.header.title", lang)}</h1>
                 </div>
                 <div className="admin-header-center">
                     <span className={`role-pill ${userRole === "owner" ? "owner" : "admin"}`}>
-                        {userRole === "owner" ? "OWNER" : "ADMIN"}
+                        {userRole === "owner" ? t("manage.role.owner", lang) : t("manage.role.admin", lang)}
                     </span>
                 </div>
                 <div className="admin-header-right">
@@ -854,7 +858,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     </button>
                     <button onClick={() => navigate("/")} className="logout-btn">
                         <LogOut size={18} />
-                        <span>Exit</span>
+                        <span>{t("manage.header.exit", lang)}</span>
                     </button>
                 </div>
             </header>
@@ -869,7 +873,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
             {tabs.length > 0 && (
                 <div className="admin-tabs-shell">
-                    <div className="admin-tabs" role="tablist" aria-label="Admin sections">
+                    <div className="admin-tabs" role="tablist" aria-label={t("manage.tabs.ariaLabel", lang)}>
                         {tabs.map(tab => {
                             const Icon = tab.icon
                             const isActive = activeTab === tab.id
@@ -898,7 +902,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                 <div className="admin-card full-width">
                     <div className="no-events">
                         <AlertCircle size={20} />
-                        <span>No sections available for your rights</span>
+                        <span>{t("manage.noSectionsForRights", lang)}</span>
                     </div>
                 </div>
             ) : (
@@ -906,6 +910,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     {activeTab === "market" && (
                         <>
                             <SessionsCard
+                                lang={lang}
                                 sessions={sessions}
                                 activeSession={activeSession}
                                 mode={mode}
@@ -917,6 +922,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             />
 
                             <VolatilityCard
+                                lang={lang}
                                 configs={volConfigs}
                                 activeId={activeVol}
                                 mode={volMode}
@@ -928,6 +934,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             />
 
                             <TrendCard
+                                lang={lang}
                                 currentTrend={currentTrend}
                                 mode={trendMode}
                                 autoTrendState={autoTrendState}
@@ -945,6 +952,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     {activeTab === "events" && (
                         <>
                             <PriceEventsCard
+                                lang={lang}
                                 events={events}
                                 total={eventsTotal}
                                 loading={eventsLoading}
@@ -960,6 +968,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             />
 
                             <EconomicNewsCard
+                                lang={lang}
                                 canAccess={userRole === "owner"}
                                 events={newsEvents}
                                 total={newsTotal}
@@ -975,6 +984,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     {activeTab === "trading" && (
                         <>
                             <TradingRiskCard
+                                lang={lang}
                                 value={tradingRisk}
                                 loading={tradingConfigLoading}
                                 initialLoad={initialLoad}
@@ -983,6 +993,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             />
 
                             <TradingPairsCard
+                                lang={lang}
                                 pairs={tradingPairs}
                                 loading={tradingConfigLoading}
                                 initialLoad={initialLoad}
@@ -994,6 +1005,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
                     {activeTab === "admins" && (
                         <PanelAdmins
+                            lang={lang}
                             baseUrl={baseUrl}
                             headers={headers}
                             userRole={userRole}
@@ -1002,6 +1014,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
 
                     {activeTab === "system" && (
                         <SystemHealthCard
+                            lang={lang}
                             baseUrl={baseUrl}
                             headers={headers}
                             canAccess={userRole === "owner"}

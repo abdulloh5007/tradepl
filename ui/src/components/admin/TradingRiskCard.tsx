@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react"
 import { ShieldAlert } from "lucide-react"
 import type { TradingRiskConfig } from "./types"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 
 interface TradingRiskCardProps {
+    lang: Lang
     value: TradingRiskConfig | null
     loading: boolean
     initialLoad: boolean
@@ -82,7 +85,7 @@ const normalizeRisk = (value: TradingRiskConfig | null | undefined): TradingRisk
     spread_smoothing_alpha: asPositiveNumberString(value?.spread_smoothing_alpha, DEFAULT_RISK.spread_smoothing_alpha),
 })
 
-export default function TradingRiskCard({ value, loading, initialLoad, canAccess, onSave }: TradingRiskCardProps) {
+export default function TradingRiskCard({ lang, value, loading, initialLoad, canAccess, onSave }: TradingRiskCardProps) {
     const [draft, setDraft] = useState<TradingRiskConfig>(normalizeRisk(value))
 
     useEffect(() => {
@@ -110,15 +113,15 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
         <div className="admin-card">
             <div className="admin-card-header">
                 <ShieldAlert size={20} />
-                <h2>Order Limits</h2>
+                <h2>{t("manage.risk.title", lang)}</h2>
             </div>
 
             {initialLoad && !draft ? (
-                <div className="no-events">Loading risk config...</div>
+                <div className="no-events">{t("manage.risk.loading", lang)}</div>
             ) : (
                 <div className="risk-grid">
                     <label className="risk-field">
-                        <span>Max Orders</span>
+                        <span>{t("manage.risk.maxOrders", lang)}</span>
                         <input
                             type="number"
                             min="1"
@@ -128,7 +131,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                     </label>
 
                     <label className="risk-field">
-                        <span>Max Lot Size Per Order</span>
+                        <span>{t("manage.risk.maxLotPerOrder", lang)}</span>
                         <input
                             type="text"
                             value={draft.max_order_lots}
@@ -136,7 +139,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Real Deposit Min (USD)</span>
+                        <span>{t("manage.risk.realDepositMin", lang)}</span>
                         <input
                             type="text"
                             value={draft.real_deposit_min_usd}
@@ -144,7 +147,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Real Deposit Max (USD)</span>
+                        <span>{t("manage.risk.realDepositMax", lang)}</span>
                         <input
                             type="text"
                             value={draft.real_deposit_max_usd}
@@ -152,7 +155,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>USD to UZS Rate</span>
+                        <span>{t("manage.risk.usdToUzsRate", lang)}</span>
                         <input
                             type="text"
                             value={draft.usd_to_uzs_rate}
@@ -160,7 +163,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Telegram Deposit Review Chat ID</span>
+                        <span>{t("manage.risk.telegramDepositChatID", lang)}</span>
                         <input
                             type="text"
                             value={draft.telegram_deposit_chat_id}
@@ -169,7 +172,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>KYC Bonus Amount (USD)</span>
+                        <span>{t("manage.risk.kycBonusAmount", lang)}</span>
                         <input
                             type="text"
                             value={draft.kyc_bonus_amount}
@@ -177,7 +180,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>KYC Review ETA (hours)</span>
+                        <span>{t("manage.risk.kycReviewEtaHours", lang)}</span>
                         <input
                             type="number"
                             min="1"
@@ -186,7 +189,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Telegram KYC Review Chat ID</span>
+                        <span>{t("manage.risk.telegramKycChatID", lang)}</span>
                         <input
                             type="text"
                             value={draft.telegram_kyc_chat_id}
@@ -195,7 +198,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Spread Calm Max Add</span>
+                        <span>{t("manage.risk.spreadCalmMaxAdd", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_calm_max_add}
@@ -203,7 +206,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Spread Spike Threshold</span>
+                        <span>{t("manage.risk.spreadSpikeThreshold", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_spike_threshold}
@@ -211,7 +214,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Spread Spike Max Add</span>
+                        <span>{t("manage.risk.spreadSpikeMaxAdd", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_spike_max_add}
@@ -219,7 +222,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>News Pre Mult</span>
+                        <span>{t("manage.risk.newsPreMult", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_news_pre_mult}
@@ -227,7 +230,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>News Post Mult</span>
+                        <span>{t("manage.risk.newsPostMult", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_news_post_mult}
@@ -235,7 +238,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>News Live Low Mult</span>
+                        <span>{t("manage.risk.newsLiveLowMult", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_news_live_low_mult}
@@ -243,7 +246,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>News Live Medium Mult</span>
+                        <span>{t("manage.risk.newsLiveMediumMult", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_news_live_medium_mult}
@@ -251,7 +254,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>News Live High Mult</span>
+                        <span>{t("manage.risk.newsLiveHighMult", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_news_live_high_mult}
@@ -259,7 +262,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Spread Dynamic Cap Mult</span>
+                        <span>{t("manage.risk.spreadDynamicCapMult", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_dynamic_cap_mult}
@@ -267,7 +270,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <label className="risk-field">
-                        <span>Spread Smoothing Alpha</span>
+                        <span>{t("manage.risk.spreadSmoothingAlpha", lang)}</span>
                         <input
                             type="text"
                             value={draft.spread_smoothing_alpha}
@@ -275,9 +278,9 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         />
                     </label>
                     <div className="risk-field">
-                        <span>System</span>
+                        <span>{t("manage.risk.system", lang)}</span>
                         <div className="no-events" style={{ margin: 0, padding: "11px 12px", textAlign: "left" }}>
-                            Margin call, stop out, deposit and KYC bonus pools are auto-managed. Requests go to Telegram review chats when chat IDs are configured.
+                            {t("manage.risk.systemInfo", lang)}
                         </div>
                     </div>
                 </div>
@@ -291,7 +294,7 @@ export default function TradingRiskCard({ value, loading, initialLoad, canAccess
                         onSave(normalizeRisk(draft)).catch(() => { })
                     }}
                 >
-                    {loading ? "Saving..." : "Save Risk Config"}
+                    {loading ? t("common.saving", lang) : t("manage.risk.save", lang)}
                 </button>
             </div>
         </div>

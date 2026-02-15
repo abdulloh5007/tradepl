@@ -30,9 +30,6 @@ export default function ActiveAccountCard({
   onWithdraw,
   onDetails
 }: ActiveAccountCardProps) {
-  // Always white for balance in this design
-  const plColor = "#ffffff"
-
   return (
     <section className="acc-active-card">
       <div className="acc-active-head">
@@ -52,7 +49,7 @@ export default function ActiveAccountCard({
         </button>
       </div>
 
-      <div className="acc-pl-block" style={{ color: plColor }}>
+      <div className="acc-pl-block">
         {loadingBalance ? (
           <span className="acc-balance-skeleton" aria-hidden="true" />
         ) : (

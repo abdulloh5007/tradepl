@@ -1,6 +1,7 @@
 import { X, Moon, Sun, LogOut, Trophy } from "lucide-react"
 import type { Lang, Theme } from "../../types"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "../../components/accounts/SharedAccountSheet.css"
 
 interface SettingsSheetProps {
@@ -24,10 +25,11 @@ export default function SettingsSheet({
     onLogout,
     onOpenProfitStages
 }: SettingsSheetProps) {
-    if (!open) return null
+    const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+    if (!shouldRender) return null
 
     return (
-        <div className="acm-overlay" style={{ zIndex: 200 }}>
+        <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} style={{ zIndex: 200 }}>
             <div className="acm-backdrop" onClick={onClose} />
             <div className="acm-sheet">
                 <div className="acm-header">
@@ -41,7 +43,7 @@ export default function SettingsSheet({
                 <div className="acm-content">
                     <div className="acm-list">
                         {/* Language Section */}
-                        <div className="acm-section-title" style={{ padding: '16px 0 8px', color: '#6b7280', fontSize: 13, fontWeight: 600 }}>
+                        <div className="acm-section-title" style={{ padding: '16px 0 8px', color: 'var(--muted)', fontSize: 13, fontWeight: 600 }}>
                             {t("language", lang)}
                         </div>
                         <div className="acm-segment" style={{ display: 'flex', gap: 8, padding: '0 0 16px' }}>
@@ -54,9 +56,9 @@ export default function SettingsSheet({
                                         flex: 1,
                                         padding: '10px',
                                         borderRadius: 12,
-                                        border: '1px solid ' + (lang === l ? '#3b82f6' : 'rgba(255,255,255,0.1)'),
-                                        background: lang === l ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                                        color: lang === l ? '#3b82f6' : '#9ca3af',
+                                        border: `1px solid ${lang === l ? "var(--accent-2)" : "var(--border)"}`,
+                                        background: lang === l ? 'color-mix(in srgb, var(--accent-2) 12%, transparent)' : 'transparent',
+                                        color: lang === l ? 'var(--accent-2)' : 'var(--muted)',
                                         fontWeight: 600,
                                         cursor: 'pointer'
                                     }}
@@ -67,7 +69,7 @@ export default function SettingsSheet({
                         </div>
 
                         {/* Theme Section */}
-                        <div className="acm-section-title" style={{ padding: '8px 0', color: '#6b7280', fontSize: 13, fontWeight: 600 }}>
+                        <div className="acm-section-title" style={{ padding: '8px 0', color: 'var(--muted)', fontSize: 13, fontWeight: 600 }}>
                             {t("theme", lang)}
                         </div>
                         <div className="acm-segment" style={{ display: 'flex', gap: 8, padding: '0 0 16px' }}>
@@ -77,9 +79,9 @@ export default function SettingsSheet({
                                     flex: 1,
                                     padding: '10px',
                                     borderRadius: 12,
-                                    border: '1px solid ' + (theme === 'dark' ? '#3b82f6' : 'rgba(255,255,255,0.1)'),
-                                    background: theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                                    color: theme === 'dark' ? '#3b82f6' : '#9ca3af',
+                                    border: `1px solid ${theme === "dark" ? "var(--accent-2)" : "var(--border)"}`,
+                                    background: theme === 'dark' ? 'color-mix(in srgb, var(--accent-2) 12%, transparent)' : 'transparent',
+                                    color: theme === 'dark' ? 'var(--accent-2)' : 'var(--muted)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                     cursor: 'pointer'
                                 }}
@@ -92,9 +94,9 @@ export default function SettingsSheet({
                                     flex: 1,
                                     padding: '10px',
                                     borderRadius: 12,
-                                    border: '1px solid ' + (theme === 'light' ? '#3b82f6' : 'rgba(255,255,255,0.1)'),
-                                    background: theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                                    color: theme === 'light' ? '#3b82f6' : '#9ca3af',
+                                    border: `1px solid ${theme === "light" ? "var(--accent-2)" : "var(--border)"}`,
+                                    background: theme === 'light' ? 'color-mix(in srgb, var(--accent-2) 12%, transparent)' : 'transparent',
+                                    color: theme === 'light' ? 'var(--accent-2)' : 'var(--muted)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                     cursor: 'pointer'
                                 }}
@@ -105,7 +107,7 @@ export default function SettingsSheet({
 
                         {onOpenProfitStages ? (
                             <>
-                                <div className="acm-section-title" style={{ padding: '8px 0', color: '#6b7280', fontSize: 13, fontWeight: 600 }}>
+                                <div className="acm-section-title" style={{ padding: '8px 0', color: 'var(--muted)', fontSize: 13, fontWeight: 600 }}>
                                     {t("profile.rewards", lang)}
                                 </div>
                                 <button
@@ -114,9 +116,9 @@ export default function SettingsSheet({
                                     className="acm-list-item"
                                     style={{
                                         marginBottom: 16,
-                                        background: 'rgba(59,130,246,0.08)',
-                                        borderColor: 'rgba(59,130,246,0.25)',
-                                        color: '#dbeafe',
+                                        background: 'color-mix(in srgb, var(--accent-2) 9%, transparent)',
+                                        borderColor: 'color-mix(in srgb, var(--accent-2) 28%, transparent)',
+                                        color: 'var(--text)',
                                         cursor: 'pointer'
                                     }}
                                 >
@@ -135,7 +137,7 @@ export default function SettingsSheet({
                     <button
                         className="acm-submit-btn"
                         onClick={onLogout}
-                        style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+                        style={{ background: 'color-mix(in srgb, var(--status-danger) 12%, transparent)', color: 'var(--status-danger)', border: '1px solid color-mix(in srgb, var(--status-danger) 30%, transparent)' }}
                     >
                         <LogOut size={18} style={{ marginRight: 8 }} />
                         {t("logout", lang)}

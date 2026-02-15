@@ -2,8 +2,11 @@ import { useState } from "react"
 import { TrendingUp, TrendingDown, Clock, X, Loader2, Plus, Filter, Calendar, Target } from "lucide-react"
 import { PriceEvent, FilterType } from "./types"
 import Skeleton from "../Skeleton"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 
 interface PriceEventsCardProps {
+    lang: Lang
     events: PriceEvent[]
     total: number
     loading: boolean
@@ -48,6 +51,7 @@ const formatScheduledAt = (raw: string) => {
 }
 
 export default function PriceEventsCard({
+    lang,
     events, total, loading, initialLoad, canAccess,
     filterType, customDateFrom, customDateTo,
     onCreate, onCancel, onLoadMore, onFilterChange
@@ -63,14 +67,25 @@ export default function PriceEventsCard({
     const isMobile = typeof window !== "undefined" && window.innerWidth <= 768
 
     const filterLabels: Record<FilterType, string> = {
-        "1d": "1 день",
-        "3d": "3 дня",
-        "1w": "1 неделя",
-        "1m": "1 месяц",
-        "custom": "Выбрать"
+        "1d": t("manage.events.filter.1d", lang),
+        "3d": t("manage.events.filter.3d", lang),
+        "1w": t("manage.events.filter.1w", lang),
+        "1m": t("manage.events.filter.1m", lang),
+        "custom": t("manage.events.filter.custom", lang)
     }
 
     if (!canAccess) return null
+
+    const statusText = (status: string) => {
+        const value = String(status || "").toLowerCase()
+        if (value === "pending") return t("manage.events.status.pending", lang)
+        if (value === "pre") return t("manage.events.status.pre", lang)
+        if (value === "live") return t("manage.events.status.live", lang)
+        if (value === "post") return t("manage.events.status.post", lang)
+        if (value === "completed") return t("manage.events.status.completed", lang)
+        if (value === "cancelled") return t("manage.events.status.cancelled", lang)
+        return status
+    }
 
     const handleCreate = async () => {
         const scheduled = newScheduledAt ? new Date(newScheduledAt) : new Date()
@@ -107,7 +122,7 @@ export default function PriceEventsCard({
         <div className="admin-card full-width">
             <div className="admin-card-header">
                 <Target size={20} />
-                <h2>Scheduled Price Events</h2>
+                <h2>{t("manage.events.title", lang)}</h2>
                 <button className="filter-btn" onClick={() => setShowFilterModal(true)}>
                     <Filter size={16} />
                     <span>{filterLabels[filterType]}</span>
@@ -118,25 +133,25 @@ export default function PriceEventsCard({
             <div className="event-form">
                 <div className="event-form-row">
                     <div className="event-field">
-                        <label>Direction</label>
+                        <label>{t("manage.events.form.direction", lang)}</label>
                         <div className="direction-btns">
                             <button className={newDirection === "up" ? "active up" : ""} onClick={() => setNewDirection("up")}>
-                                <TrendingUp size={16} /> Bullish
+                                <TrendingUp size={16} /> {t("manage.trend.bullish", lang)}
                             </button>
                             <button className={newDirection === "down" ? "active down" : ""} onClick={() => setNewDirection("down")}>
-                                <TrendingDown size={16} /> Bearish
+                                <TrendingDown size={16} /> {t("manage.trend.bearish", lang)}
                             </button>
                         </div>
                     </div>
                     <div className="event-field">
-                        <label>Duration</label>
+                        <label>{t("manage.events.form.duration", lang)}</label>
                         <div className="duration-input">
                             <input type="number" value={newDuration} onChange={e => setNewDuration(e.target.value)} placeholder="60" min="5" />
-                            <span>sec</span>
+                            <span>{t("manage.events.form.durationUnitSec", lang)}</span>
                         </div>
                     </div>
                     <div className="event-field">
-                        <label>Start Time</label>
+                        <label>{t("manage.events.form.startTime", lang)}</label>
                         <input
                             type="datetime-local"
                             value={newScheduledAt}
@@ -145,7 +160,7 @@ export default function PriceEventsCard({
                     </div>
                     <button className="add-event-btn" onClick={handleCreate} disabled={loading || isCreating}>
                         {isCreating ? <Loader2 className="spin" /> : <Plus size={18} />}
-                        <span>Schedule Event</span>
+                        <span>{t("manage.events.form.schedule", lang)}</span>
                     </button>
                 </div>
             </div>
@@ -164,26 +179,26 @@ export default function PriceEventsCard({
                 )) : events.length === 0 ? (
                     <div className="no-events">
                         <Calendar size={24} />
-                        <span>No events for {filterLabels[filterType]}</span>
+                        <span>{t("manage.events.emptyFor", lang).replace("{filter}", filterLabels[filterType])}</span>
                     </div>
                 ) : events.map(evt => (
                     <div key={evt.id} className={`event-item ${evt.status}`}>
                         <div className="event-info">
                             <span className={`event-direction ${evt.direction}`}>
                                 {evt.direction === "up" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                {evt.direction === "up" ? "Bullish" : "Bearish"}
+                                {evt.direction === "up" ? t("manage.trend.bullish", lang) : t("manage.trend.bearish", lang)}
                             </span>
                             <span className="event-duration">
                                 <Clock size={14} />
-                                {evt.duration_seconds}s
+                                {t("manage.events.durationSeconds", lang).replace("{seconds}", String(evt.duration_seconds))}
                             </span>
                             <span className="event-duration event-scheduled">
                                 <Calendar size={14} />
                                 {formatScheduledAt(evt.scheduled_at)}
                             </span>
-                            <span className={`event-status ${evt.status}`}>{evt.status}</span>
+                            <span className={`event-status ${evt.status}`}>{statusText(evt.status)}</span>
                             {evt.source === "auto" && (
-                                <span className="event-status pending">auto</span>
+                                <span className="event-status pending">{t("manage.events.source.auto", lang)}</span>
                             )}
                         </div>
                         {evt.status === "pending" && evt.source !== "auto" && evt.id > 0 && (
@@ -198,7 +213,11 @@ export default function PriceEventsCard({
             {hasMoreEvents && (
                 <button className="load-more-btn" onClick={onLoadMore} disabled={loading}>
                     {loading ? <Loader2 size={18} className="spin" /> : <Plus size={18} />}
-                    <span>{loading ? "Загрузка..." : `Загрузить ещё (${events.length}/${total})`}</span>
+                    <span>
+                        {loading
+                            ? t("common.loading", lang)
+                            : t("manage.events.loadMoreCounter", lang).replace("{loaded}", String(events.length)).replace("{total}", String(total))}
+                    </span>
                 </button>
             )}
 
@@ -208,7 +227,7 @@ export default function PriceEventsCard({
                     <div className="filter-overlay" onClick={() => setShowFilterModal(false)} />
                     <div className={`filter-modal ${isMobile ? "swiper" : ""}`}>
                         <div className="filter-header">
-                            <h3>Events Filter</h3>
+                            <h3>{t("manage.events.filterTitle", lang)}</h3>
                             <button onClick={() => setShowFilterModal(false)}>
                                 <X size={20} />
                             </button>
@@ -223,22 +242,22 @@ export default function PriceEventsCard({
                         </div>
 
                         <div className="filter-custom">
-                            <h4>Custom Range</h4>
+                            <h4>{t("manage.events.customRange", lang)}</h4>
                             <div className="date-range-inputs">
                                 <div className="date-input-group">
-                                    <label>From</label>
+                                    <label>{t("manage.events.from", lang)}</label>
                                     <input type="date" value={customDateFrom ? customDateFrom.toISOString().split('T')[0] : ''}
                                         onChange={e => onFilterChange("custom", e.target.value ? new Date(e.target.value) : undefined, customDateTo || undefined)} />
                                 </div>
                                 <div className="date-input-group">
-                                    <label>To (Optional)</label>
+                                    <label>{t("manage.events.toOptional", lang)}</label>
                                     <input type="date" value={customDateTo ? customDateTo.toISOString().split('T')[0] : ''}
                                         onChange={e => onFilterChange("custom", customDateFrom || undefined, e.target.value ? new Date(e.target.value + 'T23:59:59') : undefined)}
-                                        placeholder="Today" />
+                                        placeholder={t("manage.events.today", lang)} />
                                 </div>
                             </div>
                             <button className="apply-filter-btn" onClick={applyCustomFilter} disabled={!customDateFrom}>
-                                Apply Filter
+                                {t("manage.events.applyFilter", lang)}
                             </button>
                         </div>
                     </div>

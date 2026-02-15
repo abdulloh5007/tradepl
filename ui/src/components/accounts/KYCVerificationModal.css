@@ -103,3 +103,34 @@
     max-width: 220px;
   }
 }
+
+html[data-theme="light"] .kyc-dropzone {
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  background: var(--panel-alt);
+}
+
+html[data-theme="light"] .kyc-side-icon {
+  color: color-mix(in srgb, var(--text) 72%, #ffffff);
+}
+
+html[data-theme="light"] .kyc-side-icon.front {
+  color: color-mix(in srgb, var(--accent-2) 75%, #1e3a8a);
+}
+
+html[data-theme="light"] .kyc-side-icon.back {
+  color: color-mix(in srgb, var(--accent) 70%, #92400e);
+}
+
+html[data-theme="light"] .kyc-drop-title {
+  color: var(--text);
+}
+
+html[data-theme="light"] .kyc-drop-sub {
+  color: var(--muted);
+}
+
+html[data-theme="light"] .kyc-choose-btn {
+  border-color: color-mix(in srgb, var(--accent-2) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-2) 10%, transparent);
+  color: color-mix(in srgb, var(--accent-2) 86%, #0f172a);
+}

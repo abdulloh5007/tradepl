@@ -172,3 +172,50 @@
     grid-template-columns: 1fr;
   }
 }
+
+html[data-theme="light"] .rdm-form .acm-input.rdm-input-error {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+html[data-theme="light"] .rdm-hints,
+html[data-theme="light"] .rdm-calc-rate,
+html[data-theme="light"] .rdm-drop-sub {
+  color: var(--muted);
+}
+
+html[data-theme="light"] .rdm-voucher-btn {
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  background: var(--panel-alt);
+  color: var(--text);
+}
+
+html[data-theme="light"] .rdm-voucher-btn.active {
+  border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: color-mix(in srgb, var(--accent) 86%, #0f172a);
+}
+
+html[data-theme="light"] .rdm-calc-card {
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  background: var(--panel-alt);
+}
+
+html[data-theme="light"] .rdm-calc-row {
+  color: color-mix(in srgb, var(--text) 80%, #ffffff);
+}
+
+html[data-theme="light"] .rdm-calc-row strong,
+html[data-theme="light"] .rdm-drop-title {
+  color: var(--text);
+}
+
+html[data-theme="light"] .rdm-dropzone {
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  background: var(--panel-alt);
+}
+
+html[data-theme="light"] .rdm-choose-btn {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: color-mix(in srgb, var(--accent) 88%, #0f172a);
+}

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
 import { Activity, Database, RefreshCw } from "lucide-react"
 import Skeleton from "../Skeleton"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 
 type SystemHealthCardProps = {
+    lang: Lang
     baseUrl: string
     headers: Record<string, string>
     canAccess: boolean
@@ -70,22 +73,23 @@ const fmtDateTime = (raw?: string) => {
     return t.toLocaleString()
 }
 
-const formatUptime = (rawSeconds?: number) => {
+const formatUptime = (rawSeconds?: number, units?: { day: string; hour: string; minute: string; second: string }) => {
     const total = Math.max(0, Math.floor(Number(rawSeconds) || 0))
     const days = Math.floor(total / 86400)
     const hours = Math.floor((total % 86400) / 3600)
     const minutes = Math.floor((total % 3600) / 60)
     const seconds = total % 60
+    const labels = units || { day: "d", hour: "h", minute: "m", second: "s" }
 
     const parts: string[] = []
-    if (days > 0) parts.push(`${days}д`)
-    if (hours > 0 || days > 0) parts.push(`${hours}ч`)
-    if (minutes > 0 || hours > 0 || days > 0) parts.push(`${minutes}м`)
-    parts.push(`${seconds}с`)
+    if (days > 0) parts.push(`${days}${labels.day}`)
+    if (hours > 0 || days > 0) parts.push(`${hours}${labels.hour}`)
+    if (minutes > 0 || hours > 0 || days > 0) parts.push(`${minutes}${labels.minute}`)
+    parts.push(`${seconds}${labels.second}`)
     return parts.join(" ")
 }
 
-export default function SystemHealthCard({ baseUrl, headers, canAccess }: SystemHealthCardProps) {
+export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: SystemHealthCardProps) {
     const [health, setHealth] = useState<HealthResponse | null>(null)
     const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
     const [loading, setLoading] = useState(false)
@@ -102,11 +106,11 @@ export default function SystemHealthCard({ baseUrl, headers, canAccess }: System
             ])
             if (!healthRes.ok) {
                 const body = await healthRes.json().catch(() => null)
-                throw new Error(body?.error || "Failed to fetch system health")
+                throw new Error(body?.error || t("manage.system.error.fetchHealth", lang))
             }
             if (!metricsRes.ok) {
                 const body = await metricsRes.json().catch(() => null)
-                throw new Error(body?.error || "Failed to fetch system metrics")
+                throw new Error(body?.error || t("manage.system.error.fetchMetrics", lang))
             }
 
             const healthJson = await healthRes.json()
@@ -114,11 +118,11 @@ export default function SystemHealthCard({ baseUrl, headers, canAccess }: System
             setHealth(healthJson || null)
             setMetrics(metricsJson || null)
         } catch (e: any) {
-            setError(e?.message || "Failed to load system diagnostics")
+            setError(e?.message || t("manage.system.error.loadDiagnostics", lang))
         } finally {
             setLoading(false)
         }
-    }, [baseUrl, headers, canAccess])
+    }, [baseUrl, headers, canAccess, lang])
 
     useEffect(() => {
         if (!canAccess) return
@@ -142,10 +146,10 @@ export default function SystemHealthCard({ baseUrl, headers, canAccess }: System
         <div className="admin-card full-width">
             <div className="admin-card-header">
                 <Activity size={18} />
-                <h2>System Health</h2>
+                <h2>{t("manage.system.title", lang)}</h2>
                 <button className="system-health-refresh" onClick={refresh} disabled={loading}>
                     <RefreshCw size={14} className={loading ? "spin" : ""} />
-                    Refresh
+                    {t("manage.system.refresh", lang)}
                 </button>
             </div>
 
@@ -160,45 +164,50 @@ export default function SystemHealthCard({ baseUrl, headers, canAccess }: System
                 <>
                     <div className="system-health-grid">
                         <div className={`system-health-stat ${overallOk ? "ok" : "warn"}`}>
-                            <span>API</span>
-                            <strong>{overallOk ? "OK" : "DEGRADED"}</strong>
+                            <span>{t("manage.system.api", lang)}</span>
+                            <strong>{overallOk ? t("manage.system.status.ok", lang) : t("manage.system.status.degraded", lang)}</strong>
                         </div>
                         <div className={`system-health-stat ${dbOk ? "ok" : "warn"}`}>
-                            <span><Database size={14} /> DB</span>
-                            <strong>{dbOk ? "UP" : "DOWN"}</strong>
+                            <span><Database size={14} /> {t("manage.system.db", lang)}</span>
+                            <strong>{dbOk ? t("manage.system.status.up", lang) : t("manage.system.status.down", lang)}</strong>
                         </div>
                         <div className="system-health-stat">
-                            <span>Ping</span>
+                            <span>{t("manage.system.ping", lang)}</span>
                             <strong>{metrics.db_ping_ms} ms</strong>
                         </div>
                         <div className="system-health-stat">
-                            <span>Uptime</span>
-                            <strong>{formatUptime(health.uptime_sec ?? metrics.uptime_sec)}</strong>
+                            <span>{t("manage.system.uptime", lang)}</span>
+                            <strong>{formatUptime(health.uptime_sec ?? metrics.uptime_sec, {
+                                day: t("manage.system.unit.day", lang),
+                                hour: t("manage.system.unit.hour", lang),
+                                minute: t("manage.system.unit.minute", lang),
+                                second: t("manage.system.unit.second", lang),
+                            })}</strong>
                         </div>
                         <div className="system-health-stat">
-                            <span>Goroutines</span>
+                            <span>{t("manage.system.goroutines", lang)}</span>
                             <strong>{metrics.runtime.goroutines}</strong>
                         </div>
                         <div className="system-health-stat">
-                            <span>Memory</span>
+                            <span>{t("manage.system.memory", lang)}</span>
                             <strong>{bytesToHuman(metrics.memory.alloc_bytes)}</strong>
                         </div>
                         <div className="system-health-stat">
-                            <span>DB Pool</span>
+                            <span>{t("manage.system.dbPool", lang)}</span>
                             <strong>{metrics.db_pool.acquired_conns}/{metrics.db_pool.max_conns}</strong>
                         </div>
                         <div className="system-health-stat">
-                            <span>Updated</span>
+                            <span>{t("manage.system.updated", lang)}</span>
                             <strong>{fmtDateTime(metrics.timestamp)}</strong>
                         </div>
                     </div>
 
                     <details className="system-health-raw">
-                        <summary>health/admin raw JSON</summary>
+                        <summary>{t("manage.system.rawHealth", lang)}</summary>
                         <pre>{JSON.stringify(health, null, 2)}</pre>
                     </details>
                     <details className="system-health-raw">
-                        <summary>metrics raw JSON</summary>
+                        <summary>{t("manage.system.rawMetrics", lang)}</summary>
                         <pre>{JSON.stringify(metrics, null, 2)}</pre>
                     </details>
                 </>

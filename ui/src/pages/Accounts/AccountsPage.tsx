@@ -11,6 +11,7 @@ import AccountCreationModal from "../../components/accounts/AccountCreationModal
 import RealDepositRequestModal from "../../components/accounts/RealDepositRequestModal"
 import type { AccountSnapshot } from "../../components/accounts/types"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "./AccountsPage.css"
 
 interface AccountsPageProps {
@@ -154,6 +155,7 @@ export default function AccountsPage({
   const [bonusModalOpen, setBonusModalOpen] = useState(false)
   const [bonusAccepted, setBonusAccepted] = useState(false)
   const [bonusBusy, setBonusBusy] = useState(false)
+  const { shouldRender: bonusModalRender, isVisible: bonusModalVisible } = useAnimatedPresence(bonusModalOpen, 140)
 
   const showSignupBonus = !!signupBonus && !signupBonus.claimed && signupBonus.can_claim
   const signupBonusAmount = signupBonus?.amount || "10.00"
@@ -453,8 +455,8 @@ export default function AccountsPage({
         onCreate={onCreate}
       />
 
-      {bonusModalOpen && (
-        <div className="accounts-bonus-modal" onClick={() => {
+      {bonusModalRender && (
+        <div className={`accounts-bonus-modal ${bonusModalVisible ? "is-open" : "is-closing"}`} onClick={() => {
           if (bonusBusy) return
           setBonusModalOpen(false)
           setBonusAccepted(false)

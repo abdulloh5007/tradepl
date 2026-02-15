@@ -6,6 +6,7 @@ import type { Lang, TradingAccount } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
 import SmartDropdown from "../../components/ui/SmartDropdown"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "../../components/accounts/SharedAccountSheet.css"
 import "./ProfitStagesPage.css"
 
@@ -32,6 +33,7 @@ const stageStateLabel = (stage: ProfitRewardStageStatus, lang: Lang) => {
 
 export default function ProfitStagesPage({ lang, status, accounts, onBack, onRefresh, onClaim }: ProfitStagesPageProps) {
   const [claimStageNo, setClaimStageNo] = useState<number | null>(null)
+  const [claimTargetCache, setClaimTargetCache] = useState<ProfitRewardStageStatus | null>(null)
   const [claimAccountID, setClaimAccountID] = useState("")
   const [claiming, setClaiming] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -73,6 +75,20 @@ export default function ProfitStagesPage({ lang, status, accounts, onBack, onRef
   const claimTarget = claimStageNo
     ? status?.stages.find(stage => stage.stage_no === claimStageNo) || null
     : null
+  const { shouldRender: claimModalRender, isVisible: claimModalVisible } = useAnimatedPresence(Boolean(claimTarget), 220)
+  const claimTargetForView = claimTarget || claimTargetCache
+
+  useEffect(() => {
+    if (claimTarget) {
+      setClaimTargetCache(claimTarget)
+    }
+  }, [claimTarget])
+
+  useEffect(() => {
+    if (!claimModalRender) {
+      setClaimTargetCache(null)
+    }
+  }, [claimModalRender])
 
   return (
     <div className="profit-stage-page">
@@ -156,8 +172,8 @@ export default function ProfitStagesPage({ lang, status, accounts, onBack, onRef
         })}
       </section>
 
-      {claimTarget ? (
-        <div className="acm-overlay" role="dialog" aria-modal="true">
+      {claimModalRender && claimTargetForView ? (
+        <div className={`acm-overlay ${claimModalVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
           <div className="acm-backdrop" onClick={() => (!claiming ? setClaimStageNo(null) : null)} />
           <div className="acm-sheet">
             <div className="acm-header">
@@ -169,14 +185,14 @@ export default function ProfitStagesPage({ lang, status, accounts, onBack, onRef
               >
                 <X size={24} />
               </button>
-              <h2 className="acm-title">{t("profitStages.claimStage", lang).replace("{stage}", String(claimTarget.stage_no))}</h2>
+              <h2 className="acm-title">{t("profitStages.claimStage", lang).replace("{stage}", String(claimTargetForView.stage_no))}</h2>
               <div className="acm-spacer" />
             </div>
             <div className="acm-content">
               <div className="acm-form">
                 <div className="profit-stage-modal-amount">
                   <Wallet2 size={16} />
-                  <span>{t("profitStages.reward", lang)} +${formatNumber(toNumber(claimTarget.reward_usd), 2, 2)}</span>
+                  <span>{t("profitStages.reward", lang)} +${formatNumber(toNumber(claimTargetForView.reward_usd), 2, 2)}</span>
                 </div>
                 <label className="acm-label">
                   {t("profitStages.creditToRealAccount", lang)}
@@ -200,8 +216,8 @@ export default function ProfitStagesPage({ lang, status, accounts, onBack, onRef
                     }
                     setClaiming(true)
                     try {
-                      await onClaim(claimTarget.stage_no, claimAccountID)
-                      toast.success(t("profitStages.rewardCredited", lang).replace("{stage}", String(claimTarget.stage_no)))
+                      await onClaim(claimTargetForView.stage_no, claimAccountID)
+                      toast.success(t("profitStages.rewardCredited", lang).replace("{stage}", String(claimTargetForView.stage_no)))
                       setClaimStageNo(null)
                       await onRefresh()
                     } catch (err: any) {

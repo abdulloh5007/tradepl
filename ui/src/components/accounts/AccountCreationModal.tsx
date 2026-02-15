@@ -5,6 +5,7 @@ import AccountTypeCard from "./AccountTypeCard"
 import { toast } from "sonner"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "./SharedAccountSheet.css"
 
 interface AccountCreationModalProps {
@@ -62,6 +63,7 @@ const PLANS = [
 ]
 
 export default function AccountCreationModal({ lang, open, onClose, onCreate }: AccountCreationModalProps): JSX.Element | null {
+    const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
     const [mode, setMode] = useState<"real" | "demo">("demo")
     const [activeIndex, setActiveIndex] = useState(0)
     const [creating, setCreating] = useState(false)
@@ -116,10 +118,10 @@ export default function AccountCreationModal({ lang, open, onClose, onCreate }: 
         }
     }
 
-    if (!open) return null
+    if (!shouldRender) return null
 
     return (
-        <div className="acm-overlay">
+        <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`}>
             <div className="acm-backdrop" onClick={onClose} />
             <div className="acm-sheet">
                 {/* Header */}

@@ -31,7 +31,9 @@ export default function SmartDropdown({
   maxMenuHeight = 240
 }: SmartDropdownProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const closeTimerRef = useRef<number | null>(null)
   const [open, setOpen] = useState(false)
+  const [menuMounted, setMenuMounted] = useState(false)
   const [openUpward, setOpenUpward] = useState(false)
 
   const selected = useMemo(() => {
@@ -51,17 +53,45 @@ export default function SmartDropdown({
   }, [maxMenuHeight, options.length])
 
   useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current)
+      }
+    }
+  }, [])
+
+  const openMenu = useCallback(() => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+    setMenuMounted(true)
+    window.requestAnimationFrame(() => setOpen(true))
+  }, [])
+
+  const closeMenu = useCallback(() => {
+    setOpen(false)
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current)
+    }
+    closeTimerRef.current = window.setTimeout(() => {
+      setMenuMounted(false)
+      closeTimerRef.current = null
+    }, 180)
+  }, [])
+
+  useEffect(() => {
     if (!open) return
     updatePlacement()
 
     const onDocMouseDown = (e: MouseEvent) => {
       if (!rootRef.current) return
       if (!rootRef.current.contains(e.target as Node)) {
-        setOpen(false)
+        closeMenu()
       }
     }
     const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false)
+      if (e.key === "Escape") closeMenu()
     }
     const onLayoutChange = () => updatePlacement()
 
@@ -76,20 +106,24 @@ export default function SmartDropdown({
       window.removeEventListener("resize", onLayoutChange)
       window.removeEventListener("scroll", onLayoutChange, true)
     }
-  }, [open, updatePlacement])
+  }, [closeMenu, open, updatePlacement])
 
   return (
     <div
       ref={rootRef}
-      className={`ui-dropdown ${open ? "is-open" : ""} ${openUpward ? "open-upward" : "open-downward"} ${className}`}
+      className={`ui-dropdown ${open ? "is-open" : ""} ${menuMounted && !open ? "is-closing" : ""} ${openUpward ? "open-upward" : "open-downward"} ${className}`}
     >
       <button
         type="button"
         className={`ui-dropdown-trigger ${triggerClassName}`}
         onClick={() => {
           if (disabled) return
-          if (!open) updatePlacement()
-          setOpen(v => !v)
+          if (open) {
+            closeMenu()
+            return
+          }
+          updatePlacement()
+          openMenu()
         }}
         disabled={disabled}
         aria-haspopup="listbox"
@@ -100,7 +134,7 @@ export default function SmartDropdown({
         <ChevronDown size={16} className="ui-dropdown-chevron" />
       </button>
 
-      {open && (
+      {menuMounted && (
         <div
           className={`ui-dropdown-menu ${menuClassName}`}
           style={{ maxHeight: maxMenuHeight }}
@@ -117,7 +151,7 @@ export default function SmartDropdown({
                 onClick={() => {
                   if (option.disabled) return
                   onChange(option.value)
-                  setOpen(false)
+                  closeMenu()
                 }}
                 role="option"
                 aria-selected={active}

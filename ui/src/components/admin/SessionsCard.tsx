@@ -1,8 +1,11 @@
 import { Activity, Building2, Zap, CheckCircle } from "lucide-react"
 import { SessionConfig } from "./types"
 import Skeleton from "../Skeleton"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 
 interface SessionsCardProps {
+    lang: Lang
     sessions: SessionConfig[]
     activeSession: string
     mode: string
@@ -14,6 +17,7 @@ interface SessionsCardProps {
 }
 
 export default function SessionsCard({
+    lang,
     sessions, activeSession, mode, loading, initialLoad, canAccess,
     onSwitchSession, onToggleMode
 }: SessionsCardProps) {
@@ -22,20 +26,24 @@ export default function SessionsCard({
 
     const sessionIcons: Record<string, any> = { london: Building2, newyork: Zap }
     const sessionSchedule: Record<string, string> = { london: "22:00 - 13:00 UTC", newyork: "13:00 - 22:00 UTC" }
+    const sessionTitleByID: Record<string, string> = {
+        london: t("manage.sessions.session.london", lang),
+        newyork: t("manage.sessions.session.newyork", lang),
+    }
 
     return (
         <div className="admin-card">
             <div className="admin-card-header">
                 <Activity size={20} />
-                <h2>Market Sessions</h2>
+                <h2>{t("manage.sessions.title", lang)}</h2>
                 <div className="mode-toggle">
                     {initialLoad ? <Skeleton width={120} height={24} radius={12} /> : (
                         <>
-                            <span className={mode === "manual" ? "active" : ""}>Manual</span>
+                            <span className={mode === "manual" ? "active" : ""}>{t("manage.common.manual", lang)}</span>
                             <button className={`toggle-switch ${mode === "auto" ? "checked" : ""}`} onClick={onToggleMode} disabled={loading}>
                                 <span className="toggle-thumb" />
                             </button>
-                            <span className={mode === "auto" ? "active" : ""}>Auto</span>
+                            <span className={mode === "auto" ? "active" : ""}>{t("manage.common.auto", lang)}</span>
                         </>
                     )}
                 </div>
@@ -60,9 +68,10 @@ export default function SessionsCard({
                             onClick={() => onSwitchSession(s.id)} disabled={loading || mode === "auto"}
                             style={{ opacity: mode === "auto" && !isActive ? 0.6 : 1 }}>
                             <Icon size={24} />
-                            <span className="session-name">{s.name}</span>
-                            {mode === "auto" ? <span className="session-rate" style={{ fontSize: 11 }}>{sessionSchedule[s.id] || "All Day"}</span>
-                                : <span className="session-rate">{s.update_rate_ms}ms</span>}
+                            <span className="session-name">{sessionTitleByID[s.id] || s.name}</span>
+                            {mode === "auto"
+                                ? <span className="session-rate" style={{ fontSize: 11 }}>{sessionSchedule[s.id] || t("manage.sessions.schedule.allDay", lang)}</span>
+                                : <span className="session-rate">{t("manage.sessions.updateRateMs", lang).replace("{ms}", String(s.update_rate_ms))}</span>}
                             {isActive && <CheckCircle size={16} className="session-check" />}
                         </button>
                     )

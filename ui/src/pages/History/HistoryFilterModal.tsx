@@ -2,6 +2,7 @@ import { useState } from "react"
 import { X, Calendar } from "lucide-react"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "../../components/accounts/SharedAccountSheet.css"
 
 export type DateRange = {
@@ -19,11 +20,12 @@ interface HistoryFilterModalProps {
 }
 
 export default function HistoryFilterModal({ open, lang, currentRange, onClose, onApply }: HistoryFilterModalProps) {
+    const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
     const [rangeType, setRangeType] = useState<DateRange["type"]>(currentRange.type)
     const [startDate, setStartDate] = useState(currentRange.startDate || "")
     const [endDate, setEndDate] = useState(currentRange.endDate || "")
 
-    if (!open) return null
+    if (!shouldRender) return null
 
     const handleApply = () => {
         onApply({
@@ -35,7 +37,7 @@ export default function HistoryFilterModal({ open, lang, currentRange, onClose, 
     }
 
     return (
-        <div className="acm-overlay" style={{ zIndex: 200 }}>
+        <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} style={{ zIndex: 200 }}>
             <div className="acm-backdrop" onClick={onClose} />
             <div className="acm-sheet">
                 <div className="acm-header">
@@ -53,28 +55,28 @@ export default function HistoryFilterModal({ open, lang, currentRange, onClose, 
                             onClick={() => setRangeType("today")}
                         >
                             <span>{t("history.filter.today", lang)}</span>
-                            {rangeType === "today" && <span style={{ color: '#fbbf24' }}>✓</span>}
+                            {rangeType === "today" && <span style={{ color: 'var(--accent)' }}>✓</span>}
                         </button>
                         <button
                             className={`acm-list-item ${rangeType === "week" ? "active" : ""}`}
                             onClick={() => setRangeType("week")}
                         >
                             <span>{t("history.filter.week", lang)}</span>
-                            {rangeType === "week" && <span style={{ color: '#fbbf24' }}>✓</span>}
+                            {rangeType === "week" && <span style={{ color: 'var(--accent)' }}>✓</span>}
                         </button>
                         <button
                             className={`acm-list-item ${rangeType === "month" ? "active" : ""}`}
                             onClick={() => setRangeType("month")}
                         >
                             <span>{t("history.filter.month", lang)}</span>
-                            {rangeType === "month" && <span style={{ color: '#fbbf24' }}>✓</span>}
+                            {rangeType === "month" && <span style={{ color: 'var(--accent)' }}>✓</span>}
                         </button>
                         <button
                             className={`acm-list-item ${rangeType === "custom" ? "active" : ""}`}
                             onClick={() => setRangeType("custom")}
                         >
                             <span>{t("history.filter.custom", lang)}</span>
-                            {rangeType === "custom" && <span style={{ color: '#fbbf24' }}>✓</span>}
+                            {rangeType === "custom" && <span style={{ color: 'var(--accent)' }}>✓</span>}
                         </button>
 
                         {rangeType === "custom" && (
@@ -89,7 +91,7 @@ export default function HistoryFilterModal({ open, lang, currentRange, onClose, 
                                             value={startDate}
                                             onChange={e => setStartDate(e.target.value)}
                                         />
-                                        <Calendar size={18} style={{ position: 'absolute', right: 12, top: 14, color: '#9ca3af', pointerEvents: 'none' }} />
+                                        <Calendar size={18} style={{ position: 'absolute', right: 12, top: 14, color: 'var(--muted)', pointerEvents: 'none' }} />
                                     </div>
                                 </label>
                                 <label className="acm-label">
@@ -102,7 +104,7 @@ export default function HistoryFilterModal({ open, lang, currentRange, onClose, 
                                             value={endDate}
                                             onChange={e => setEndDate(e.target.value)}
                                         />
-                                        <Calendar size={18} style={{ position: 'absolute', right: 12, top: 14, color: '#9ca3af', pointerEvents: 'none' }} />
+                                        <Calendar size={18} style={{ position: 'absolute', right: 12, top: 14, color: 'var(--muted)', pointerEvents: 'none' }} />
                                     </div>
                                 </label>
                             </div>

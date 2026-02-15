@@ -148,13 +148,33 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.22s ease, visibility 0.22s step-end;
+}
+
+.notifications-detail-overlay.is-open,
+.notifications-detail-overlay.is-closing {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.notifications-detail-overlay.is-open {
+  opacity: 1;
+}
+
+.notifications-detail-overlay.is-closing {
+  opacity: 0;
 }
 
 .notifications-detail-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(2, 6, 23, 0.62);
-  backdrop-filter: blur(3px);
+  background: var(--overlay-backdrop);
+  backdrop-filter: blur(var(--overlay-blur));
+  opacity: 0;
+  transition: opacity 0.22s ease;
 }
 
 .notifications-detail-sheet {
@@ -168,6 +188,27 @@
     linear-gradient(150deg, rgba(15, 23, 42, 0.98), rgba(17, 24, 39, 0.96));
   box-shadow: 0 -18px 42px rgba(2, 6, 23, 0.56);
   overflow: hidden;
+  transform: translateY(20px) scale(0.99);
+  opacity: 0;
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+}
+
+.notifications-detail-overlay.is-open .notifications-detail-backdrop {
+  opacity: 1;
+}
+
+.notifications-detail-overlay.is-open .notifications-detail-sheet {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.notifications-detail-overlay.is-closing .notifications-detail-backdrop {
+  opacity: 0;
+}
+
+.notifications-detail-overlay.is-closing .notifications-detail-sheet {
+  transform: translateY(22px) scale(0.99);
+  opacity: 0;
 }
 
 .notifications-detail-head {

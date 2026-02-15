@@ -4,6 +4,7 @@ import type { Lang, TradingAccount } from "../../types"
 import type { AccountSnapshot } from "./types"
 import { accountShortNumericId, formatUsd, openCountLabel } from "./utils"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "./SharedAccountSheet.css"
 
 interface AccountsSwitcherSheetProps {
@@ -25,6 +26,7 @@ export default function AccountsSwitcherSheet({
   onClose,
   onSwitch
 }: AccountsSwitcherSheetProps) {
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
   const [tab, setTab] = useState<"real" | "demo">("demo")
   const [switchingId, setSwitchingId] = useState<string | null>(null)
 
@@ -35,10 +37,10 @@ export default function AccountsSwitcherSheet({
   }, [open, accounts, activeAccountId])
 
   const filtered = useMemo(() => accounts.filter(a => a.mode === tab), [accounts, tab])
-  if (!open) return null
+  if (!shouldRender) return null
 
   return (
-    <div className="acm-overlay" role="dialog" aria-modal="true">
+    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
       <div className="acm-backdrop" onClick={onClose} />
       <div className="acm-sheet">
         <div className="acm-header">
@@ -75,7 +77,7 @@ export default function AccountsSwitcherSheet({
             ) : filtered.map(account => {
               const shot = snapshots[account.id]
               const active = account.id === activeAccountId
-              const plColor = !shot ? "#9ca3af" : shot.pl >= 0 ? "#22c55e" : "#ef4444"
+              const plColor = !shot ? "var(--muted)" : shot.pl >= 0 ? "var(--status-success)" : "var(--status-danger)"
               const plPrefix = !shot ? "" : shot.pl >= 0 ? "+" : ""
               return (
                 <button

@@ -1,8 +1,11 @@
 import { useState } from "react"
 import { CalendarClock, Loader2, Plus, Radio, X } from "lucide-react"
 import type { EconomicNewsEvent } from "./types"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 
 interface EconomicNewsCardProps {
+  lang: Lang
   canAccess: boolean
   events: EconomicNewsEvent[]
   total: number
@@ -48,6 +51,7 @@ const fmtNum = (v?: number | null) => {
 }
 
 export default function EconomicNewsCard({
+  lang,
   canAccess,
   events,
   total,
@@ -69,6 +73,21 @@ export default function EconomicNewsCard({
   if (!canAccess) return null
 
   const hasMore = events.length < total
+  const impactText = (impact: string) => {
+    const value = String(impact || "").toLowerCase()
+    if (value === "low" || value === "medium" || value === "high") return t(`manage.news.impact.${value}`, lang)
+    return String(impact || "—")
+  }
+  const statusText = (status: string) => {
+    const value = String(status || "").toLowerCase()
+    if (value === "pending") return t("manage.events.status.pending", lang)
+    if (value === "pre") return t("manage.events.status.pre", lang)
+    if (value === "live") return t("manage.events.status.live", lang)
+    if (value === "post") return t("manage.events.status.post", lang)
+    if (value === "completed") return t("manage.events.status.completed", lang)
+    if (value === "cancelled") return t("manage.events.status.cancelled", lang)
+    return status
+  }
 
   const handleCreate = async () => {
     const eventForecast = Number(forecast)
@@ -100,51 +119,51 @@ export default function EconomicNewsCard({
     <div className="admin-card full-width">
       <div className="admin-card-header">
         <Radio size={20} />
-        <h2>Economic News (Owner)</h2>
+        <h2>{t("manage.news.title", lang)}</h2>
       </div>
 
       <div className="event-form">
         <div className="event-form-row">
           <div className="event-field">
-            <label>Title</label>
+            <label>{t("manage.news.form.title", lang)}</label>
             <input
               value={title}
               maxLength={120}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Monthly Payroll Outlook"
+              placeholder={t("manage.news.form.titlePlaceholder", lang)}
             />
           </div>
           <div className="event-field">
-            <label>Impact</label>
+            <label>{t("manage.news.form.impact", lang)}</label>
             <select value={impact} onChange={e => setImpact(e.target.value as "low" | "medium" | "high")}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
+              <option value="low">{t("manage.news.impact.low", lang)}</option>
+              <option value="medium">{t("manage.news.impact.medium", lang)}</option>
+              <option value="high">{t("manage.news.impact.high", lang)}</option>
             </select>
           </div>
           <div className="event-field">
-            <label>Forecast</label>
+            <label>{t("manage.news.form.forecast", lang)}</label>
             <input value={forecast} onChange={e => setForecast(e.target.value)} placeholder="100.00" />
           </div>
           <div className="event-field">
-            <label>Start time</label>
+            <label>{t("manage.news.form.startTime", lang)}</label>
             <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
           </div>
           <div className="event-field">
-            <label>Pre sec</label>
+            <label>{t("manage.news.form.preSec", lang)}</label>
             <input value={preSeconds} onChange={e => setPreSeconds(e.target.value)} />
           </div>
           <div className="event-field">
-            <label>Live sec</label>
+            <label>{t("manage.news.form.liveSec", lang)}</label>
             <input value={eventSeconds} onChange={e => setEventSeconds(e.target.value)} />
           </div>
           <div className="event-field">
-            <label>Post sec</label>
+            <label>{t("manage.news.form.postSec", lang)}</label>
             <input value={postSeconds} onChange={e => setPostSeconds(e.target.value)} />
           </div>
           <button className="add-event-btn" onClick={handleCreate} disabled={busy || loading}>
             {busy ? <Loader2 className="spin" size={16} /> : <Plus size={16} />}
-            <span>Create news event</span>
+            <span>{t("manage.news.form.create", lang)}</span>
           </button>
         </div>
       </div>
@@ -153,18 +172,18 @@ export default function EconomicNewsCard({
         {events.length === 0 ? (
           <div className="no-events">
             <CalendarClock size={20} />
-            <span>No economic news events</span>
+            <span>{t("manage.news.empty", lang)}</span>
           </div>
         ) : events.map(item => {
           const canCancel = (item.status === "pending" || item.status === "pre") && item.source !== "auto"
           return (
             <div key={item.id} className={`event-item ${item.status}`}>
               <div className="event-info">
-                <span className={`event-status ${item.status}`}>{item.status}</span>
+                <span className={`event-status ${item.status}`}>{statusText(item.status)}</span>
                 <span className="event-duration">{item.title}</span>
                 <span className="event-duration event-scheduled">{formatAt(item.scheduled_at)}</span>
-                <span className="event-duration">impact: {String(item.impact).toUpperCase()}</span>
-                <span className="event-duration">F: {fmtNum(item.forecast_value)} / A: {item.actual_value == null ? "—" : fmtNum(item.actual_value)}</span>
+                <span className="event-duration">{t("manage.news.item.impact", lang)}: {impactText(item.impact)}</span>
+                <span className="event-duration">{t("accounts.news.valueForecast", lang)}: {fmtNum(item.forecast_value)} / {t("accounts.news.valueActual", lang)}: {item.actual_value == null ? "—" : fmtNum(item.actual_value)}</span>
                 <span className="event-duration">{item.source}/{item.rule_key}</span>
               </div>
               {canCancel && (
@@ -180,12 +199,12 @@ export default function EconomicNewsCard({
       <div className="risk-actions">
         <button className="add-event-btn" onClick={onRefresh} disabled={loading || busy}>
           {loading ? <Loader2 className="spin" size={16} /> : <CalendarClock size={16} />}
-          <span>Refresh news</span>
+          <span>{t("manage.news.refresh", lang)}</span>
         </button>
         {hasMore && (
           <button className="add-event-btn" onClick={onLoadMore} disabled={loading || busy}>
             <Plus size={16} />
-            <span>Load more ({events.length}/{total})</span>
+            <span>{t("manage.news.loadMoreCounter", lang).replace("{loaded}", String(events.length)).replace("{total}", String(total))}</span>
           </button>
         )}
       </div>

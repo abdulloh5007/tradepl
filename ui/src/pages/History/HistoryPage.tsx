@@ -3,6 +3,7 @@ import { Filter, X } from "lucide-react"
 import type { Lang, Order } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "./HistoryPage.css"
 import "../../components/accounts/SharedAccountSheet.css"
 import HistoryFilterModal, { DateRange } from "./HistoryFilterModal"
@@ -118,6 +119,7 @@ const formatTicket = (order: Order) => {
 
 export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore }: HistoryPageProps) {
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+    const [selectedOrderCache, setSelectedOrderCache] = useState<Order | null>(null)
     const [showFilter, setShowFilter] = useState(false)
     const [dateRange, setDateRange] = useState<DateRange>({ type: "month" })
     const listRef = useRef<HTMLDivElement | null>(null)
@@ -125,6 +127,8 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
     const loadLockRef = useRef(false)
     const initialBottomPinnedRef = useRef(false)
     const shouldStickToBottomRef = useRef(true)
+    const { shouldRender: detailsRender, isVisible: detailsVisible } = useAnimatedPresence(Boolean(selectedOrder), 220)
+    const selectedOrderView = selectedOrder || selectedOrderCache
 
     const sortedOrders = useMemo(() => {
         // History grows downward: oldest at top, newest at bottom.
@@ -177,22 +181,34 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
 
     const balance = totals.deposit + totals.withdraw + totals.profit + totals.swap + totals.commission
 
-    const selectedSymbol = selectedOrder ? resolveOrderSymbol(selectedOrder) : ""
-    const selectedDerivedRawPrice = selectedOrder ? deriveRawPriceFromSpent(selectedOrder) : Number.NaN
-    const selectedOpenPrice = selectedOrder
-        ? resolveDisplayPrice(selectedSymbol, selectedOrder.price, Number.isFinite(selectedDerivedRawPrice) ? selectedDerivedRawPrice : selectedOrder.close_price)
+    const selectedSymbol = selectedOrderView ? resolveOrderSymbol(selectedOrderView) : ""
+    const selectedDerivedRawPrice = selectedOrderView ? deriveRawPriceFromSpent(selectedOrderView) : Number.NaN
+    const selectedOpenPrice = selectedOrderView
+        ? resolveDisplayPrice(selectedSymbol, selectedOrderView.price, Number.isFinite(selectedDerivedRawPrice) ? selectedDerivedRawPrice : selectedOrderView.close_price)
         : Number.NaN
-    const selectedClosePrice = selectedOrder
-        ? resolveDisplayPrice(selectedSymbol, selectedOrder.close_price, selectedOrder.price || selectedDerivedRawPrice)
+    const selectedClosePrice = selectedOrderView
+        ? resolveDisplayPrice(selectedSymbol, selectedOrderView.close_price, selectedOrderView.price || selectedDerivedRawPrice)
         : Number.NaN
-    const selectedProfit = selectedOrder ? toNumber(selectedOrder.profit) : 0
-    const selectedSpent = selectedOrder ? toNumber(selectedOrder.spent_amount) : 0
+    const selectedProfit = selectedOrderView ? toNumber(selectedOrderView.profit) : 0
+    const selectedSpent = selectedOrderView ? toNumber(selectedOrderView.spent_amount) : 0
     const selectedPercent = selectedSpent > 0 ? (selectedProfit / selectedSpent) * 100 : 0
     const selectedDiff = Number.isFinite(selectedClosePrice) && Number.isFinite(selectedOpenPrice)
         ? selectedClosePrice - selectedOpenPrice
         : 0
-    const selectedIsCashFlow = selectedOrder ? isCashFlowOrder(selectedOrder) : false
-    const selectedCashFlowLabel = selectedOrder ? cashFlowLabel(selectedOrder, lang) : t("history.deposit", lang)
+    const selectedIsCashFlow = selectedOrderView ? isCashFlowOrder(selectedOrderView) : false
+    const selectedCashFlowLabel = selectedOrderView ? cashFlowLabel(selectedOrderView, lang) : t("history.deposit", lang)
+
+    useEffect(() => {
+        if (selectedOrder) {
+            setSelectedOrderCache(selectedOrder)
+        }
+    }, [selectedOrder])
+
+    useEffect(() => {
+        if (!detailsRender) {
+            setSelectedOrderCache(null)
+        }
+    }, [detailsRender])
 
     useEffect(() => {
         if (!loading) {
@@ -349,15 +365,15 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
                 </div>
             </div>
 
-            {selectedOrder && (
-                <div className="acm-overlay" onClick={() => setSelectedOrder(null)}>
+            {detailsRender && selectedOrderView && (
+                <div className={`acm-overlay ${detailsVisible ? "is-open" : "is-closing"}`} onClick={() => setSelectedOrder(null)}>
                     <div className="acm-backdrop" />
                     <div className="acm-sheet" onClick={e => e.stopPropagation()}>
                         <div className="acm-header">
                             <button onClick={() => setSelectedOrder(null)} className="acm-close-btn">
                                 <X size={24} />
                             </button>
-                            <h2 className="acm-title">{selectedIsCashFlow ? selectedCashFlowLabel : formatTicket(selectedOrder)}</h2>
+                            <h2 className="acm-title">{selectedIsCashFlow ? selectedCashFlowLabel : formatTicket(selectedOrderView)}</h2>
                             <div className="acm-spacer" />
                         </div>
 
@@ -366,10 +382,10 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
                                 <div className="hm-cash-body">
                                     <div className="hm-cash-top-row">
                                         <div className="hm-cash-balance">{t("balance", lang)}</div>
-                                        <div className="hm-cash-ticket">{formatTicket(selectedOrder)}</div>
+                                        <div className="hm-cash-ticket">{formatTicket(selectedOrderView)}</div>
                                     </div>
                                     <div className="hm-cash-bottom-row">
-                                        <div className="hm-cash-date">{formatDate(selectedOrder.close_time || selectedOrder.created_at)}</div>
+                                        <div className="hm-cash-date">{formatDate(selectedOrderView.close_time || selectedOrderView.created_at)}</div>
                                         <div className={`hm-cash-amount ${selectedProfit >= 0 ? "profit" : "loss"}`}>
                                             {formatNumber(selectedProfit, 2, 2)}
                                         </div>
@@ -397,33 +413,33 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
                                         </div>
                                     </div>
 
-                                    <div className="hm-grid">
-                                        <div className="hm-grid-item">
-                                            <span className="hm-label">{t("type", lang)}:</span>
-                                            <span className={`hm-side ${selectedOrder.side}`}>{selectedOrder.side === "buy" ? t("buy", lang).toUpperCase() : selectedOrder.side === "sell" ? t("sell", lang).toUpperCase() : selectedOrder.side.toUpperCase()}</span>
-                                        </div>
-                                        <div className="hm-grid-item">
-                                            <span className="hm-label">{t("volume", lang)}:</span>
-                                            <span className="hm-val">{selectedOrder.qty}</span>
-                                        </div>
-                                        <div className="hm-grid-item hm-grid-item-time">
-                                            <span className="hm-label">{t("history.openTime", lang)}:</span>
-                                            <span className="hm-val">{formatDate(selectedOrder.created_at)}</span>
-                                        </div>
-                                        <div className="hm-grid-item hm-grid-item-time">
-                                            <span className="hm-label">{t("history.closeTime", lang)}:</span>
-                                            <span className="hm-val">{formatDate(selectedOrder.close_time || selectedOrder.created_at)}</span>
-                                        </div>
-                                        <div className="hm-grid-item">
-                                            <span className="hm-label">{t("history.swap", lang)}:</span>
-                                            <span className="hm-val">{formatNumber(toNumber(selectedOrder.swap), 2, 2)}</span>
-                                        </div>
-                                        <div className="hm-grid-item">
-                                            <span className="hm-label">{t("history.commission", lang)}:</span>
-                                            <span className="hm-val">{formatNumber(toNumber(selectedOrder.commission), 2, 2)}</span>
+                                        <div className="hm-grid">
+                                            <div className="hm-grid-item">
+                                                <span className="hm-label">{t("type", lang)}:</span>
+                                            <span className={`hm-side ${selectedOrderView.side}`}>{selectedOrderView.side === "buy" ? t("buy", lang).toUpperCase() : selectedOrderView.side === "sell" ? t("sell", lang).toUpperCase() : selectedOrderView.side.toUpperCase()}</span>
+                                            </div>
+                                            <div className="hm-grid-item">
+                                                <span className="hm-label">{t("volume", lang)}:</span>
+                                            <span className="hm-val">{selectedOrderView.qty}</span>
+                                            </div>
+                                            <div className="hm-grid-item hm-grid-item-time">
+                                                <span className="hm-label">{t("history.openTime", lang)}:</span>
+                                            <span className="hm-val">{formatDate(selectedOrderView.created_at)}</span>
+                                            </div>
+                                            <div className="hm-grid-item hm-grid-item-time">
+                                                <span className="hm-label">{t("history.closeTime", lang)}:</span>
+                                            <span className="hm-val">{formatDate(selectedOrderView.close_time || selectedOrderView.created_at)}</span>
+                                            </div>
+                                            <div className="hm-grid-item">
+                                                <span className="hm-label">{t("history.swap", lang)}:</span>
+                                            <span className="hm-val">{formatNumber(toNumber(selectedOrderView.swap), 2, 2)}</span>
+                                            </div>
+                                            <div className="hm-grid-item">
+                                                <span className="hm-label">{t("history.commission", lang)}:</span>
+                                            <span className="hm-val">{formatNumber(toNumber(selectedOrderView.commission), 2, 2)}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
                             )}
                         </div>
                     </div>

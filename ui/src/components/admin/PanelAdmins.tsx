@@ -2,8 +2,11 @@ import { useState, useEffect } from "react"
 import { Shield, Plus, User, Trash2, Edit2, X, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { PanelAdmin } from "./types"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 
 interface PanelAdminsProps {
+    lang: Lang
     baseUrl: string
     headers: any
     userRole: string | null
@@ -11,10 +14,17 @@ interface PanelAdminsProps {
 
 const allRights = ["sessions", "volatility", "trend", "events", "kyc_review", "deposit_review"]
 
-const rightLabel = (value: string) => {
-    const normalized = String(value || "").replace(/_/g, " ").trim()
-    if (!normalized) return value
-    return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+const rightLabel = (value: string, lang: Lang) => {
+    const normalized = String(value || "").trim().toLowerCase()
+    if (normalized === "sessions") return t("manage.admins.rights.sessions", lang)
+    if (normalized === "volatility") return t("manage.admins.rights.volatility", lang)
+    if (normalized === "trend") return t("manage.admins.rights.trend", lang)
+    if (normalized === "events") return t("manage.admins.rights.events", lang)
+    if (normalized === "kyc_review") return t("manage.admins.rights.kycReview", lang)
+    if (normalized === "deposit_review") return t("manage.admins.rights.depositReview", lang)
+    const fallback = normalized.replace(/_/g, " ")
+    if (!fallback) return value
+    return fallback.charAt(0).toUpperCase() + fallback.slice(1)
 }
 
 const normalizeRights = (rights: unknown): string[] => {
@@ -31,7 +41,7 @@ const normalizeRights = (rights: unknown): string[] => {
     return []
 }
 
-export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsProps) {
+export default function PanelAdmins({ lang, baseUrl, headers, userRole }: PanelAdminsProps) {
     const [panelAdmins, setPanelAdmins] = useState<PanelAdmin[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -86,19 +96,19 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                 fetchAdmins()
             }
         } catch (e) {
-            setError("Failed to create admin")
+            setError(t("manage.admins.error.create", lang))
         } finally {
             setLoading(false)
         }
     }
 
     const deleteAdmin = async (id: number) => {
-        if (!confirm("Delete this admin?")) return
+        if (!confirm(t("manage.admins.confirmDelete", lang))) return
         setLoading(true)
         try {
             await fetch(`${baseUrl}/v1/admin/panel-admins/${id}`, { method: "DELETE", headers })
             fetchAdmins()
-        } catch (e) { setError("Failed to delete admin") }
+        } catch (e) { setError(t("manage.admins.error.delete", lang)) }
         finally { setLoading(false) }
     }
 
@@ -126,15 +136,15 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                     rights: rightsMap
                 })
             })
-            if (!res.ok) throw new Error("Failed to update admin")
+            if (!res.ok) throw new Error(t("manage.admins.error.update", lang))
 
             setError(null)
             setEditingAdmin(null)
             await fetchAdmins()
-            toast.success("Admin rights updated")
+            toast.success(t("manage.admins.updated", lang))
         } catch (e) {
-            setError("Failed to update admin")
-            toast.error("Failed to update admin rights")
+            setError(t("manage.admins.error.update", lang))
+            toast.error(t("manage.admins.error.updateRights", lang))
         } finally {
             setLoading(false)
         }
@@ -154,28 +164,28 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
         <div className="admin-card full-width">
             <div className="admin-card-header">
                 <Shield size={20} />
-                <h2>Panel Administrators</h2>
+                <h2>{t("manage.admins.title", lang)}</h2>
             </div>
 
             {error && <div className="error-message">{error}</div>}
 
             <div className="admin-form">
                 <div className="admin-form-row">
-                    <input type="number" value={newAdminTgId} onChange={e => setNewAdminTgId(e.target.value)} placeholder="Telegram ID" />
-                    <input type="text" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} placeholder="Admin Name" />
+                    <input type="number" value={newAdminTgId} onChange={e => setNewAdminTgId(e.target.value)} placeholder={t("manage.admins.telegramID", lang)} />
+                    <input type="text" value={newAdminName} onChange={e => setNewAdminName(e.target.value)} placeholder={t("manage.admins.adminName", lang)} />
                 </div>
                 <div className="rights-chips">
                     {allRights.map(right => (
                         <button key={right}
                             className={`right-chip ${newAdminRights.includes(right) ? 'active' : ''}`}
                             onClick={() => toggleNewAdminRight(right)}>
-                            {rightLabel(right)}
+                            {rightLabel(right, lang)}
                         </button>
                     ))}
                 </div>
                 <button className="add-event-btn" onClick={createAdmin} disabled={loading || !newAdminTgId || !newAdminName}>
                     {loading ? <Loader2 className="spin" /> : <Plus size={18} />}
-                    <span>Add Admin</span>
+                    <span>{t("manage.admins.add", lang)}</span>
                 </button>
             </div>
 
@@ -183,7 +193,7 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                 {panelAdmins.length === 0 ? (
                     <div className="no-events">
                         <User size={24} />
-                        <span>No admins yet</span>
+                        <span>{t("manage.admins.empty", lang)}</span>
                     </div>
                 ) : panelAdmins.map(admin => (
                     <div key={admin.id} className="admin-item">
@@ -191,11 +201,11 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                             <User size={20} />
                             <div className="admin-meta">
                                 <span className="admin-name">{admin.name}</span>
-                                <span className="admin-tg">ID: {admin.telegram_id}</span>
+                                <span className="admin-tg">{t("manage.admins.id", lang).replace("{id}", String(admin.telegram_id))}</span>
                             </div>
                         </div>
                         <div className="admin-rights">
-                            {Array.isArray(admin.rights) && admin.rights.map(r => <span key={r} className="right-badge">{rightLabel(r)}</span>)}
+                            {Array.isArray(admin.rights) && admin.rights.map(r => <span key={r} className="right-badge">{rightLabel(r, lang)}</span>)}
                         </div>
                         <div className="admin-actions">
                             <button className="edit-admin-btn" onClick={() => startEditing(admin)}>
@@ -215,7 +225,7 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                     <div className="filter-overlay" onClick={() => setEditingAdmin(null)} />
                     <div className="filter-modal">
                         <div className="filter-header">
-                            <h3>Edit Admin</h3>
+                            <h3>{t("manage.admins.editTitle", lang)}</h3>
                             <button onClick={() => setEditingAdmin(null)}>
                                 <X size={20} />
                             </button>
@@ -223,12 +233,12 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                         <div className="filter-custom">
                             <div className="date-range-inputs">
                                 <div className="date-input-group" style={{ gridColumn: "1 / -1" }}>
-                                    <label>Name</label>
+                                    <label>{t("manage.admins.name", lang)}</label>
                                     <input type="text" value={editAdminName} onChange={e => setEditAdminName(e.target.value)} />
                                 </div>
                             </div>
 
-                            <label style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8, display: "block" }}>Rights</label>
+                            <label style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8, display: "block" }}>{t("manage.admins.rightsTitle", lang)}</label>
                             <div className="rights-chips" style={{ marginBottom: 20 }}>
                                 {allRights.map(right => (
                                     <button key={right}
@@ -240,13 +250,13 @@ export default function PanelAdmins({ baseUrl, headers, userRole }: PanelAdminsP
                                                 setEditAdminRights(prev => [...prev, right])
                                             }
                                         }}>
-                                        {rightLabel(right)}
+                                        {rightLabel(right, lang)}
                                     </button>
                                 ))}
                             </div>
 
                             <button className="apply-filter-btn" onClick={updateAdmin} disabled={loading || !editAdminName}>
-                                {loading ? <Loader2 className="spin" /> : "Save Changes"}
+                                {loading ? <Loader2 className="spin" /> : t("manage.admins.saveChanges", lang)}
                             </button>
                         </div>
                     </div>

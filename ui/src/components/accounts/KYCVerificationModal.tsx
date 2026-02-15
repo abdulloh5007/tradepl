@@ -6,6 +6,7 @@ import type { Lang } from "../../types"
 import SmartDropdown from "../ui/SmartDropdown"
 import type { SmartDropdownOption } from "../ui/SmartDropdown"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "./KYCVerificationModal.css"
 
 type KYCDocumentType = "passport" | "id_card" | "driver_license" | "other"
@@ -48,6 +49,7 @@ export default function KYCVerificationModal({
   onClose,
   onSubmit,
 }: KYCVerificationModalProps) {
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
   const [documentType, setDocumentType] = useState<KYCDocumentType>("passport")
   const [fullName, setFullName] = useState("")
   const [documentNumber, setDocumentNumber] = useState("")
@@ -67,7 +69,7 @@ export default function KYCVerificationModal({
     setBackProofFile(null)
   }, [open])
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const pickProof = (side: "front" | "back", file?: File | null) => {
     if (!file) return
@@ -105,7 +107,7 @@ export default function KYCVerificationModal({
   ]
 
   return (
-    <div className="acm-overlay" role="dialog" aria-modal="true">
+    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
       <div className="acm-backdrop" onClick={() => {
         if (!loading) onClose()
       }} />

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react"
 import { TrendingUp, TrendingDown, Minus, Shuffle } from "lucide-react"
 import Skeleton from "../Skeleton"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 
 interface TrendCardProps {
+    lang: Lang
     currentTrend: string
     mode: string
     autoTrendState: {
@@ -28,6 +31,7 @@ interface TrendCardProps {
 }
 
 export default function TrendCard({
+    lang,
     currentTrend, mode, autoTrendState, activeEventState, loading, initialLoad, eventLoading, canAccess,
     onSetTrend, onToggleMode
 }: TrendCardProps) {
@@ -60,25 +64,25 @@ export default function TrendCard({
     }, [mode, autoTrendState?.active, autoTrendState?.next_switch_at])
 
     const trendConfig = [
-        { id: "bullish", icon: TrendingUp, label: "Bullish", color: "#16a34a" },
-        { id: "bearish", icon: TrendingDown, label: "Bearish", color: "#ef4444" },
-        { id: "sideways", icon: Minus, label: "Sideways", color: "#eab308" },
-        { id: "random", icon: Shuffle, label: "Random", color: "var(--accent-2)" }
+        { id: "bullish", icon: TrendingUp, label: t("manage.trend.bullish", lang), color: "#16a34a" },
+        { id: "bearish", icon: TrendingDown, label: t("manage.trend.bearish", lang), color: "#ef4444" },
+        { id: "sideways", icon: Minus, label: t("manage.trend.sideways", lang), color: "#eab308" },
+        { id: "random", icon: Shuffle, label: t("manage.trend.random", lang), color: "var(--accent-2)" }
     ]
 
     return (
         <div className="admin-card">
             <div className="admin-card-header">
                 <TrendingUp size={20} />
-                <h2>Market Trend</h2>
+                <h2>{t("manage.trend.title", lang)}</h2>
                 <div className="mode-toggle">
                     {initialLoad ? <Skeleton width={120} height={24} radius={12} /> : (
                         <>
-                            <span className={mode === "manual" ? "active" : ""}>Manual</span>
+                            <span className={mode === "manual" ? "active" : ""}>{t("manage.common.manual", lang)}</span>
                             <button className={`toggle-switch ${mode === "auto" ? "checked" : ""}`} onClick={onToggleMode} disabled={loading || !!activeEventState?.active}>
                                 <span className="toggle-thumb" />
                             </button>
-                            <span className={mode === "auto" ? "active" : ""}>Auto</span>
+                            <span className={mode === "auto" ? "active" : ""}>{t("manage.common.auto", lang)}</span>
                         </>
                     )}
                 </div>
@@ -110,7 +114,7 @@ export default function TrendCard({
             </div>
             {!initialLoad && !eventLoading && mode === "manual" && !activeEventState?.active && (
                 <div className="mode-toggle" style={{ marginTop: 10 }}>
-                    <span className={impulseDuration === 180 ? "active" : ""}>3m</span>
+                    <span className={impulseDuration === 180 ? "active" : ""}>{t("manage.trend.duration3m", lang)}</span>
                     <button
                         className={`toggle-switch ${impulseDuration === 300 ? "checked" : ""}`}
                         onClick={() => setImpulseDuration(prev => prev === 180 ? 300 : 180)}
@@ -118,7 +122,7 @@ export default function TrendCard({
                     >
                         <span className="toggle-thumb" />
                     </button>
-                    <span className={impulseDuration === 300 ? "active" : ""}>5m</span>
+                    <span className={impulseDuration === 300 ? "active" : ""}>{t("manage.trend.duration5m", lang)}</span>
                 </div>
             )}
         </div>

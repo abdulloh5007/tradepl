@@ -144,3 +144,36 @@
     border-top: 1px solid rgba(255, 255, 255, 0.3);
     border-bottom: 1px solid rgba(0, 0, 0, 0.3);
 }
+
+html[data-theme="light"] .atc-card {
+    background-color: var(--panel);
+    border-color: var(--border);
+    box-shadow: var(--shadow);
+}
+
+html[data-theme="light"] .atc-title {
+    color: var(--text);
+}
+
+html[data-theme="light"] .atc-badge {
+    background-color: var(--panel-alt);
+    color: var(--text);
+    border-color: var(--border);
+}
+
+html[data-theme="light"] .atc-description,
+html[data-theme="light"] .atc-label {
+    color: var(--muted);
+}
+
+html[data-theme="light"] .atc-row {
+    border-bottom-color: color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+html[data-theme="light"] .atc-dots {
+    border-bottom-color: color-mix(in srgb, var(--muted) 62%, transparent);
+}
+
+html[data-theme="light"] .atc-value {
+    color: var(--text);
+}

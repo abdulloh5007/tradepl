@@ -6,6 +6,7 @@ import type { AccountSnapshot } from "./types"
 import { accountShortNumericId, formatPercent, formatUsd, getLeverage, leverageLabel, leverageOptions } from "./utils"
 import SmartDropdown from "../ui/SmartDropdown"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "./SharedAccountSheet.css"
 
 interface AccountDetailsModalProps {
@@ -29,6 +30,7 @@ export default function AccountDetailsModal({
   onRename,
   onUpdateLeverage
 }: AccountDetailsModalProps) {
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
   const [tab, setTab] = useState<"stats" | "settings">("stats")
   const [nameDraft, setNameDraft] = useState("")
   const [levDraft, setLevDraft] = useState(100)
@@ -71,10 +73,10 @@ export default function AccountDetailsModal({
   const accountBalance = Number.isFinite(rawBalance) ? rawBalance : 0
   const unlimitedBlockedByBalance = Boolean(levDraft === 0 && account && getLeverage(account) !== 0 && accountBalance > 1000)
 
-  if (!open || !account) return null
+  if (!shouldRender || !account) return null
 
   return (
-    <div className="acm-overlay" role="dialog" aria-modal="true">
+    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
       <div className="acm-backdrop" onClick={onClose} />
       <div className="acm-sheet">
         <div className="acm-header">
@@ -186,7 +188,7 @@ export default function AccountDetailsModal({
                 />
               </label>
               {unlimitedBlockedByBalance && (
-                <div className="acm-note" style={{ textAlign: "left", color: "#f59e0b" }}>
+                <div className="acm-note" style={{ textAlign: "left", color: "var(--status-warning)" }}>
                   {t("accounts.details.unlimitedBlocked", lang)}
                 </div>
               )}

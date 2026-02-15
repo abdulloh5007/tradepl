@@ -5,6 +5,7 @@ import type { DepositBonusStatus } from "../../api"
 import type { Lang } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
+import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "./RealDepositRequestModal.css"
 
 type VoucherKind = "none" | "gold" | "diamond"
@@ -68,6 +69,7 @@ export default function RealDepositRequestModal({
   onClose,
   onSubmit,
 }: RealDepositRequestModalProps) {
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
   const [amountRaw, setAmountRaw] = useState("")
   const [amountDisplay, setAmountDisplay] = useState("")
   const [voucherKind, setVoucherKind] = useState<VoucherKind>("none")
@@ -155,7 +157,7 @@ export default function RealDepositRequestModal({
     }
   }, [voucherKind, availableVoucherIds])
 
-  if (!open) return null
+  if (!shouldRender) return null
 
   const pickProof = (file?: File | null) => {
     if (!file) return
@@ -169,7 +171,7 @@ export default function RealDepositRequestModal({
   const disabledSubmit = loading || !withinLimits || !proofFile
 
   return (
-    <div className="acm-overlay" role="dialog" aria-modal="true">
+    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
       <div className="acm-backdrop" onClick={() => {
         if (!loading) onClose()
       }} />

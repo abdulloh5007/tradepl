@@ -1,8 +1,11 @@
 import { Activity, Moon, Zap, CheckCircle } from "lucide-react"
 import { VolatilityConfig } from "./types"
 import Skeleton from "../Skeleton"
+import type { Lang } from "../../types"
+import { t } from "../../utils/i18n"
 
 interface VolatilityCardProps {
+    lang: Lang
     configs: VolatilityConfig[]
     activeId: string
     mode: string
@@ -14,6 +17,7 @@ interface VolatilityCardProps {
 }
 
 export default function VolatilityCard({
+    lang,
     configs, activeId, mode, loading, initialLoad, canAccess,
     onActivate, onToggleMode
 }: VolatilityCardProps) {
@@ -24,15 +28,15 @@ export default function VolatilityCard({
         <div className="admin-card">
             <div className="admin-card-header">
                 <Activity size={20} />
-                <h2>Volatility Profiles</h2>
+                <h2>{t("manage.volatility.title", lang)}</h2>
                 <div className="mode-toggle">
                     {initialLoad ? <Skeleton width={120} height={24} radius={12} /> : (
                         <>
-                            <span className={mode === "manual" ? "active" : ""}>Manual</span>
+                            <span className={mode === "manual" ? "active" : ""}>{t("manage.common.manual", lang)}</span>
                             <button className={`toggle-switch ${mode === "auto" ? "checked" : ""}`} onClick={onToggleMode} disabled={loading}>
                                 <span className="toggle-thumb" />
                             </button>
-                            <span className={mode === "auto" ? "active" : ""}>Auto</span>
+                            <span className={mode === "auto" ? "active" : ""}>{t("manage.common.auto", lang)}</span>
                         </>
                     )}
                 </div>
@@ -59,9 +63,9 @@ export default function VolatilityCard({
                             onClick={() => onActivate(v.id)} disabled={loading || mode === "auto"}
                             style={{ opacity: mode === "auto" && !isActive ? 0.6 : 1 }}>
                             <Icon size={24} />
-                            <span className="session-name">{v.name}</span>
+                            <span className="session-name">{v.id === "london" || v.id === "newyork" ? t(`manage.sessions.session.${v.id}`, lang) : v.name}</span>
                             {mode === "auto" ? <span className="session-rate" style={{ fontSize: 11 }}>{v.schedule_start} - {v.schedule_end}</span>
-                                : <span className="session-rate">Vol: {v.value.toFixed(5)}</span>}
+                                : <span className="session-rate">{t("manage.volatility.value", lang).replace("{value}", v.value.toFixed(5))}</span>}
                             {isActive && <CheckCircle size={16} className="session-check" />}
                         </button>
                     )
