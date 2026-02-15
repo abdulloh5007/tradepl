@@ -4,12 +4,12 @@ import { BrowserRouter, Routes, Route } from "react-router-dom"
 import App from "./App"
 import ManagePanel from "./pages/Manage/ManagePanel"
 import NotFoundPage from "./pages/NotFound/NotFoundPage"
-import { storedTheme } from "./utils/cookies"
+import { storedTheme, storedBaseUrl } from "./utils/cookies"
 import "./styles.css"
 
 function RootApp() {
   const [theme, setTheme] = useState<"dark" | "light">(storedTheme)
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8080"
+  const baseUrl = (import.meta.env.VITE_API_URL || storedBaseUrl()).replace(/\/+$/, "")
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme)

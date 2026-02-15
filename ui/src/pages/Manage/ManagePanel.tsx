@@ -522,7 +522,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     // WebSocket for event_state updates
     useEffect(() => {
         if (!isAuthorized || !canTrend) return
-        const wsUrl = "ws://localhost:8080/v1/events/ws"
+        const wsUrl = `${baseUrl.replace(/^http/, "ws").replace(/\/+$/, "")}/v1/events/ws`
         const ws = new WebSocket(wsUrl)
 
         ws.onmessage = (e) => {
@@ -547,7 +547,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         }
 
         return () => ws.close()
-    }, [isAuthorized, canTrend, currentTrend, fetchEvents])
+    }, [isAuthorized, canTrend, currentTrend, fetchEvents, baseUrl])
 
     // Countdown timer
     useEffect(() => {

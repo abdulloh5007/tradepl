@@ -22,7 +22,20 @@ export function storedTheme(): "dark" | "light" {
 }
 
 export function storedBaseUrl(): string {
-    return getCookie("lv_baseurl") || "http://localhost:8080"
+    const fromCookie = getCookie("lv_baseurl")
+    if (fromCookie) return fromCookie
+
+    if (typeof window === "undefined") return "http://localhost:8080"
+
+    const envBase = (import.meta.env.VITE_API_URL || "").trim()
+    if (envBase) return envBase.replace(/\/+$/, "")
+
+    const host = window.location.hostname.toLowerCase()
+    if (host === "biax.duckdns.org") {
+        return "https://api-biax.duckdns.org"
+    }
+
+    return window.location.origin
 }
 
 export function storedToken(): string {
