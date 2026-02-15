@@ -485,10 +485,13 @@
 
 .accounts-bonus-modal.is-open {
   opacity: 1;
+  transition: opacity 0.26s ease;
 }
 
 .accounts-bonus-modal.is-closing {
   opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
 }
 
 .accounts-bonus-backdrop {
@@ -516,20 +519,24 @@
 
 .accounts-bonus-modal.is-open .accounts-bonus-backdrop {
   opacity: 1;
+  transition-duration: 0.26s;
 }
 
 .accounts-bonus-modal.is-open .accounts-bonus-sheet {
   transform: translateY(0) scale(1);
   opacity: 1;
+  transition-duration: 0.28s, 0.22s;
 }
 
 .accounts-bonus-modal.is-closing .accounts-bonus-backdrop {
   opacity: 0;
+  transition-duration: 0.22s;
 }
 
 .accounts-bonus-modal.is-closing .accounts-bonus-sheet {
   transform: translateY(22px) scale(0.99);
   opacity: 0;
+  transition-duration: 0.22s, 0.2s;
 }
 
 .accounts-bonus-sheet-head {
@@ -620,14 +627,15 @@
 }
 
 html[data-theme="light"] .accounts-notif-btn {
-  background: rgba(255, 255, 255, 0.85);
-  color: #334155;
-  border-color: rgba(148, 163, 184, 0.45);
+  background: #ffffff;
+  color: #1e293b;
+  border-color: color-mix(in srgb, var(--accent-2) 26%, var(--border));
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
 }
 
 html[data-theme="light"] .accounts-notif-btn:hover {
-  border-color: rgba(59, 130, 246, 0.5);
-  background: rgba(59, 130, 246, 0.16);
+  border-color: color-mix(in srgb, var(--accent-2) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent-2) 14%, #ffffff);
 }
 
 html[data-theme="light"] .accounts-notif-dot {
@@ -658,8 +666,19 @@ html[data-theme="light"] .accounts-referral-note {
 }
 
 html[data-theme="light"] .accounts-referral-btn {
-  background: rgba(255, 255, 255, 0.85);
+  background: #ffffff;
   color: #1e293b;
+  border-color: color-mix(in srgb, var(--border) 90%, transparent);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme="light"] .accounts-referral-btn-primary {
+  box-shadow: 0 8px 16px rgba(14, 165, 233, 0.25);
+}
+
+html[data-theme="light"] .add-account-btn {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  box-shadow: 0 8px 16px rgba(245, 158, 11, 0.3);
 }
 
 html[data-theme="light"] .accounts-kyc-card {

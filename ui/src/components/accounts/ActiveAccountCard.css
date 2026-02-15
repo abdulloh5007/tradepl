@@ -129,7 +129,7 @@
 /* Switch toggle (Chevron right) */
 .acc-switch-toggle {
   background: rgba(255, 255, 255, 0.08);
-  border: none;
+  border: 1px solid transparent;
   color: #e2e8f0;
   width: 36px;
   height: 36px;
@@ -242,12 +242,15 @@ html[data-theme="light"] .acc-plan-pill {
 }
 
 html[data-theme="light"] .acc-switch-toggle {
-  background: var(--panel-alt);
-  color: var(--text);
+  background: color-mix(in srgb, var(--accent-2) 10%, #ffffff);
+  color: color-mix(in srgb, var(--accent-2) 80%, #0f172a);
+  border: 1px solid color-mix(in srgb, var(--accent-2) 30%, var(--border));
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
 }
 
 html[data-theme="light"] .acc-switch-toggle:hover {
-  background: color-mix(in srgb, var(--accent-2) 12%, var(--panel-alt));
+  background: color-mix(in srgb, var(--accent-2) 18%, #ffffff);
+  border-color: color-mix(in srgb, var(--accent-2) 45%, var(--border));
 }
 
 html[data-theme="light"] .acc-pl-block {
@@ -259,15 +262,22 @@ html[data-theme="light"] .acc-balance-skeleton {
 }
 
 html[data-theme="light"] .acc-action-btn {
-  background: var(--panel-alt);
-  color: var(--text);
-  border: 1px solid var(--border);
+  background: #ffffff;
+  color: color-mix(in srgb, var(--text) 88%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
 }
 
 html[data-theme="light"] .acc-action-btn:hover {
-  background: color-mix(in srgb, var(--accent-2) 10%, var(--panel-alt));
+  background: color-mix(in srgb, var(--accent-2) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--accent-2) 36%, var(--border));
 }
 
 html[data-theme="light"] .acc-action-label {
-  color: var(--muted);
+  color: color-mix(in srgb, var(--text) 74%, #ffffff);
+}
+
+html[data-theme="light"] .acc-action-btn.trade-btn {
+  border-color: rgba(245, 158, 11, 0.38);
+  box-shadow: 0 8px 16px rgba(245, 158, 11, 0.28);
 }

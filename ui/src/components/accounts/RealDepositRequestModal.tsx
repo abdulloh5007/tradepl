@@ -69,7 +69,7 @@ export default function RealDepositRequestModal({
   onClose,
   onSubmit,
 }: RealDepositRequestModalProps) {
-  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
   const [amountRaw, setAmountRaw] = useState("")
   const [amountDisplay, setAmountDisplay] = useState("")
   const [voucherKind, setVoucherKind] = useState<VoucherKind>("none")

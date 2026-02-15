@@ -20,7 +20,7 @@ interface HistoryFilterModalProps {
 }
 
 export default function HistoryFilterModal({ open, lang, currentRange, onClose, onApply }: HistoryFilterModalProps) {
-    const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+    const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
     const [rangeType, setRangeType] = useState<DateRange["type"]>(currentRange.type)
     const [startDate, setStartDate] = useState(currentRange.startDate || "")
     const [endDate, setEndDate] = useState(currentRange.endDate || "")

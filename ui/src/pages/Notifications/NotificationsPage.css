@@ -162,10 +162,13 @@
 
 .notifications-detail-overlay.is-open {
   opacity: 1;
+  transition: opacity 0.26s ease;
 }
 
 .notifications-detail-overlay.is-closing {
   opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
 }
 
 .notifications-detail-backdrop {
@@ -195,20 +198,24 @@
 
 .notifications-detail-overlay.is-open .notifications-detail-backdrop {
   opacity: 1;
+  transition-duration: 0.26s;
 }
 
 .notifications-detail-overlay.is-open .notifications-detail-sheet {
   transform: translateY(0) scale(1);
   opacity: 1;
+  transition-duration: 0.28s, 0.22s;
 }
 
 .notifications-detail-overlay.is-closing .notifications-detail-backdrop {
   opacity: 0;
+  transition-duration: 0.22s;
 }
 
 .notifications-detail-overlay.is-closing .notifications-detail-sheet {
   transform: translateY(22px) scale(0.99);
   opacity: 0;
+  transition-duration: 0.22s, 0.2s;
 }
 
 .notifications-detail-head {

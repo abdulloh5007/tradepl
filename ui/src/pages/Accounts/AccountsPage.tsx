@@ -155,7 +155,7 @@ export default function AccountsPage({
   const [bonusModalOpen, setBonusModalOpen] = useState(false)
   const [bonusAccepted, setBonusAccepted] = useState(false)
   const [bonusBusy, setBonusBusy] = useState(false)
-  const { shouldRender: bonusModalRender, isVisible: bonusModalVisible } = useAnimatedPresence(bonusModalOpen, 140)
+  const { shouldRender: bonusModalRender, isVisible: bonusModalVisible } = useAnimatedPresence(bonusModalOpen, 220)
 
   const showSignupBonus = !!signupBonus && !signupBonus.claimed && signupBonus.can_claim
   const signupBonusAmount = signupBonus?.amount || "10.00"

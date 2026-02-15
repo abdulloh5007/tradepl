@@ -63,7 +63,7 @@ const PLANS = [
 ]
 
 export default function AccountCreationModal({ lang, open, onClose, onCreate }: AccountCreationModalProps): JSX.Element | null {
-    const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+    const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
     const [mode, setMode] = useState<"real" | "demo">("demo")
     const [activeIndex, setActiveIndex] = useState(0)
     const [creating, setCreating] = useState(false)

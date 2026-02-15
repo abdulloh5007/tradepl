@@ -1,7 +1,7 @@
 import { Suspense, lazy } from "react"
 import type { ReactNode } from "react"
 import type { DepositBonusStatus, KYCStatus, ProfitRewardStatus, ReferralStatus, SignupBonusStatus, UserProfile } from "../api"
-import type { AppNotification, Lang, MarketConfig, MarketNewsEvent, Metrics, Order, Quote, Theme, TradingAccount, View } from "../types"
+import type { AppNotification, Lang, MarketConfig, MarketNewsEvent, Metrics, NotificationSettings, Order, Quote, Theme, TradingAccount, View } from "../types"
 import { t } from "../utils/i18n"
 import TradingPage from "../pages/Trading/TradingPage"
 import PositionsPage from "../pages/Positions/PositionsPage"
@@ -98,6 +98,8 @@ interface AppViewRouterProps {
   profile: UserProfile | null
   setLang: (lang: Lang) => void
   setTheme: (theme: Theme) => void
+  notificationSettings: NotificationSettings
+  setNotificationSettings: (settings: NotificationSettings) => void
   onLogout: () => void
   api: FaucetApi
   onMetricsUpdate: (metrics: Metrics) => void
@@ -185,6 +187,8 @@ export default function AppViewRouter({
   profile,
   setLang,
   setTheme,
+  notificationSettings,
+  setNotificationSettings,
   onLogout,
   api,
   onMetricsUpdate,
@@ -309,6 +313,8 @@ export default function AppViewRouter({
           setTheme={setTheme}
           onLogout={onLogout}
           profile={profile}
+          notificationSettings={notificationSettings}
+          setNotificationSettings={setNotificationSettings}
           activeAccount={activeAccount}
           kycStatus={kycStatus}
           onRequestKYC={onRequestKYC}

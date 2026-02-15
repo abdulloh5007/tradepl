@@ -1,27 +1,28 @@
-import { useEffect, useState } from "react"
+import { useLayoutEffect, useState } from "react"
 
 export function useAnimatedPresence(open: boolean, durationMs = 220) {
   const [shouldRender, setShouldRender] = useState(open)
   const [isVisible, setIsVisible] = useState(open)
 
-  useEffect(() => {
-    let timer: number | undefined
-    let raf: number | undefined
+  useLayoutEffect(() => {
+    let closeTimer: number | undefined
+    let enterTimer: number | undefined
 
     if (open) {
+      // Ensure first paint happens in hidden state, then animate in.
+      setIsVisible(false)
       setShouldRender(true)
-      raf = window.requestAnimationFrame(() => setIsVisible(true))
+      enterTimer = window.setTimeout(() => setIsVisible(true), 16)
     } else {
       setIsVisible(false)
-      timer = window.setTimeout(() => setShouldRender(false), durationMs)
+      closeTimer = window.setTimeout(() => setShouldRender(false), durationMs)
     }
 
     return () => {
-      if (timer) window.clearTimeout(timer)
-      if (raf) window.cancelAnimationFrame(raf)
+      if (closeTimer) window.clearTimeout(closeTimer)
+      if (enterTimer) window.clearTimeout(enterTimer)
     }
   }, [open, durationMs])
 
   return { shouldRender, isVisible }
 }
-

@@ -30,7 +30,7 @@ export default function AccountDetailsModal({
   onRename,
   onUpdateLeverage
 }: AccountDetailsModalProps) {
-  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
   const [tab, setTab] = useState<"stats" | "settings">("stats")
   const [nameDraft, setNameDraft] = useState("")
   const [levDraft, setLevDraft] = useState(100)

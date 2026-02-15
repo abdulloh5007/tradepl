@@ -77,6 +77,30 @@
   font-weight: 600;
 }
 
+.profile-rewards-btn {
+  width: 100%;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(59, 130, 246, 0.14), transparent 55%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.86), rgba(17, 24, 39, 0.82));
+  color: #e2e8f0;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(2, 6, 23, 0.2);
+}
+
+.profile-rewards-btn-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .profile-referral-card {
   margin: 0;
   border-radius: 16px;
@@ -241,13 +265,24 @@
 }
 
 html[data-theme="light"] .profile-settings-btn {
-  background: rgba(15, 23, 42, 0.05);
-  color: #1f2937;
+  background: #ffffff;
+  color: #1e293b;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 24%, var(--border));
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
 }
 
 html[data-theme="light"] .profile-user-card {
   background: rgba(255, 255, 255, 0.85);
   border-color: rgba(148, 163, 184, 0.3);
+}
+
+html[data-theme="light"] .profile-rewards-btn {
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(59, 130, 246, 0.12), transparent 55%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.92));
+  color: #1e293b;
+  border-color: rgba(59, 130, 246, 0.24);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
 }
 
 html[data-theme="light"] .profile-referral-card {
@@ -274,8 +309,14 @@ html[data-theme="light"] .profile-referral-note {
 }
 
 html[data-theme="light"] .profile-referral-btn {
-  background: rgba(255, 255, 255, 0.85);
+  background: #ffffff;
   color: #1e293b;
+  border-color: color-mix(in srgb, var(--border) 90%, transparent);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme="light"] .profile-referral-btn-primary {
+  box-shadow: 0 8px 16px rgba(14, 165, 233, 0.25);
 }
 
 html[data-theme="light"] .profile-kyc-card {

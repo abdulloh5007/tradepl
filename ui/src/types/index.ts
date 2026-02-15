@@ -140,6 +140,16 @@ export interface AppNotification {
     details?: SystemNoticeDetails
 }
 
+export interface NotificationSettings {
+    enabled: boolean
+    kinds: {
+        system: boolean
+        bonus: boolean
+        deposit: boolean
+        news: boolean
+    }
+}
+
 export interface MarketNewsEvent {
     id: number
     pair: string

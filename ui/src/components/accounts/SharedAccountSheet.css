@@ -23,11 +23,13 @@
 
 .acm-overlay.is-open {
     opacity: 1;
-    transition: opacity 0.22s ease;
+    transition: opacity 0.26s ease;
 }
 
 .acm-overlay.is-closing {
     opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
 }
 
 .acm-backdrop {
@@ -63,20 +65,24 @@
 
 .acm-overlay.is-open .acm-backdrop {
     opacity: 1;
+    transition-duration: 0.26s;
 }
 
 .acm-overlay.is-open .acm-sheet {
     transform: translateY(0) scale(1);
     opacity: 1;
+    transition-duration: 0.28s, 0.22s;
 }
 
 .acm-overlay.is-closing .acm-backdrop {
     opacity: 0;
+    transition-duration: 0.22s;
 }
 
 .acm-overlay.is-closing .acm-sheet {
     transform: translateY(22px) scale(0.99);
     opacity: 0;
+    transition-duration: 0.22s, 0.2s;
 }
 
 /* Header */

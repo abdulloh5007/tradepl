@@ -26,7 +26,7 @@ export default function AccountsSwitcherSheet({
   onClose,
   onSwitch
 }: AccountsSwitcherSheetProps) {
-  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
   const [tab, setTab] = useState<"real" | "demo">("demo")
   const [switchingId, setSwitchingId] = useState<string | null>(null)
 

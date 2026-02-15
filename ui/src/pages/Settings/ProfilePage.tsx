@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Settings2, Share2, ShieldCheck, User } from "lucide-react"
+import { Settings2, Share2, ShieldCheck, Trophy, User } from "lucide-react"
 import type { KYCStatus, ProfitRewardStatus, ReferralStatus, UserProfile } from "../../api"
-import type { Lang, Theme, TradingAccount } from "../../types"
+import type { Lang, NotificationSettings, Theme, TradingAccount } from "../../types"
 import KYCVerificationModal from "../../components/accounts/KYCVerificationModal"
 import ProfitStagesPage from "./ProfitStagesPage"
-import SettingsSheet from "./SettingsSheet"
+import SettingsPage from "./SettingsPage"
 import { t } from "../../utils/i18n"
 import "./ProfilePage.css"
 
@@ -16,6 +16,8 @@ interface ProfilePageProps {
     setTheme: (theme: Theme) => void
     onLogout: () => void
     profile: UserProfile | null
+    notificationSettings: NotificationSettings
+    setNotificationSettings: (settings: NotificationSettings) => void
     activeAccount: TradingAccount | null
     kycStatus: KYCStatus | null
     onRequestKYC: (payload: {
@@ -52,6 +54,8 @@ export default function ProfilePage({
     setTheme,
     onLogout,
     profile,
+    notificationSettings,
+    setNotificationSettings,
     activeAccount,
     kycStatus,
     onRequestKYC,
@@ -161,6 +165,21 @@ export default function ProfilePage({
         )
     }
 
+    if (showSettings) {
+        return (
+            <SettingsPage
+                lang={lang}
+                setLang={setLang}
+                theme={theme}
+                setTheme={setTheme}
+                notificationSettings={notificationSettings}
+                setNotificationSettings={setNotificationSettings}
+                onBack={() => setShowSettings(false)}
+                onLogout={onLogout}
+            />
+        )
+    }
+
     return (
         <div className="profile-page">
             <div className="profile-header">
@@ -191,6 +210,18 @@ export default function ProfilePage({
                     <h3 className="profile-display-name">{displayName}</h3>
                 </div>
             </div>
+
+            <button
+                type="button"
+                className="profile-rewards-btn"
+                onClick={() => setShowProfitStages(true)}
+            >
+                <span className="profile-rewards-btn-left">
+                    <Trophy size={15} />
+                    {t("profile.profitStages", lang)}
+                </span>
+                <span>{t("profile.open", lang)}</span>
+            </button>
 
             {referralStatus && (
                 <section className="profile-referral-card">
@@ -302,19 +333,6 @@ export default function ProfilePage({
                 }}
             />
 
-            <SettingsSheet
-                open={showSettings}
-                onClose={() => setShowSettings(false)}
-                lang={lang}
-                setLang={setLang}
-                theme={theme}
-                setTheme={setTheme}
-                onLogout={onLogout}
-                onOpenProfitStages={() => {
-                    setShowSettings(false)
-                    setShowProfitStages(true)
-                }}
-            />
         </div>
     )
 }

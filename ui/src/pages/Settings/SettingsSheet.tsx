@@ -1,5 +1,5 @@
 import { X, Moon, Sun, LogOut, Trophy } from "lucide-react"
-import type { Lang, Theme } from "../../types"
+import type { Lang, NotificationSettings, Theme } from "../../types"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "../../components/accounts/SharedAccountSheet.css"
@@ -11,6 +11,8 @@ interface SettingsSheetProps {
     setLang: (lang: Lang) => void
     theme: Theme
     setTheme: (theme: Theme) => void
+    notificationSettings: NotificationSettings
+    setNotificationSettings: (settings: NotificationSettings) => void
     onLogout: () => void
     onOpenProfitStages?: () => void
 }
@@ -22,11 +24,27 @@ export default function SettingsSheet({
     setLang,
     theme,
     setTheme,
+    notificationSettings,
+    setNotificationSettings,
     onLogout,
     onOpenProfitStages
 }: SettingsSheetProps) {
     const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
     if (!shouldRender) return null
+
+    const kinds = notificationSettings.kinds
+    const toggleGlobal = () => {
+        setNotificationSettings({ ...notificationSettings, enabled: !notificationSettings.enabled })
+    }
+    const toggleKind = (key: keyof NotificationSettings["kinds"]) => {
+        setNotificationSettings({
+            ...notificationSettings,
+            kinds: {
+                ...notificationSettings.kinds,
+                [key]: !notificationSettings.kinds[key]
+            }
+        })
+    }
 
     return (
         <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} style={{ zIndex: 200 }}>
@@ -103,6 +121,51 @@ export default function SettingsSheet({
                             >
                                 <Sun size={16} /> {t("light", lang)}
                             </button>
+                        </div>
+
+                        <div className="acm-section-title" style={{ padding: '8px 0', color: 'var(--muted)', fontSize: 13, fontWeight: 600 }}>
+                            {t("settings.notifications.title", lang)}
+                        </div>
+                        <div className="acm-list-item" style={{ cursor: "default", marginBottom: 8 }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600 }}>{t("settings.notifications.master", lang)}</span>
+                                <span style={{ fontSize: 11, color: "var(--muted)" }}>{t("settings.notifications.masterHint", lang)}</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={toggleGlobal}
+                                style={{
+                                    border: `1px solid ${notificationSettings.enabled ? "color-mix(in srgb, var(--accent-2) 55%, transparent)" : "var(--border)"}`,
+                                    background: notificationSettings.enabled
+                                        ? "color-mix(in srgb, var(--accent-2) 15%, transparent)"
+                                        : "transparent",
+                                    color: notificationSettings.enabled ? "var(--accent-2)" : "var(--muted)",
+                                    borderRadius: 999,
+                                    padding: "6px 10px",
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    cursor: "pointer"
+                                }}
+                            >
+                                {notificationSettings.enabled ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}
+                            </button>
+                        </div>
+
+                        <div className="acm-list-item" style={{ cursor: notificationSettings.enabled ? "pointer" : "not-allowed", opacity: notificationSettings.enabled ? 1 : 0.55 }} onClick={() => notificationSettings.enabled && toggleKind("system")}>
+                            <span>{t("settings.notifications.kind.system", lang)}</span>
+                            <span>{kinds.system ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}</span>
+                        </div>
+                        <div className="acm-list-item" style={{ cursor: notificationSettings.enabled ? "pointer" : "not-allowed", opacity: notificationSettings.enabled ? 1 : 0.55 }} onClick={() => notificationSettings.enabled && toggleKind("bonus")}>
+                            <span>{t("settings.notifications.kind.bonus", lang)}</span>
+                            <span>{kinds.bonus ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}</span>
+                        </div>
+                        <div className="acm-list-item" style={{ cursor: notificationSettings.enabled ? "pointer" : "not-allowed", opacity: notificationSettings.enabled ? 1 : 0.55 }} onClick={() => notificationSettings.enabled && toggleKind("deposit")}>
+                            <span>{t("settings.notifications.kind.deposit", lang)}</span>
+                            <span>{kinds.deposit ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}</span>
+                        </div>
+                        <div className="acm-list-item" style={{ cursor: notificationSettings.enabled ? "pointer" : "not-allowed", opacity: notificationSettings.enabled ? 1 : 0.55 }} onClick={() => notificationSettings.enabled && toggleKind("news")}>
+                            <span>{t("settings.notifications.kind.news", lang)}</span>
+                            <span>{kinds.news ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}</span>
                         </div>
 
                         {onOpenProfitStages ? (

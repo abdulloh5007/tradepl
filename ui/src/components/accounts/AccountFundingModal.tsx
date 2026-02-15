@@ -27,7 +27,7 @@ export default function AccountFundingModal({
   onSubmit,
   loading
 }: AccountFundingModalProps) {
-  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
   if (!shouldRender) return null
   const title = type === "deposit" ? t("accounts.deposit", lang) : t("accounts.withdraw", lang)
   const disabled = mode !== "demo"

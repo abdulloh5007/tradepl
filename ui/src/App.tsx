@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { toast, Toaster } from "sonner"
 
 // Types
-import type { AppNotification, MarketNewsEvent, Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics, SystemNoticeDetails } from "./types"
+import type { AppNotification, MarketNewsEvent, Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics, NotificationSettings, SystemNoticeDetails } from "./types"
 
 // Utils
 import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId, storedTimeframe } from "./utils/cookies"
@@ -31,8 +31,19 @@ const candleLimit = 1000   // Initial load
 const lazyLoadLimit = 500  // Load more when scrolling
 const historyPageLimit = 50
 const notificationsStorageKey = "lv_notifications_v1"
+const notificationSettingsStorageKey = "lv_notification_settings_v1"
 const notificationsLimit = 1000
 const MAX_KYC_PROOF_BYTES = 10 * 1024 * 1024
+
+const defaultNotificationSettings: NotificationSettings = {
+  enabled: true,
+  kinds: {
+    system: true,
+    bonus: true,
+    deposit: true,
+    news: true,
+  },
+}
 
 type PollKey = "metrics" | "orders"
 type PollBackoffState = Record<PollKey, { failures: number; retryAt: number }>
@@ -214,6 +225,28 @@ function readStoredNotifications(): AppNotification[] {
   }
 }
 
+function readStoredNotificationSettings(): NotificationSettings {
+  if (typeof window === "undefined") return defaultNotificationSettings
+  try {
+    const raw = window.localStorage.getItem(notificationSettingsStorageKey)
+    if (!raw) return defaultNotificationSettings
+    const parsed = JSON.parse(raw)
+    const enabled = parsed?.enabled
+    const kinds = parsed?.kinds || {}
+    return {
+      enabled: typeof enabled === "boolean" ? enabled : defaultNotificationSettings.enabled,
+      kinds: {
+        system: typeof kinds.system === "boolean" ? kinds.system : defaultNotificationSettings.kinds.system,
+        bonus: typeof kinds.bonus === "boolean" ? kinds.bonus : defaultNotificationSettings.kinds.bonus,
+        deposit: typeof kinds.deposit === "boolean" ? kinds.deposit : defaultNotificationSettings.kinds.deposit,
+        news: typeof kinds.news === "boolean" ? kinds.news : defaultNotificationSettings.kinds.news,
+      }
+    }
+  } catch {
+    return defaultNotificationSettings
+  }
+}
+
 export default function App() {
   // Core state
   const [lang, setLang] = useState<Lang>(storedLang)
@@ -286,6 +319,7 @@ export default function App() {
   const [newsUpcoming, setNewsUpcoming] = useState<MarketNewsEvent[]>([])
   const [newsRecent, setNewsRecent] = useState<MarketNewsEvent[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>(readStoredNotifications)
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(readStoredNotificationSettings)
   const telegramRedirectedRef = useRef(false)
   const telegramWriteAccessRequestedRef = useRef(false)
   const signupBonusStateRef = useRef<{ canClaim: boolean; claimed: boolean }>({ canClaim: false, claimed: false })
@@ -339,6 +373,8 @@ export default function App() {
     const title = String(payload.title || "").trim()
     const message = String(payload.message || "").trim()
     if (!title || !message) return
+    if (!notificationSettings.enabled) return
+    if (!notificationSettings.kinds[payload.kind]) return
 
     setNotifications(prev => {
       if (payload.dedupeKey && prev.some(item => item.dedupe_key === payload.dedupeKey)) {
@@ -357,7 +393,7 @@ export default function App() {
       }
       return [nextItem, ...prev].slice(0, notificationsLimit)
     })
-  }, [])
+  }, [notificationSettings])
 
   const markAllNotificationsRead = useCallback(() => {
     setNotifications(prev => prev.map(item => (item.read ? item : { ...item, read: true })))
@@ -415,6 +451,15 @@ export default function App() {
       // ignore localStorage write errors
     }
   }, [notifications])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(notificationSettingsStorageKey, JSON.stringify(notificationSettings))
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [notificationSettings])
 
   // Memoized API client (prevents recreation on every render = fixes lag)
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
@@ -1120,6 +1165,7 @@ export default function App() {
       for (const order of inChronologicalOrder) {
         const next = historyNotificationFromOrder(order, lang)
         if (!next) continue
+        if (!notificationSettings.enabled || !notificationSettings.kinds[next.kind]) continue
         const dedupeKey = `history:${accountKey}:${order.id}`
         if (dedupe.has(dedupeKey)) continue
         dedupe.add(dedupeKey)
@@ -1141,7 +1187,7 @@ export default function App() {
       }
       return merged
     })
-  }, [token, activeAccountId, orderHistory, lang])
+  }, [token, activeAccountId, orderHistory, lang, notificationSettings])
 
   // Prime history once per active account so notification sync also works outside History page.
   useEffect(() => {
@@ -1770,6 +1816,8 @@ export default function App() {
           profile={profile}
           setLang={setLang}
           setTheme={setTheme}
+          notificationSettings={notificationSettings}
+          setNotificationSettings={setNotificationSettings}
           onLogout={logout}
           api={api}
           onMetricsUpdate={setMetrics}

@@ -49,7 +49,7 @@ export default function KYCVerificationModal({
   onClose,
   onSubmit,
 }: KYCVerificationModalProps) {
-  const { shouldRender, isVisible } = useAnimatedPresence(open, 140)
+  const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
   const [documentType, setDocumentType] = useState<KYCDocumentType>("passport")
   const [fullName, setFullName] = useState("")
   const [documentNumber, setDocumentNumber] = useState("")
