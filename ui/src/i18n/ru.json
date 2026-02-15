@@ -81,7 +81,7 @@
   "accounts.plan.maxLeverage": "Макс. плечо",
   "accounts.plan.minDeposit": "Мин. депозит",
   "accounts.plan.minSpread": "Мин. спред",
-  "accounts.plan.swapLongShortCompact": "Long {long} / Short {short} USD за лот/ночь",
+  "accounts.plan.swapLongShortCompact": "{long} / {short} за лот",
   "accounts.planStandard": "Standard",
   "accounts.realDeposit": "Реальный депозит",
   "accounts.realDepositUnavailable": "Реальный депозит пока недоступен",

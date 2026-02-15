@@ -81,7 +81,7 @@
   "accounts.plan.maxLeverage": "Maks yelka",
   "accounts.plan.minDeposit": "Min depozit",
   "accounts.plan.minSpread": "Min spread",
-  "accounts.plan.swapLongShortCompact": "Long {long} / Short {short} USD lot/tun",
+  "accounts.plan.swapLongShortCompact": "{long} / {short} lot uchun",
   "accounts.planStandard": "Standard",
   "accounts.realDeposit": "Real depozit",
   "accounts.realDepositUnavailable": "Real depozit hozircha mavjud emas",

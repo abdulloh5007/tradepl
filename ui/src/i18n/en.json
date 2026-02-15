@@ -81,7 +81,7 @@
   "accounts.plan.maxLeverage": "Max leverage",
   "accounts.plan.minDeposit": "Min deposit",
   "accounts.plan.minSpread": "Min spread",
-  "accounts.plan.swapLongShortCompact": "Long {long} / Short {short} USD per lot/night",
+  "accounts.plan.swapLongShortCompact": "{long} / {short} per lot",
   "accounts.plan.pro.badge": "Most Popular",
   "accounts.plan.pro.commission": "3.5 USD per lot",
   "accounts.plan.pro.description": "Raw spreads from 0.0 pips with low commission.",
