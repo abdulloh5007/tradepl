@@ -33,11 +33,13 @@ type Service struct {
 }
 
 type User struct {
-	ID          string
-	Email       string
-	TelegramID  int64
-	DisplayName string
-	AvatarURL   string
+	ID                           string
+	Email                        string
+	TelegramID                   int64
+	TelegramWriteAccess          bool
+	TelegramNotificationsEnabled bool
+	DisplayName                  string
+	AvatarURL                    string
 }
 
 type telegramAuthPayload struct {
@@ -253,10 +255,36 @@ func (s *Service) ParseToken(token string) (string, error) {
 func (s *Service) GetUser(ctx context.Context, userID string) (User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, email, COALESCE(telegram_id, 0), COALESCE(display_name, ''), COALESCE(avatar_url, '')
+		SELECT
+			id,
+			email,
+			COALESCE(telegram_id, 0),
+			COALESCE(telegram_write_access, FALSE),
+			COALESCE(telegram_notifications_enabled, TRUE),
+			COALESCE(display_name, ''),
+			COALESCE(avatar_url, '')
 		FROM users
 		WHERE id = $1
-	`, userID).Scan(&u.ID, &u.Email, &u.TelegramID, &u.DisplayName, &u.AvatarURL)
+	`, userID).Scan(
+		&u.ID,
+		&u.Email,
+		&u.TelegramID,
+		&u.TelegramWriteAccess,
+		&u.TelegramNotificationsEnabled,
+		&u.DisplayName,
+		&u.AvatarURL,
+	)
+	if err != nil && isUndefinedColumnError(err) {
+		err = s.pool.QueryRow(ctx, `
+			SELECT id, email, COALESCE(telegram_id, 0), COALESCE(display_name, ''), COALESCE(avatar_url, '')
+			FROM users
+			WHERE id = $1
+		`, userID).Scan(&u.ID, &u.Email, &u.TelegramID, &u.DisplayName, &u.AvatarURL)
+		if err == nil {
+			u.TelegramWriteAccess = false
+			u.TelegramNotificationsEnabled = true
+		}
+	}
 	return u, err
 }
 
@@ -276,6 +304,24 @@ func (s *Service) SetTelegramWriteAccess(ctx context.Context, userID string, all
 	if err != nil {
 		if isUndefinedColumnError(err) {
 			return errors.New("telegram write access is unavailable: run migrations")
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
+func (s *Service) SetTelegramNotificationsEnabled(ctx context.Context, userID string, enabled bool) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users
+		SET telegram_notifications_enabled = $2
+		WHERE id = $1
+	`, userID, enabled)
+	if err != nil {
+		if isUndefinedColumnError(err) {
+			return errors.New("telegram notifications setting is unavailable: run migrations")
 		}
 		return err
 	}

@@ -71,18 +71,34 @@ func (h *Handler) NotifyUserImportantTelegram(ctx context.Context, userID, title
 
 	var telegramID int64
 	var writeAllowed bool
+	var notificationsEnabled bool
 	err := h.svc.pool.QueryRow(ctx, `
-		SELECT COALESCE(telegram_id, 0), COALESCE(telegram_write_access, FALSE)
+		SELECT
+			COALESCE(telegram_id, 0),
+			COALESCE(telegram_write_access, FALSE),
+			COALESCE(telegram_notifications_enabled, TRUE)
 		FROM users
 		WHERE id = $1
-	`, userID).Scan(&telegramID, &writeAllowed)
+	`, userID).Scan(&telegramID, &writeAllowed, &notificationsEnabled)
+	if err != nil {
+		if isUndefinedColumnError(err) {
+			err = h.svc.pool.QueryRow(ctx, `
+				SELECT COALESCE(telegram_id, 0), COALESCE(telegram_write_access, FALSE)
+				FROM users
+				WHERE id = $1
+			`, userID).Scan(&telegramID, &writeAllowed)
+			if err == nil {
+				notificationsEnabled = true
+			}
+		}
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) || isUndefinedColumnError(err) {
 			return
 		}
 		return
 	}
-	if telegramID == 0 || !writeAllowed {
+	if telegramID == 0 || !writeAllowed || !notificationsEnabled {
 		return
 	}
 
@@ -110,5 +126,27 @@ func (h *Handler) NotifyUserImportantTelegram(ctx context.Context, userID, title
 		}
 	}
 
-	_ = h.telegramCallJSON(ctx, "sendMessage", payload, nil)
+	if err := h.telegramCallJSON(ctx, "sendMessage", payload, nil); err != nil {
+		if isTelegramBlockedError(err) {
+			_, _ = h.svc.pool.Exec(ctx, `
+				UPDATE users
+				SET telegram_write_access = FALSE
+				WHERE id = $1
+			`, userID)
+		}
+	}
+}
+
+func isTelegramBlockedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(strings.TrimSpace(err.Error()))
+	if text == "" {
+		return false
+	}
+	return strings.Contains(text, "bot was blocked by the user") ||
+		strings.Contains(text, "forbidden: bot was blocked") ||
+		strings.Contains(text, "chat not found") ||
+		strings.Contains(text, "forbidden")
 }

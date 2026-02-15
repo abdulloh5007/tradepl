@@ -95,11 +95,18 @@ interface AppViewRouterProps {
   onBackFromNotifications: () => void
   onMarkAllNotificationsRead: () => void
   onNotificationClick: (notificationID: string) => void
+  onNotificationAction: (notificationID: string, action: NonNullable<AppNotification["action"]>) => void
   profile: UserProfile | null
   setLang: (lang: Lang) => void
   setTheme: (theme: Theme) => void
   notificationSettings: NotificationSettings
   setNotificationSettings: (settings: NotificationSettings) => void
+  telegramBotSwitchVisible: boolean
+  telegramBotNotificationsEnabled: boolean
+  telegramBotNotificationsBusy: boolean
+  telegramWriteAccess: boolean
+  onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
+  openProfitStagesSignal: number
   onLogout: () => void
   api: FaucetApi
   onMetricsUpdate: (metrics: Metrics) => void
@@ -184,11 +191,18 @@ export default function AppViewRouter({
   onBackFromNotifications,
   onMarkAllNotificationsRead,
   onNotificationClick,
+  onNotificationAction,
   profile,
   setLang,
   setTheme,
   notificationSettings,
   setNotificationSettings,
+  telegramBotSwitchVisible,
+  telegramBotNotificationsEnabled,
+  telegramBotNotificationsBusy,
+  telegramWriteAccess,
+  onToggleTelegramBotNotifications,
+  openProfitStagesSignal,
   onLogout,
   api,
   onMetricsUpdate,
@@ -298,6 +312,7 @@ export default function AppViewRouter({
           onBack={onBackFromNotifications}
           onMarkAllRead={onMarkAllNotificationsRead}
           onItemClick={onNotificationClick}
+          onActionClick={onNotificationAction}
         />
       </LazyView>
     )
@@ -315,6 +330,11 @@ export default function AppViewRouter({
           profile={profile}
           notificationSettings={notificationSettings}
           setNotificationSettings={setNotificationSettings}
+          telegramBotSwitchVisible={telegramBotSwitchVisible}
+          telegramBotNotificationsEnabled={telegramBotNotificationsEnabled}
+          telegramBotNotificationsBusy={telegramBotNotificationsBusy}
+          telegramWriteAccess={telegramWriteAccess}
+          onToggleTelegramBotNotifications={onToggleTelegramBotNotifications}
           activeAccount={activeAccount}
           kycStatus={kycStatus}
           onRequestKYC={onRequestKYC}
@@ -325,6 +345,7 @@ export default function AppViewRouter({
           onRefreshProfitReward={onRefreshProfitReward}
           onClaimProfitReward={onClaimProfitReward}
           accounts={accounts}
+          openProfitStagesSignal={openProfitStagesSignal}
         />
       </LazyView>
     )

@@ -95,6 +95,12 @@
     color: #e5e7eb;
 }
 
+.atc-value-compact {
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: right;
+}
+
 /* Ribbons */
 .atc-ribbon {
     position: absolute;

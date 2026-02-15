@@ -37,6 +37,10 @@ type telegramWriteAccessRequest struct {
 	Allowed bool `json:"allowed"`
 }
 
+type telegramNotificationsRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if h.profectMode == "production" {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "email auth is disabled in production mode"})
@@ -96,11 +100,13 @@ func (h *Handler) LoginTelegram(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"access_token": token,
 		"user": map[string]interface{}{
-			"id":           user.ID,
-			"email":        user.Email,
-			"telegram_id":  user.TelegramID,
-			"display_name": user.DisplayName,
-			"avatar_url":   user.AvatarURL,
+			"id":                             user.ID,
+			"email":                          user.Email,
+			"telegram_id":                    user.TelegramID,
+			"telegram_write_access":          user.TelegramWriteAccess,
+			"telegram_notifications_enabled": user.TelegramNotificationsEnabled,
+			"display_name":                   user.DisplayName,
+			"avatar_url":                     user.AvatarURL,
 		},
 	})
 }
@@ -125,6 +131,26 @@ func (h *Handler) UpdateTelegramWriteAccess(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+func (h *Handler) UpdateTelegramNotifications(w http.ResponseWriter, r *http.Request, userID string) {
+	if h.profectMode != "production" {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "telegram notifications are available only in production mode"})
+		return
+	}
+	var req telegramNotificationsRequest
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := h.svc.SetTelegramNotificationsEnabled(r.Context(), userID, req.Enabled); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"enabled": req.Enabled,
+	})
+}
+
 func (h *Handler) Mode(w http.ResponseWriter, _ *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"mode": h.profectMode})
 }
@@ -136,11 +162,13 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request, userID string) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"id":           user.ID,
-		"email":        user.Email,
-		"telegram_id":  user.TelegramID,
-		"display_name": user.DisplayName,
-		"avatar_url":   user.AvatarURL,
+		"id":                             user.ID,
+		"email":                          user.Email,
+		"telegram_id":                    user.TelegramID,
+		"telegram_write_access":          user.TelegramWriteAccess,
+		"telegram_notifications_enabled": user.TelegramNotificationsEnabled,
+		"display_name":                   user.DisplayName,
+		"avatar_url":                     user.AvatarURL,
 	})
 }
 

@@ -141,6 +141,14 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.AuthHandler.UpdateTelegramWriteAccess(w, r, userID)
 			})
+			r.Post("/auth/telegram/notifications", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.AuthHandler.UpdateTelegramNotifications(w, r, userID)
+			})
 			r.Get("/balances", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {

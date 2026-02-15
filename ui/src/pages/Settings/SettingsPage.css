@@ -11,12 +11,6 @@
     font-size: 24px;
 }
 
-.settings-header p {
-    margin: 6px 0 0;
-    color: var(--muted);
-    font-size: 13px;
-}
-
 .settings-header {
     position: relative;
     padding-left: 44px;
@@ -84,7 +78,7 @@
     margin-top: 10px;
 }
 
-.settings-option-btn {
+.settings-toggle-row {
     width: 100%;
     border: 1px solid rgba(148, 163, 184, 0.26);
     background: rgba(15, 20, 33, 0.55);
@@ -97,36 +91,64 @@
     gap: 10px;
     font-size: 13px;
     font-weight: 600;
-    cursor: pointer;
     transition: all 0.2s ease;
 }
 
-.settings-option-btn:hover {
-    border-color: rgba(96, 165, 250, 0.4);
-    background: rgba(30, 64, 175, 0.12);
+.settings-toggle-row-stack {
+    align-items: flex-start;
 }
 
-.settings-option-btn.disabled {
+.settings-toggle-text {
+    display: grid;
+    gap: 4px;
+}
+
+.settings-toggle-text small {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.settings-toggle-row.disabled {
+    opacity: 0.55;
+}
+
+.settings-ios-switch {
+    width: 48px;
+    height: 28px;
+    border: 1px solid rgba(148, 163, 184, 0.42);
+    background: rgba(100, 116, 139, 0.35);
+    border-radius: 999px;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.settings-ios-switch.checked {
+    border-color: rgba(34, 197, 94, 0.58);
+    background: rgba(34, 197, 94, 0.92);
+}
+
+.settings-ios-switch:disabled {
     opacity: 0.55;
     cursor: not-allowed;
 }
 
-.settings-switch-btn {
-    border: 1px solid rgba(148, 163, 184, 0.36);
-    background: rgba(15, 20, 33, 0.55);
-    color: #cbd5e1;
+.settings-ios-thumb {
+    width: 22px;
+    height: 22px;
     border-radius: 999px;
-    padding: 8px 14px;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s ease;
+    background: #ffffff;
+    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.26);
+    transform: translateX(0);
+    transition: transform 0.2s cubic-bezier(0.2, 0.85, 0.2, 1);
 }
 
-.settings-switch-btn.active {
-    border-color: rgba(59, 130, 246, 0.45);
-    color: #bfdbfe;
-    background: rgba(30, 64, 175, 0.2);
+.settings-ios-switch.checked .settings-ios-thumb {
+    transform: translateX(20px);
 }
 
 .settings-segment {
@@ -197,27 +219,24 @@ html[data-theme="light"] .settings-segment button.active {
     background: rgba(59, 130, 246, 0.2);
 }
 
-html[data-theme="light"] .settings-option-btn {
+html[data-theme="light"] .settings-toggle-row {
     background: rgba(255, 255, 255, 0.92);
     color: #1e293b;
     border-color: rgba(148, 163, 184, 0.34);
 }
 
-html[data-theme="light"] .settings-option-btn:hover {
-    border-color: rgba(59, 130, 246, 0.4);
-    background: rgba(59, 130, 246, 0.1);
+html[data-theme="light"] .settings-ios-switch {
+    background: rgba(148, 163, 184, 0.32);
+    border-color: rgba(148, 163, 184, 0.52);
 }
 
-html[data-theme="light"] .settings-switch-btn {
-    background: rgba(255, 255, 255, 0.92);
-    color: #334155;
-    border-color: rgba(148, 163, 184, 0.36);
+html[data-theme="light"] .settings-ios-switch.checked {
+    background: rgba(34, 197, 94, 0.95);
+    border-color: rgba(34, 197, 94, 0.62);
 }
 
-html[data-theme="light"] .settings-switch-btn.active {
-    color: #1d4ed8;
-    border-color: rgba(59, 130, 246, 0.42);
-    background: rgba(59, 130, 246, 0.16);
+html[data-theme="light"] .settings-ios-thumb {
+    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.18);
 }
 
 html[data-theme="light"] .settings-logout-btn {

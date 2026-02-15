@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react"
-import { toast } from "sonner"
-import { Settings2, Share2, ShieldCheck, Trophy, User } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { ChevronRight, Settings2, ShieldCheck, Trophy, User, Users } from "lucide-react"
 import type { KYCStatus, ProfitRewardStatus, ReferralStatus, UserProfile } from "../../api"
 import type { Lang, NotificationSettings, Theme, TradingAccount } from "../../types"
-import KYCVerificationModal from "../../components/accounts/KYCVerificationModal"
 import ProfitStagesPage from "./ProfitStagesPage"
 import SettingsPage from "./SettingsPage"
+import KYCPage from "./KYCPage"
+import ReferralPage from "./ReferralPage"
 import { t } from "../../utils/i18n"
 import "./ProfilePage.css"
 
@@ -18,6 +18,11 @@ interface ProfilePageProps {
     profile: UserProfile | null
     notificationSettings: NotificationSettings
     setNotificationSettings: (settings: NotificationSettings) => void
+    telegramBotSwitchVisible: boolean
+    telegramBotNotificationsEnabled: boolean
+    telegramBotNotificationsBusy: boolean
+    telegramWriteAccess: boolean
+    onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
     activeAccount: TradingAccount | null
     kycStatus: KYCStatus | null
     onRequestKYC: (payload: {
@@ -35,16 +40,7 @@ interface ProfilePageProps {
     onRefreshProfitReward: () => Promise<void> | void
     onClaimProfitReward: (stageNo: number, tradingAccountID: string) => Promise<void>
     accounts: TradingAccount[]
-}
-
-const formatDuration = (seconds: number) => {
-    const safe = Math.max(0, Math.floor(seconds))
-    const days = Math.floor(safe / 86400)
-    const hours = Math.floor((safe % 86400) / 3600)
-    const mins = Math.floor((safe % 3600) / 60)
-    if (days > 0) return `${days}d ${hours}h ${mins}m`
-    if (hours > 0) return `${hours}h ${mins}m`
-    return `${mins}m`
+    openProfitStagesSignal?: number
 }
 
 export default function ProfilePage({
@@ -56,6 +52,11 @@ export default function ProfilePage({
     profile,
     notificationSettings,
     setNotificationSettings,
+    telegramBotSwitchVisible,
+    telegramBotNotificationsEnabled,
+    telegramBotNotificationsBusy,
+    telegramWriteAccess,
+    onToggleTelegramBotNotifications,
     activeAccount,
     kycStatus,
     onRequestKYC,
@@ -66,12 +67,13 @@ export default function ProfilePage({
     onRefreshProfitReward,
     onClaimProfitReward,
     accounts,
+    openProfitStagesSignal = 0,
 }: ProfilePageProps) {
     const [showSettings, setShowSettings] = useState(false)
-    const [kycModalOpen, setKycModalOpen] = useState(false)
-    const [kycBusy, setKycBusy] = useState(false)
     const [referralBusy, setReferralBusy] = useState(false)
     const [showProfitStages, setShowProfitStages] = useState(false)
+    const [showKYCPage, setShowKYCPage] = useState(false)
+    const [showReferralPage, setShowReferralPage] = useState(false)
 
     const displayName = useMemo(() => {
         const preferred = (profile?.display_name || "").trim()
@@ -83,74 +85,25 @@ export default function ProfilePage({
 
     const avatarUrl = (profile?.avatar_url || "").trim()
     const initial = displayName.charAt(0).toUpperCase()
-    const isRealStandard = activeAccount?.mode === "real" && activeAccount?.plan_id === "standard"
-
     const kycState = String(kycStatus?.state || "unavailable")
     const kycPending = kycState === "pending"
     const kycApproved = kycState === "approved" || Boolean(kycStatus?.claimed)
-    const kycBlockedTemp = kycState === "blocked_temp"
-    const kycBlockedPermanent = kycState === "blocked_permanent"
-    const kycBlockedSeconds = Number(kycStatus?.blocked_seconds || 0)
-    const kycBlockedLabel = kycBlockedTemp && kycBlockedSeconds > 0 ? formatDuration(kycBlockedSeconds) : ""
-    const kycBonusAmount = String(kycStatus?.bonus_amount_usd || "50.00")
+    const kycLabel = kycApproved
+        ? t("profile.verified", lang)
+        : kycPending
+            ? t("profile.inReview", lang)
+            : t("profile.notVerified", lang)
+    const referralLabel = referralStatus
+        ? `${t("profile.invitedCount", lang).replace("{count}", String(referralStatus.referrals_total))} • $${referralStatus.balance}`
+        : "—"
 
-    const openKYCModal = () => {
-        if (!isRealStandard) {
-            toast.error(t("accounts.errors.switchRealStandard", lang))
-            return
-        }
-        if (!kycStatus?.can_submit) {
-            toast.error(kycStatus?.message || t("kyc.unavailable", lang))
-            return
-        }
-        setKycModalOpen(true)
-    }
-
-    const handleShareReferral = () => {
-        if (!referralStatus?.share_url) {
-            toast.error(t("profile.referralLinkUnavailable", lang))
-            return
-        }
-        const text = t("profile.referralShareText", lang)
-        const shareURL = `https://t.me/share/url?url=${encodeURIComponent(referralStatus.share_url)}&text=${encodeURIComponent(text)}`
-        try {
-            if (window.Telegram?.WebApp?.openTelegramLink) {
-                window.Telegram.WebApp.openTelegramLink(shareURL)
-                return
-            }
-        } catch {
-            // fallback below
-        }
-        window.open(shareURL, "_blank", "noopener,noreferrer")
-    }
-
-    const handleWithdrawReferral = async () => {
-        if (!referralStatus) return
-        if (referralStatus.real_account_required) {
-            toast.error(t("profile.createRealAccountFirst", lang))
-            return
-        }
-        if (!referralStatus.can_withdraw) {
-            toast.error(t("profile.referralMinWithdraw", lang).replace("{amount}", String(referralStatus.min_withdraw_usd)))
-            return
-        }
-        const raw = window.prompt(
-            t("profile.referralWithdrawPrompt", lang).replace("{amount}", String(referralStatus.min_withdraw_usd)),
-            referralStatus.balance
-        )
-        if (raw === null) return
-        const amount = String(raw || "").trim()
-        setReferralBusy(true)
-        try {
-            await onReferralWithdraw(amount || undefined)
-            await onRefreshReferral?.()
-            toast.success(t("profile.referralWithdrawCompleted", lang))
-        } catch (err: any) {
-            toast.error(err?.message || t("profile.referralWithdrawFailed", lang))
-        } finally {
-            setReferralBusy(false)
-        }
-    }
+    useEffect(() => {
+        if (!openProfitStagesSignal) return
+        setShowSettings(false)
+        setShowKYCPage(false)
+        setShowReferralPage(false)
+        setShowProfitStages(true)
+    }, [openProfitStagesSignal])
 
     if (showProfitStages) {
         return (
@@ -165,6 +118,32 @@ export default function ProfilePage({
         )
     }
 
+    if (showKYCPage) {
+        return (
+            <KYCPage
+                lang={lang}
+                activeAccount={activeAccount}
+                status={kycStatus}
+                onRequestKYC={onRequestKYC}
+                onBack={() => setShowKYCPage(false)}
+            />
+        )
+    }
+
+    if (showReferralPage) {
+        return (
+            <ReferralPage
+                lang={lang}
+                status={referralStatus}
+                busy={referralBusy}
+                setBusy={setReferralBusy}
+                onWithdraw={onReferralWithdraw}
+                onRefresh={onRefreshReferral}
+                onBack={() => setShowReferralPage(false)}
+            />
+        )
+    }
+
     if (showSettings) {
         return (
             <SettingsPage
@@ -174,6 +153,11 @@ export default function ProfilePage({
                 setTheme={setTheme}
                 notificationSettings={notificationSettings}
                 setNotificationSettings={setNotificationSettings}
+                telegramBotSwitchVisible={telegramBotSwitchVisible}
+                telegramBotNotificationsEnabled={telegramBotNotificationsEnabled}
+                telegramBotNotificationsBusy={telegramBotNotificationsBusy}
+                telegramWriteAccess={telegramWriteAccess}
+                onToggleTelegramBotNotifications={onToggleTelegramBotNotifications}
                 onBack={() => setShowSettings(false)}
                 onLogout={onLogout}
             />
@@ -213,125 +197,44 @@ export default function ProfilePage({
 
             <button
                 type="button"
-                className="profile-rewards-btn"
-                onClick={() => setShowProfitStages(true)}
+                className="profile-nav-item"
+                onClick={() => setShowKYCPage(true)}
             >
-                <span className="profile-rewards-btn-left">
-                    <Trophy size={15} />
-                    {t("profile.profitStages", lang)}
+                <span className="profile-nav-left">
+                    <ShieldCheck size={15} />
+                    {t("profile.identityBonus", lang)}
                 </span>
-                <span>{t("profile.open", lang)}</span>
+                <span className="profile-nav-right">{kycLabel}</span>
+                <ChevronRight size={16} />
             </button>
 
-            {referralStatus && (
-                <section className="profile-referral-card">
-                    <div className="profile-referral-head">
-                        <h3>{t("profile.referral", lang)}</h3>
-                        <span>{t("profile.invitedCount", lang).replace("{count}", String(referralStatus.referrals_total))}</span>
-                    </div>
-                    <div className="profile-referral-balance">${referralStatus.balance}</div>
-                    <div className="profile-referral-meta">
-                        <span>{t("profile.earned", lang)} ${referralStatus.total_earned}</span>
-                        <span>{t("profile.withdrawn", lang)} ${referralStatus.total_withdrawn}</span>
-                    </div>
-                    <div className="profile-referral-note">
-                        {t("profile.referralNote", lang)
-                            .replace("{reward}", String(referralStatus.signup_reward_usd))
-                            .replace("{percent}", String(referralStatus.deposit_commission_percent))}
-                    </div>
-                    <div className="profile-referral-actions">
-                        <button type="button" className="profile-referral-btn" onClick={handleShareReferral}>
-                            <Share2 size={14} />
-                            <span>{t("profile.share", lang)}</span>
-                        </button>
-                        <button
-                            type="button"
-                            className="profile-referral-btn profile-referral-btn-primary"
-                            onClick={handleWithdrawReferral}
-                            disabled={referralBusy || !referralStatus.can_withdraw || referralStatus.real_account_required}
-                        >
-                            <span>{referralBusy ? "..." : t("accounts.withdraw", lang)}</span>
-                        </button>
-                    </div>
-                </section>
-            )}
-
-            <section className="profile-kyc-card">
-                <div className="profile-kyc-head">
-                    <div className="profile-kyc-chip">
-                        <ShieldCheck size={14} />
-                        <span>{t("profile.identityBonus", lang)}</span>
-                    </div>
-                    <span className={`profile-kyc-state ${kycApproved ? "ok" : ""}`}>
-                        {kycApproved ? t("profile.verified", lang) : kycPending ? t("profile.inReview", lang) : "KYC"}
-                    </span>
-                </div>
-                <div className="profile-kyc-amount">+${kycBonusAmount}</div>
-                <p className="profile-kyc-text">
-                    {t("profile.kycOneTimeBonus", lang)}
-                </p>
-                {kycPending && kycStatus?.pending_ticket ? (
-                    <div className="profile-kyc-note">{t("profile.ticket", lang)}: {kycStatus.pending_ticket}</div>
-                ) : null}
-                {kycBlockedTemp && kycBlockedLabel ? (
-                    <div className="profile-kyc-note">{t("profile.blockedFor", lang)}: {kycBlockedLabel}</div>
-                ) : null}
-                {kycBlockedPermanent ? (
-                    <div className="profile-kyc-note">{t("profile.blockedPermanent", lang)}</div>
-                ) : null}
-                {!isRealStandard ? (
-                    <div className="profile-kyc-note">{t("accounts.errors.switchRealStandard", lang)}</div>
-                ) : null}
-                {kycStatus && !kycStatus.is_review_configured ? (
-                    <div className="profile-kyc-note">{t("profile.reviewChatNotConfigured", lang)}</div>
-                ) : null}
+            <div className="profile-nav-group">
                 <button
                     type="button"
-                    className="profile-kyc-btn"
-                    onClick={openKYCModal}
-                    disabled={
-                        kycBusy ||
-                        !isRealStandard ||
-                        !kycStatus?.can_submit ||
-                        kycPending ||
-                        kycApproved ||
-                        kycBlockedPermanent
-                    }
+                    className="profile-nav-item profile-nav-item-group"
+                    onClick={() => setShowReferralPage(true)}
                 >
-                    {kycApproved
-                        ? t("profile.alreadyVerified", lang)
-                        : kycPending
-                            ? t("profile.pendingReview", lang)
-                            : kycBlockedTemp
-                                ? t("profile.temporarilyBlocked", lang)
-                                : kycBlockedPermanent
-                                    ? t("profile.blocked", lang)
-                                    : t("profile.verifyIdentity", lang)}
+                    <span className="profile-nav-left">
+                        <Users size={15} />
+                        {t("profile.referral", lang)}
+                    </span>
+                    <span className="profile-nav-right">{referralLabel}</span>
+                    <ChevronRight size={16} />
                 </button>
-            </section>
 
-            <KYCVerificationModal
-                lang={lang}
-                open={kycModalOpen}
-                status={kycStatus}
-                loading={kycBusy}
-                onClose={() => {
-                    if (kycBusy) return
-                    setKycModalOpen(false)
-                }}
-                onSubmit={async (payload) => {
-                    setKycBusy(true)
-                    try {
-                        await onRequestKYC(payload)
-                        toast.success(t("profile.kycRequestSubmitted", lang))
-                        setKycModalOpen(false)
-                    } catch (err: any) {
-                        toast.error(err?.message || t("profile.kycSubmitFailed", lang))
-                    } finally {
-                        setKycBusy(false)
-                    }
-                }}
-            />
+                <button
+                    type="button"
+                    className="profile-nav-item profile-nav-item-group"
+                    onClick={() => setShowProfitStages(true)}
+                >
+                    <span className="profile-nav-left">
+                        <Trophy size={15} />
+                        {t("profile.profitStages", lang)}
+                    </span>
+                    <span className="profile-nav-right">{t("profile.open", lang)}</span>
+                    <ChevronRight size={16} />
+                </button>
+            </div>
 
         </div>
     )

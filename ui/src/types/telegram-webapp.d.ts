@@ -13,6 +13,7 @@ interface TelegramWebApp {
     }
     ready?: () => void
     requestWriteAccess?: (callback?: (allowed: boolean) => void) => void
+    close?: () => void
     openTelegramLink?: (url: string) => void
 }
 

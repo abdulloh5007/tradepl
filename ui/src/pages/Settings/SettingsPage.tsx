@@ -10,6 +10,11 @@ interface SettingsPageProps {
     setTheme: (theme: Theme) => void
     notificationSettings: NotificationSettings
     setNotificationSettings: (settings: NotificationSettings) => void
+    telegramBotSwitchVisible: boolean
+    telegramBotNotificationsEnabled: boolean
+    telegramBotNotificationsBusy: boolean
+    telegramWriteAccess: boolean
+    onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
     onBack: () => void
     onLogout: () => void
 }
@@ -21,6 +26,11 @@ export default function SettingsPage({
     setTheme,
     notificationSettings,
     setNotificationSettings,
+    telegramBotSwitchVisible,
+    telegramBotNotificationsEnabled,
+    telegramBotNotificationsBusy,
+    telegramWriteAccess,
+    onToggleTelegramBotNotifications,
     onBack,
     onLogout,
 }: SettingsPageProps) {
@@ -43,6 +53,11 @@ export default function SettingsPage({
         })
     }
 
+    const handleToggleTelegram = async () => {
+        if (telegramBotNotificationsBusy) return
+        await onToggleTelegramBotNotifications(!telegramBotNotificationsEnabled)
+    }
+
     return (
         <div className="settings-page">
             <div className="settings-header">
@@ -50,7 +65,6 @@ export default function SettingsPage({
                     <ArrowLeft size={17} />
                 </button>
                 <h2>{t("settings", lang)}</h2>
-                <p>{t("settingsHint", lang)}</p>
             </div>
 
             <section className="settings-card">
@@ -111,52 +125,95 @@ export default function SettingsPage({
             </section>
 
             <section className="settings-card">
-                <div className="settings-row settings-row-stack">
+                <div className="settings-row">
                     <div>
                         <div className="settings-title">{t("settings.notifications.title", lang)}</div>
-                        <div className="settings-subtitle">{t("settings.notifications.masterHint", lang)}</div>
                     </div>
                     <button
                         type="button"
-                        className={`settings-switch-btn ${notificationSettings.enabled ? "active" : ""}`}
+                        role="switch"
+                        aria-checked={notificationSettings.enabled}
+                        className={`settings-ios-switch ${notificationSettings.enabled ? "checked" : ""}`}
                         onClick={toggleGlobal}
                     >
-                        {notificationSettings.enabled ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}
+                        <span className="settings-ios-thumb" />
                     </button>
                 </div>
                 <div className="settings-options-list">
-                    <button
-                        type="button"
-                        className={`settings-option-btn ${notificationSettings.enabled ? "" : "disabled"}`}
-                        onClick={() => notificationSettings.enabled && toggleKind("system")}
-                    >
+                    <div className={`settings-toggle-row ${notificationSettings.enabled ? "" : "disabled"}`}>
                         <span>{t("settings.notifications.kind.system", lang)}</span>
-                        <span>{kinds.system ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}</span>
-                    </button>
-                    <button
-                        type="button"
-                        className={`settings-option-btn ${notificationSettings.enabled ? "" : "disabled"}`}
-                        onClick={() => notificationSettings.enabled && toggleKind("bonus")}
-                    >
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={kinds.system}
+                            disabled={!notificationSettings.enabled}
+                            className={`settings-ios-switch ${kinds.system ? "checked" : ""}`}
+                            onClick={() => notificationSettings.enabled && toggleKind("system")}
+                        >
+                            <span className="settings-ios-thumb" />
+                        </button>
+                    </div>
+                    <div className={`settings-toggle-row ${notificationSettings.enabled ? "" : "disabled"}`}>
                         <span>{t("settings.notifications.kind.bonus", lang)}</span>
-                        <span>{kinds.bonus ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}</span>
-                    </button>
-                    <button
-                        type="button"
-                        className={`settings-option-btn ${notificationSettings.enabled ? "" : "disabled"}`}
-                        onClick={() => notificationSettings.enabled && toggleKind("deposit")}
-                    >
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={kinds.bonus}
+                            disabled={!notificationSettings.enabled}
+                            className={`settings-ios-switch ${kinds.bonus ? "checked" : ""}`}
+                            onClick={() => notificationSettings.enabled && toggleKind("bonus")}
+                        >
+                            <span className="settings-ios-thumb" />
+                        </button>
+                    </div>
+                    <div className={`settings-toggle-row ${notificationSettings.enabled ? "" : "disabled"}`}>
                         <span>{t("settings.notifications.kind.deposit", lang)}</span>
-                        <span>{kinds.deposit ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}</span>
-                    </button>
-                    <button
-                        type="button"
-                        className={`settings-option-btn ${notificationSettings.enabled ? "" : "disabled"}`}
-                        onClick={() => notificationSettings.enabled && toggleKind("news")}
-                    >
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={kinds.deposit}
+                            disabled={!notificationSettings.enabled}
+                            className={`settings-ios-switch ${kinds.deposit ? "checked" : ""}`}
+                            onClick={() => notificationSettings.enabled && toggleKind("deposit")}
+                        >
+                            <span className="settings-ios-thumb" />
+                        </button>
+                    </div>
+                    <div className={`settings-toggle-row ${notificationSettings.enabled ? "" : "disabled"}`}>
                         <span>{t("settings.notifications.kind.news", lang)}</span>
-                        <span>{kinds.news ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang)}</span>
-                    </button>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={kinds.news}
+                            disabled={!notificationSettings.enabled}
+                            className={`settings-ios-switch ${kinds.news ? "checked" : ""}`}
+                            onClick={() => notificationSettings.enabled && toggleKind("news")}
+                        >
+                            <span className="settings-ios-thumb" />
+                        </button>
+                    </div>
+                    {telegramBotSwitchVisible ? (
+                        <div className="settings-toggle-row settings-toggle-row-stack">
+                            <div className="settings-toggle-text">
+                                <span>{t("settings.notifications.telegramBot", lang)}</span>
+                                <small>
+                                    {telegramWriteAccess
+                                        ? t("settings.notifications.telegramBotHint", lang)
+                                        : t("settings.notifications.telegramBotBlocked", lang)}
+                                </small>
+                            </div>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={telegramBotNotificationsEnabled}
+                                disabled={telegramBotNotificationsBusy}
+                                className={`settings-ios-switch ${telegramBotNotificationsEnabled ? "checked" : ""}`}
+                                onClick={handleToggleTelegram}
+                            >
+                                <span className="settings-ios-thumb" />
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
             </section>
 

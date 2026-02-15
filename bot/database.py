@@ -290,36 +290,86 @@ class Database:
 
     async def get_deposit_request_notification_target(self, request_id: str) -> Optional[int]:
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                '''
-                SELECT COALESCE(u.telegram_id, 0) AS telegram_id, COALESCE(u.telegram_write_access, FALSE) AS write_access
-                FROM real_deposit_requests r
-                LEFT JOIN users u ON u.id = r.user_id
-                WHERE r.id = $1
-                ''',
-                request_id,
-            )
+            try:
+                row = await conn.fetchrow(
+                    '''
+                    SELECT
+                        COALESCE(u.telegram_id, 0) AS telegram_id,
+                        COALESCE(u.telegram_write_access, FALSE) AS write_access,
+                        COALESCE(u.telegram_notifications_enabled, TRUE) AS notifications_enabled
+                    FROM real_deposit_requests r
+                    LEFT JOIN users u ON u.id = r.user_id
+                    WHERE r.id = $1
+                    ''',
+                    request_id,
+                )
+            except asyncpg.UndefinedColumnError:
+                row = await conn.fetchrow(
+                    '''
+                    SELECT COALESCE(u.telegram_id, 0) AS telegram_id, COALESCE(u.telegram_write_access, FALSE) AS write_access
+                    FROM real_deposit_requests r
+                    LEFT JOIN users u ON u.id = r.user_id
+                    WHERE r.id = $1
+                    ''',
+                    request_id,
+                )
+                if row is not None:
+                    row = dict(row)
+                    row["notifications_enabled"] = True
             if not row:
                 return None
             telegram_id = int(row["telegram_id"] or 0)
-            if telegram_id <= 0 or not bool(row["write_access"]):
+            if telegram_id <= 0 or not bool(row["write_access"]) or not bool(row["notifications_enabled"]):
                 return None
             return telegram_id
 
     async def get_kyc_request_notification_target(self, request_id: str) -> Optional[int]:
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                '''
-                SELECT COALESCE(u.telegram_id, 0) AS telegram_id, COALESCE(u.telegram_write_access, FALSE) AS write_access
-                FROM kyc_verification_requests r
-                LEFT JOIN users u ON u.id = r.user_id
-                WHERE r.id = $1
-                ''',
-                request_id,
-            )
+            try:
+                row = await conn.fetchrow(
+                    '''
+                    SELECT
+                        COALESCE(u.telegram_id, 0) AS telegram_id,
+                        COALESCE(u.telegram_write_access, FALSE) AS write_access,
+                        COALESCE(u.telegram_notifications_enabled, TRUE) AS notifications_enabled
+                    FROM kyc_verification_requests r
+                    LEFT JOIN users u ON u.id = r.user_id
+                    WHERE r.id = $1
+                    ''',
+                    request_id,
+                )
+            except asyncpg.UndefinedColumnError:
+                row = await conn.fetchrow(
+                    '''
+                    SELECT COALESCE(u.telegram_id, 0) AS telegram_id, COALESCE(u.telegram_write_access, FALSE) AS write_access
+                    FROM kyc_verification_requests r
+                    LEFT JOIN users u ON u.id = r.user_id
+                    WHERE r.id = $1
+                    ''',
+                    request_id,
+                )
+                if row is not None:
+                    row = dict(row)
+                    row["notifications_enabled"] = True
             if not row:
                 return None
             telegram_id = int(row["telegram_id"] or 0)
-            if telegram_id <= 0 or not bool(row["write_access"]):
+            if telegram_id <= 0 or not bool(row["write_access"]) or not bool(row["notifications_enabled"]):
                 return None
             return telegram_id
+
+    async def disable_user_write_access(self, telegram_id: int) -> None:
+        if telegram_id <= 0:
+            return
+        async with self.pool.acquire() as conn:
+            try:
+                await conn.execute(
+                    '''
+                    UPDATE users
+                    SET telegram_write_access = FALSE
+                    WHERE telegram_id = $1
+                    ''',
+                    telegram_id,
+                )
+            except asyncpg.UndefinedColumnError:
+                return

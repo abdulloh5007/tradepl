@@ -105,6 +105,8 @@ const isCashFlowOrder = (order: Order) => {
     return side === "deposit" || side === "withdraw" || type === "balance"
 }
 
+const isSwapOrder = (order: Order) => String(order.type || "").toLowerCase() === "swap"
+
 const cashFlowLabel = (order: Order, lang: Lang) => (
     String(order.side || "").toLowerCase() === "withdraw" ? t("history.withdraw", lang) : t("history.deposit", lang)
 )
@@ -196,6 +198,7 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
         ? selectedClosePrice - selectedOpenPrice
         : 0
     const selectedIsCashFlow = selectedOrderView ? isCashFlowOrder(selectedOrderView) : false
+    const selectedIsSwap = selectedOrderView ? isSwapOrder(selectedOrderView) : false
     const selectedCashFlowLabel = selectedOrderView ? cashFlowLabel(selectedOrderView, lang) : t("history.deposit", lang)
 
     useEffect(() => {
@@ -297,6 +300,7 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
                             const profit = toNumber(order.profit)
                             const isProfit = profit >= 0
                             const isCashFlow = isCashFlowOrder(order)
+                            const isSwap = isSwapOrder(order)
                             const cashLabel = cashFlowLabel(order, lang)
                             const displaySymbol = resolveOrderSymbol(order)
                             const derivedRawPrice = deriveRawPriceFromSpent(order)
@@ -318,6 +322,10 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
                                         {isCashFlow ? (
                                             <div className="h-price-row">
                                                 <span>{cashLabel}</span>
+                                            </div>
+                                        ) : isSwap ? (
+                                            <div className="h-price-row">
+                                                <span>{t("history.swap", lang)}</span>
                                             </div>
                                         ) : (
                                             <div className="h-price-row">
@@ -398,20 +406,26 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
                                     </div>
 
                                     <div className="hm-main-row">
-                                        <div className="hm-prices">
-                                            {formatPriceOrDash(selectedOpenPrice)} &rarr; {formatPriceOrDash(selectedClosePrice)}
-                                        </div>
+                                        {selectedIsSwap ? (
+                                            <div className="hm-prices">{t("history.swap", lang)}</div>
+                                        ) : (
+                                            <div className="hm-prices">
+                                                {formatPriceOrDash(selectedOpenPrice)} &rarr; {formatPriceOrDash(selectedClosePrice)}
+                                            </div>
+                                        )}
                                         <div className={`hm-profit ${selectedProfit >= 0 ? "profit" : "loss"}`}>
                                             {formatNumber(selectedProfit, 2, 2)}
                                         </div>
                                     </div>
 
-                                    <div className="hm-delta-row">
-                                        <div className={`hm-delta ${selectedPercent >= 0 ? "profit" : "loss"}`}>
-                                            ROI {formatNumber(selectedPercent, 2, 2)}% {selectedPercent >= 0 ? "▲" : "▼"}
-                                            {Number.isFinite(selectedOpenPrice) && Number.isFinite(selectedClosePrice) ? ` · Δ ${formatNumber(selectedDiff, 2, 2)}` : ""}
+                                    {!selectedIsSwap && (
+                                        <div className="hm-delta-row">
+                                            <div className={`hm-delta ${selectedPercent >= 0 ? "profit" : "loss"}`}>
+                                                ROI {formatNumber(selectedPercent, 2, 2)}% {selectedPercent >= 0 ? "▲" : "▼"}
+                                                {Number.isFinite(selectedOpenPrice) && Number.isFinite(selectedClosePrice) ? ` · Δ ${formatNumber(selectedDiff, 2, 2)}` : ""}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
 
                                         <div className="hm-grid">
                                             <div className="hm-grid-item">

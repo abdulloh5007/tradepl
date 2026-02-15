@@ -182,7 +182,7 @@
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    padding: 16px 0;
+    padding: 14px 0 10px;
     scroll-behavior: smooth;
     overscroll-behavior-x: contain;
 }
@@ -193,14 +193,16 @@
 
 .acm-cards-wrapper {
     display: flex;
-    width: 100%;
+    width: max-content;
+    gap: 12px;
+    padding: 0 16px;
 }
 
 .acm-card-slide {
-    flex: 0 0 100%;
-    width: 100%;
+    flex: 0 0 min(86%, 320px);
+    width: min(86%, 320px);
     scroll-snap-align: center;
-    padding: 0 16px;
+    padding: 0;
     box-sizing: border-box;
 }
 

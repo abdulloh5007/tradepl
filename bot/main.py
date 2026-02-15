@@ -10,7 +10,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command
 from aiogram.types import BotCommand, BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -412,6 +412,16 @@ async def send_deposit_user_notification(request_id: str, outcome: dict):
         )
     try:
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+    except TelegramForbiddenError:
+        await db.disable_user_write_access(chat_id)
+        logger.info("Deposit notify skipped: user blocked bot chat_id=%s request=%s", chat_id, request_id)
+    except TelegramBadRequest as err:
+        lowered = str(err).lower()
+        if "bot was blocked by the user" in lowered or "chat not found" in lowered or "forbidden" in lowered:
+            await db.disable_user_write_access(chat_id)
+            logger.info("Deposit notify skipped: user unavailable chat_id=%s request=%s", chat_id, request_id)
+            return
+        logger.exception("Failed to notify deposit user for request %s", request_id)
     except Exception:
         logger.exception("Failed to notify deposit user for request %s", request_id)
 
@@ -447,6 +457,16 @@ async def send_kyc_user_notification(request_id: str, outcome: dict):
         )
     try:
         await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+    except TelegramForbiddenError:
+        await db.disable_user_write_access(chat_id)
+        logger.info("KYC notify skipped: user blocked bot chat_id=%s request=%s", chat_id, request_id)
+    except TelegramBadRequest as err:
+        lowered = str(err).lower()
+        if "bot was blocked by the user" in lowered or "chat not found" in lowered or "forbidden" in lowered:
+            await db.disable_user_write_access(chat_id)
+            logger.info("KYC notify skipped: user unavailable chat_id=%s request=%s", chat_id, request_id)
+            return
+        logger.exception("Failed to notify KYC user for request %s", request_id)
     except Exception:
         logger.exception("Failed to notify KYC user for request %s", request_id)
 

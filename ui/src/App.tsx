@@ -198,6 +198,12 @@ function readStoredNotifications(): AppNotification[] {
         read: Boolean(item.read),
         dedupe_key: item.dedupe_key ? String(item.dedupe_key) : undefined,
         account_id: item.account_id ? String(item.account_id) : undefined,
+        action: item.action && typeof item.action === "object" && String(item.action.type || "") === "open_profit_stages"
+          ? {
+            type: "open_profit_stages",
+            label: item.action.label ? String(item.action.label) : undefined,
+          }
+          : undefined,
         details: item.details && typeof item.details === "object"
           ? {
             kind: item.details.kind ? String(item.details.kind) : undefined,
@@ -310,6 +316,7 @@ export default function App() {
   const [autoAuthChecked, setAutoAuthChecked] = useState(false)
   const [authFlowMode, setAuthFlowMode] = useState<"development" | "production" | null>(null)
   const [telegramAuthError, setTelegramAuthError] = useState("")
+  const [telegramBotNotificationsBusy, setTelegramBotNotificationsBusy] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [signupBonus, setSignupBonus] = useState<SignupBonusStatus | null>(null)
   const [depositBonus, setDepositBonus] = useState<DepositBonusStatus | null>(null)
@@ -319,9 +326,11 @@ export default function App() {
   const [newsUpcoming, setNewsUpcoming] = useState<MarketNewsEvent[]>([])
   const [newsRecent, setNewsRecent] = useState<MarketNewsEvent[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>(readStoredNotifications)
+  const [openProfitStagesSignal, setOpenProfitStagesSignal] = useState(0)
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(readStoredNotificationSettings)
   const telegramRedirectedRef = useRef(false)
   const telegramWriteAccessRequestedRef = useRef(false)
+  const telegramMandatoryCheckDoneRef = useRef(false)
   const signupBonusStateRef = useRef<{ canClaim: boolean; claimed: boolean }>({ canClaim: false, claimed: false })
   const depositPendingByAccountRef = useRef<Record<string, { initialized: boolean; pending: number }>>({})
 
@@ -329,8 +338,10 @@ export default function App() {
     setToken("")
     setProfile(null)
     setTelegramAuthError("")
+    setTelegramBotNotificationsBusy(false)
     telegramRedirectedRef.current = false
     telegramWriteAccessRequestedRef.current = false
+    telegramMandatoryCheckDoneRef.current = false
     setActiveAccountId("")
     setAccounts([])
     setOpenOrders([])
@@ -368,6 +379,7 @@ export default function App() {
     message: string
     accountID?: string
     dedupeKey?: string
+    action?: AppNotification["action"]
     details?: SystemNoticeDetails
   }) => {
     const title = String(payload.title || "").trim()
@@ -389,6 +401,7 @@ export default function App() {
         read: false,
         dedupe_key: payload.dedupeKey,
         account_id: payload.accountID,
+        action: payload.action,
         details: payload.details,
       }
       return [nextItem, ...prev].slice(0, notificationsLimit)
@@ -413,7 +426,63 @@ export default function App() {
     })
   }, [])
 
+  const handleNotificationAction = useCallback((notificationID: string, action: NonNullable<AppNotification["action"]>) => {
+    if (!action) return
+    markNotificationRead(notificationID)
+    if (action.type === "open_profit_stages") {
+      setView("profile")
+      setOpenProfitStagesSignal(prev => prev + 1)
+    }
+  }, [markNotificationRead])
+
   const hasUnreadNotifications = useMemo(() => notifications.some(item => !item.read), [notifications])
+
+  // Migrate legacy notifications where raw i18n keys were persisted as plain text.
+  useEffect(() => {
+    setNotifications(prev => {
+      let changed = false
+      const next = prev.map(item => {
+        let title = item.title
+        let message = item.message
+
+        if (title.startsWith("notifications.")) {
+          const translated = t(title, lang)
+          if (translated !== title) {
+            title = translated
+            changed = true
+          }
+        }
+
+        if (message.startsWith("notifications.")) {
+          let translated = t(message, lang)
+          if (message === "notifications.profitStageReadyMessage") {
+            const stageMatch = String(item.dedupe_key || "").match(/profit_stage_ready:[^:]+:(\d+)/)
+            const stageNo = stageMatch ? Number(stageMatch[1]) : NaN
+            const stage = Number.isFinite(stageNo)
+              ? (profitRewardStatus?.stages || []).find(s => Number(s.stage_no) === stageNo)
+              : undefined
+            const reward = Number(stage?.reward_usd || 0)
+            translated = translated
+              .replace("{stage}", Number.isFinite(stageNo) ? String(stageNo) : "—")
+              .replace("{amount}", formatNumber(reward, 2, 2))
+          } else {
+            translated = translated.replace(/\{[^}]+\}/g, "")
+          }
+
+          if (translated !== message) {
+            message = translated
+            changed = true
+          }
+        }
+
+        if (title !== item.title || message !== item.message) {
+          return { ...item, title, message }
+        }
+        return item
+      })
+      return changed ? next : prev
+    })
+  }, [lang, profitRewardStatus])
 
   // Verify session on page load - check if user exists in DB
   useEffect(() => {
@@ -466,6 +535,8 @@ export default function App() {
   const api = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token, activeAccountId }, logout), [normalizedBaseUrl, token, activeAccountId, logout])
   const authApi = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token }, logout), [normalizedBaseUrl, token, logout])
   const publicApi = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token: "" }), [normalizedBaseUrl])
+  const telegramMiniApp = isTelegramMiniApp()
+  const telegramModeActive = authFlowMode === "production" && telegramMiniApp
   const lastDisplay = quote?.last ? parseFloat(quote.last) : NaN
   const rawBidDisplay = quote?.bid ? parseFloat(quote.bid) : NaN
   const rawAskDisplay = quote?.ask ? parseFloat(quote.ask) : NaN
@@ -803,10 +874,31 @@ export default function App() {
     try {
       const status = await api.profitRewardStatus()
       setProfitRewardStatus(status || null)
+      const stages = Array.isArray(status?.stages) ? status.stages : []
+      const trackKey = String(status?.track || "profit_track")
+      for (const stage of stages) {
+        if (!stage?.can_claim || stage?.claimed) continue
+        const stageNo = Number(stage.stage_no || 0)
+        if (!Number.isFinite(stageNo) || stageNo <= 0) continue
+        const reward = Number(stage.reward_usd || 0)
+        addNotification({
+          kind: "bonus",
+          title: t("notifications.profitStageReadyToClaim", lang),
+          message: t("notifications.profitStageReadyMessage", lang)
+            .replace("{stage}", String(stageNo))
+            .replace("{amount}", formatNumber(reward, 2, 2)),
+          accountID: activeAccountId,
+          dedupeKey: `profit_stage_ready:${trackKey}:${stageNo}`,
+          action: {
+            type: "open_profit_stages",
+            label: t("notifications.openRewards", lang),
+          },
+        })
+      }
     } catch {
       setProfitRewardStatus(null)
     }
-  }, [api, token])
+  }, [api, token, activeAccountId, addNotification, lang])
 
   const refreshNewsUpcoming = useCallback(async () => {
     if (!token) {
@@ -994,15 +1086,43 @@ export default function App() {
     }
   }, [token, publicApi, authFlowMode])
 
-  useEffect(() => {
+  const refreshProfile = useCallback(async () => {
     if (!token) {
       setProfile(null)
       return
     }
-    authApi.me()
-      .then(user => setProfile(user))
-      .catch(() => { })
+    try {
+      const user = await authApi.me()
+      setProfile(user || null)
+    } catch {
+      // ignore profile refresh errors
+    }
   }, [token, authApi])
+
+  const requestTelegramWriteAccess = useCallback(async (): Promise<boolean> => {
+    if (!telegramModeActive || !token) return false
+    const requestWriteAccess = window.Telegram?.WebApp?.requestWriteAccess
+    if (typeof requestWriteAccess !== "function") {
+      setTelegramAuthError(t("settings.notifications.telegramBotUnsupported", lang))
+      return false
+    }
+    return await new Promise<boolean>((resolve) => {
+      try {
+        requestWriteAccess((allowed) => resolve(Boolean(allowed)))
+      } catch {
+        resolve(false)
+      }
+    })
+  }, [telegramModeActive, token, lang])
+
+  useEffect(() => {
+    refreshProfile().catch(() => { })
+  }, [refreshProfile])
+
+  useEffect(() => {
+    if (!token || view !== "profile") return
+    refreshProfile().catch(() => { })
+  }, [token, view, refreshProfile])
 
   useEffect(() => {
     if (telegramRedirectedRef.current) return
@@ -1013,21 +1133,36 @@ export default function App() {
   }, [token, authFlowMode])
 
   useEffect(() => {
-    if (authFlowMode !== "production") return
-    if (!token || !isTelegramMiniApp()) return
+    if (!telegramModeActive) return
+    if (!token || !profile) return
+    if (telegramMandatoryCheckDoneRef.current) return
+    telegramMandatoryCheckDoneRef.current = true
+    if (profile.telegram_write_access) return
     if (telegramWriteAccessRequestedRef.current) return
-    const requestWriteAccess = window.Telegram?.WebApp?.requestWriteAccess
-    if (typeof requestWriteAccess !== "function") return
 
     telegramWriteAccessRequestedRef.current = true
-    try {
-      requestWriteAccess((allowed) => {
-        authApi.setTelegramWriteAccess(Boolean(allowed)).catch(() => { })
-      })
-    } catch {
-      // Ignore unsupported Telegram clients or runtime errors.
+    let cancelled = false
+
+    ; (async () => {
+      const allowed = await requestTelegramWriteAccess()
+      if (cancelled) return
+      await authApi.setTelegramWriteAccess(allowed).catch(() => { })
+      if (cancelled) return
+      setProfile(prev => prev ? { ...prev, telegram_write_access: allowed } : prev)
+      if (!allowed) {
+        setTelegramAuthError(t("auth.telegramWriteDeniedClosing", lang))
+        window.setTimeout(() => {
+          if (!cancelled) window.Telegram?.WebApp?.close?.()
+        }, 320)
+      } else {
+        setTelegramAuthError("")
+      }
+    })()
+
+    return () => {
+      cancelled = true
     }
-  }, [authFlowMode, token, authApi])
+  }, [telegramModeActive, token, profile, requestTelegramWriteAccess, authApi, lang])
 
   // Persist preferences
   useEffect(() => {
@@ -1719,6 +1854,44 @@ export default function App() {
     refreshAccountSnapshots().catch(() => { })
   }
 
+  const handleToggleTelegramBotNotifications = useCallback(async (enabled: boolean) => {
+    if (!telegramModeActive || !token) return
+    if (telegramBotNotificationsBusy) return
+
+    setTelegramBotNotificationsBusy(true)
+    try {
+      if (enabled && !profile?.telegram_write_access) {
+        telegramWriteAccessRequestedRef.current = false
+        const allowed = await requestTelegramWriteAccess()
+        await authApi.setTelegramWriteAccess(Boolean(allowed)).catch(() => { })
+        if (!allowed) {
+          setProfile(prev => prev ? { ...prev, telegram_write_access: false } : prev)
+          toast.error(t("settings.notifications.telegramBotBlocked", lang))
+          return
+        }
+        setProfile(prev => prev ? { ...prev, telegram_write_access: true } : prev)
+      }
+
+      await authApi.setTelegramNotificationsEnabled(enabled)
+      setProfile(prev => prev ? { ...prev, telegram_notifications_enabled: enabled } : prev)
+      toast.success(enabled ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang))
+      refreshProfile().catch(() => { })
+    } catch (err: any) {
+      toast.error(err?.message || t("common.error", lang))
+    } finally {
+      setTelegramBotNotificationsBusy(false)
+    }
+  }, [
+    telegramModeActive,
+    token,
+    telegramBotNotificationsBusy,
+    profile?.telegram_write_access,
+    requestTelegramWriteAccess,
+    authApi,
+    lang,
+    refreshProfile,
+  ])
+
   if (!token) {
     return (
       <AppAuthGate
@@ -1813,11 +1986,18 @@ export default function App() {
           onBackFromNotifications={() => setView("accounts")}
           onMarkAllNotificationsRead={markAllNotificationsRead}
           onNotificationClick={markNotificationRead}
+          onNotificationAction={handleNotificationAction}
           profile={profile}
           setLang={setLang}
           setTheme={setTheme}
           notificationSettings={notificationSettings}
           setNotificationSettings={setNotificationSettings}
+          telegramBotSwitchVisible={telegramModeActive}
+          telegramBotNotificationsEnabled={Boolean(profile?.telegram_notifications_enabled)}
+          telegramBotNotificationsBusy={telegramBotNotificationsBusy}
+          telegramWriteAccess={Boolean(profile?.telegram_write_access)}
+          onToggleTelegramBotNotifications={handleToggleTelegramBotNotifications}
+          openProfitStagesSignal={openProfitStagesSignal}
           onLogout={logout}
           api={api}
           onMetricsUpdate={setMetrics}

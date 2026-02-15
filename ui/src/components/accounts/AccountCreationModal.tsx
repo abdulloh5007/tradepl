@@ -25,6 +25,8 @@ const PLANS = [
         minSpread: "accounts.plan.standard.minSpread",
         maxLeverage: "accounts.plan.standard.maxLeverage",
         commission: "accounts.plan.standard.commission",
+        swapLongPerLot: -0.8,
+        swapShortPerLot: -0.4,
         image: "https://my.lightvidy.com/assets/standard-account.png"
     },
     {
@@ -36,6 +38,8 @@ const PLANS = [
         minSpread: "accounts.plan.pro.minSpread",
         maxLeverage: "accounts.plan.pro.maxLeverage",
         commission: "accounts.plan.pro.commission",
+        swapLongPerLot: -0.7,
+        swapShortPerLot: -0.35,
         image: "https://my.lightvidy.com/assets/pro-account.png"
     },
     {
@@ -47,6 +51,8 @@ const PLANS = [
         minSpread: "accounts.plan.raw.minSpread",
         maxLeverage: "accounts.plan.raw.maxLeverage",
         commission: "accounts.plan.raw.commission",
+        swapLongPerLot: -0.6,
+        swapShortPerLot: -0.3,
         image: "https://my.lightvidy.com/assets/raw-account.png"
     },
     {
@@ -58,6 +64,9 @@ const PLANS = [
         minSpread: "accounts.plan.swapfree.minSpread",
         maxLeverage: "accounts.plan.swapfree.maxLeverage",
         commission: "accounts.plan.swapfree.commission",
+        swapLongPerLot: 0,
+        swapShortPerLot: 0,
+        isSwapFree: true,
         image: "https://my.lightvidy.com/assets/swapfree-account.png"
     }
 ]
@@ -69,30 +78,57 @@ export default function AccountCreationModal({ lang, open, onClose, onCreate }: 
     const [creating, setCreating] = useState(false)
     const scrollRef = useRef<HTMLDivElement>(null)
 
+    const getSlides = () => {
+        if (!scrollRef.current) return []
+        return Array.from(scrollRef.current.querySelectorAll<HTMLElement>(".acm-card-slide"))
+    }
+
+    const getCardScrollLeft = (index: number) => {
+        const container = scrollRef.current
+        if (!container) return 0
+        const slides = getSlides()
+        const slide = slides[index]
+        if (!slide) return 0
+        const centeredLeft = slide.offsetLeft - (container.clientWidth - slide.offsetWidth) / 2
+        return Math.max(0, centeredLeft)
+    }
+
     // Reset state when opening
     useEffect(() => {
         if (open) {
             setActiveIndex(0)
             if (scrollRef.current) {
-                scrollRef.current.scrollTo({ left: 0, behavior: "auto" })
+                scrollRef.current.scrollTo({ left: getCardScrollLeft(0), behavior: "auto" })
             }
         }
     }, [open])
 
     // Handle scroll snap updates
     const handleScroll = () => {
-        if (!scrollRef.current) return
-        const scrollLeft = scrollRef.current.scrollLeft
-        const width = scrollRef.current.offsetWidth
-        const index = Math.round(scrollLeft / width)
-        setActiveIndex(index)
+        const container = scrollRef.current
+        if (!container) return
+        const slides = getSlides()
+        if (!slides.length) return
+
+        const center = container.scrollLeft + container.clientWidth / 2
+        let nearestIndex = 0
+        let nearestDistance = Number.POSITIVE_INFINITY
+        for (let i = 0; i < slides.length; i += 1) {
+            const slide = slides[i]
+            const slideCenter = slide.offsetLeft + slide.offsetWidth / 2
+            const distance = Math.abs(slideCenter - center)
+            if (distance < nearestDistance) {
+                nearestDistance = distance
+                nearestIndex = i
+            }
+        }
+        setActiveIndex(nearestIndex)
     }
 
     const scrollToCard = (index: number) => {
         if (!scrollRef.current) return
-        const width = scrollRef.current.offsetWidth
         scrollRef.current.scrollTo({
-            left: width * index,
+            left: getCardScrollLeft(index),
             behavior: 'smooth'
         })
         setActiveIndex(index)

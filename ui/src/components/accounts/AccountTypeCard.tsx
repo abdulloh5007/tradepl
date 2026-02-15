@@ -16,6 +16,9 @@ interface AccountTypeProps {
         maxLeverage: string
         commission: string
         image: string
+        swapLongPerLot: number
+        swapShortPerLot: number
+        isSwapFree?: boolean
     }
     mode: "real" | "demo"
 }
@@ -29,6 +32,11 @@ const TGS_PATHS: Record<string, string> = {
 
 export default function AccountTypeCard({ lang, plan, mode }: AccountTypeProps): JSX.Element {
     const tgsSrc = TGS_PATHS[plan.id] || TGS_PATHS.standard
+    const swapValue = plan.isSwapFree
+        ? t("accounts.details.swapFree", lang)
+        : t("accounts.plan.swapLongShortCompact", lang)
+            .replace("{long}", formatSwapRate(plan.swapLongPerLot))
+            .replace("{short}", formatSwapRate(plan.swapShortPerLot))
 
     return (
         <div className="atc-card">
@@ -62,17 +70,25 @@ export default function AccountTypeCard({ lang, plan, mode }: AccountTypeProps):
                 <Row label={t("accounts.plan.minSpread", lang)} value={t(plan.minSpread, lang)} />
                 <Row label={t("accounts.plan.maxLeverage", lang)} value={t(plan.maxLeverage, lang)} />
                 <Row label={t("accounts.plan.commission", lang)} value={t(plan.commission, lang)} />
+                <Row label={t("history.swap", lang)} value={swapValue} compact />
             </div>
         </div>
     )
 }
 
-function Row({ label, value }: { label: string, value: string }) {
+function formatSwapRate(value: number): string {
+    const abs = Math.abs(value).toFixed(2)
+    if (value > 0) return `+${abs}`
+    if (value < 0) return `-${abs}`
+    return "0.00"
+}
+
+function Row({ label, value, compact = false }: { label: string, value: string, compact?: boolean }) {
     return (
         <div className="atc-row">
             <span className="atc-label">{label}</span>
             <div className="atc-dots" />
-            <span className="atc-value">{value}</span>
+            <span className={`atc-value ${compact ? "atc-value-compact" : ""}`}>{value}</span>
         </div>
     )
 }

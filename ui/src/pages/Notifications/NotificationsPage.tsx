@@ -12,6 +12,7 @@ interface NotificationsPageProps {
   onBack: () => void
   onMarkAllRead: () => void
   onItemClick: (notificationID: string) => void
+  onActionClick: (notificationID: string, action: NonNullable<AppNotification["action"]>) => void
 }
 
 const pageSize = 30
@@ -55,7 +56,7 @@ const formatPercent = (value?: string) => {
   return `${num.toFixed(2)}%`
 }
 
-export default function NotificationsPage({ lang, items, onBack, onMarkAllRead, onItemClick }: NotificationsPageProps) {
+export default function NotificationsPage({ lang, items, onBack, onMarkAllRead, onItemClick, onActionClick }: NotificationsPageProps) {
   const hasUnread = items.some(item => !item.read)
   const [visibleCount, setVisibleCount] = useState(pageSize)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -259,6 +260,18 @@ export default function NotificationsPage({ lang, items, onBack, onMarkAllRead, 
                   </div>
                 </div>
               )}
+              {selectedView.action ? (
+                <button
+                  type="button"
+                  className="notifications-detail-action-btn"
+                  onClick={() => {
+                    onActionClick(selectedView.id, selectedView.action!)
+                    setSelected(null)
+                  }}
+                >
+                  {selectedView.action.label || t("notifications.openRewards", lang)}
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

@@ -77,9 +77,17 @@
   font-weight: 600;
 }
 
-.profile-rewards-btn {
+.profile-nav-group {
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  border-radius: 14px;
+  overflow: hidden;
+  display: grid;
+  gap: 0;
+}
+
+.profile-nav-item {
   width: 100%;
-  border: 1px solid rgba(96, 165, 250, 0.3);
+  border: 1px solid rgba(96, 165, 250, 0.22);
   border-radius: 14px;
   background:
     radial-gradient(120% 120% at 0% 0%, rgba(59, 130, 246, 0.14), transparent 55%),
@@ -88,180 +96,35 @@
   padding: 12px 14px;
   font-size: 13px;
   font-weight: 700;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   cursor: pointer;
   box-shadow: 0 8px 22px rgba(2, 6, 23, 0.2);
 }
 
-.profile-rewards-btn-left {
+.profile-nav-item-group {
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid rgba(96, 165, 250, 0.2);
+  box-shadow: none;
+}
+
+.profile-nav-item-group:first-child {
+  border-top: none;
+}
+
+.profile-nav-left {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.profile-referral-card {
-  margin: 0;
-  border-radius: 16px;
-  border: 1px solid rgba(96, 165, 250, 0.28);
-  background:
-    radial-gradient(120% 120% at 0% 0%, rgba(59, 130, 246, 0.18), transparent 55%),
-    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.92));
-  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.28);
-  padding: 14px;
-  display: grid;
-  gap: 8px;
-}
-
-.profile-referral-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.profile-referral-head h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: #e2e8f0;
-}
-
-.profile-referral-head span {
+.profile-nav-right {
   font-size: 12px;
   color: #93c5fd;
-}
-
-.profile-referral-balance {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #f8fafc;
-}
-
-.profile-referral-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-.profile-referral-note {
-  font-size: 12px;
-  color: #93c5fd;
-  line-height: 1.35;
-}
-
-.profile-referral-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.profile-referral-btn {
-  flex: 1;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 10px;
-  height: 36px;
-  background: rgba(30, 41, 59, 0.6);
-  color: #e2e8f0;
-  font-size: 13px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.profile-referral-btn-primary {
-  border-color: rgba(56, 189, 248, 0.4);
-  background: linear-gradient(135deg, #0ea5e9, #22d3ee);
-  color: #082f49;
-}
-
-.profile-referral-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.profile-kyc-card {
-  margin: 0;
-  border-radius: 16px;
-  border: 1px solid rgba(56, 189, 248, 0.28);
-  background:
-    radial-gradient(120% 120% at 100% 0%, rgba(56, 189, 248, 0.15), transparent 55%),
-    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.92));
-  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.28);
-  padding: 14px;
-  display: grid;
-  gap: 8px;
-}
-
-.profile-kyc-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.profile-kyc-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #7dd3fc;
-  border-radius: 999px;
-  padding: 5px 10px;
-  background: rgba(56, 189, 248, 0.14);
-}
-
-.profile-kyc-state {
-  font-size: 12px;
-  font-weight: 700;
-  color: #cbd5e1;
-}
-
-.profile-kyc-state.ok {
-  color: #86efac;
-}
-
-.profile-kyc-amount {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #f8fafc;
-}
-
-.profile-kyc-text {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.35;
-  color: #cbd5e1;
-}
-
-.profile-kyc-note {
-  font-size: 12px;
-  color: #94a3b8;
-  line-height: 1.35;
-}
-
-.profile-kyc-btn {
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  border-radius: 12px;
-  height: 38px;
-  background: linear-gradient(135deg, #0ea5e9, #22d3ee);
-  color: #082f49;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.profile-kyc-btn:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
+  white-space: nowrap;
 }
 
 html[data-theme="light"] .profile-settings-btn {
@@ -276,7 +139,11 @@ html[data-theme="light"] .profile-user-card {
   border-color: rgba(148, 163, 184, 0.3);
 }
 
-html[data-theme="light"] .profile-rewards-btn {
+html[data-theme="light"] .profile-nav-group {
+  border-color: rgba(59, 130, 246, 0.24);
+}
+
+html[data-theme="light"] .profile-nav-item {
   background:
     radial-gradient(120% 120% at 0% 0%, rgba(59, 130, 246, 0.12), transparent 55%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.92));
@@ -285,55 +152,11 @@ html[data-theme="light"] .profile-rewards-btn {
   box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
 }
 
-html[data-theme="light"] .profile-referral-card {
-  border-color: rgba(59, 130, 246, 0.25);
-  background:
-    radial-gradient(120% 120% at 0% 0%, rgba(59, 130, 246, 0.14), transparent 55%),
-    linear-gradient(145deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.92));
+html[data-theme="light"] .profile-nav-item-group {
+  border-top-color: rgba(59, 130, 246, 0.24);
 }
 
-html[data-theme="light"] .profile-referral-head h3 {
-  color: #1e293b;
+html[data-theme="light"] .profile-nav-right {
+  color: #1d4ed8;
 }
 
-html[data-theme="light"] .profile-referral-balance {
-  color: #0f172a;
-}
-
-html[data-theme="light"] .profile-referral-meta {
-  color: #475569;
-}
-
-html[data-theme="light"] .profile-referral-note {
-  color: #2563eb;
-}
-
-html[data-theme="light"] .profile-referral-btn {
-  background: #ffffff;
-  color: #1e293b;
-  border-color: color-mix(in srgb, var(--border) 90%, transparent);
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
-}
-
-html[data-theme="light"] .profile-referral-btn-primary {
-  box-shadow: 0 8px 16px rgba(14, 165, 233, 0.25);
-}
-
-html[data-theme="light"] .profile-kyc-card {
-  border-color: rgba(56, 189, 248, 0.28);
-  background:
-    radial-gradient(120% 120% at 100% 0%, rgba(56, 189, 248, 0.1), transparent 55%),
-    linear-gradient(145deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.92));
-}
-
-html[data-theme="light"] .profile-kyc-amount {
-  color: #0f172a;
-}
-
-html[data-theme="light"] .profile-kyc-text {
-  color: #475569;
-}
-
-html[data-theme="light"] .profile-kyc-note {
-  color: #64748b;
-}

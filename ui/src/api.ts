@@ -65,6 +65,8 @@ export type UserProfile = {
   id: string
   email: string
   telegram_id?: number
+  telegram_write_access?: boolean
+  telegram_notifications_enabled?: boolean
   display_name?: string
   avatar_url?: string
 }
@@ -280,6 +282,8 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     telegramAuth: (initData: string) => request<{ access_token: string; user: UserProfile }>("/v1/auth/telegram", "POST", { init_data: initData }),
     setTelegramWriteAccess: (allowed: boolean) =>
       request<{ status: string; allowed: boolean }>("/v1/auth/telegram/write-access", "POST", { allowed }, true),
+    setTelegramNotificationsEnabled: (enabled: boolean) =>
+      request<{ status: string; enabled: boolean }>("/v1/auth/telegram/notifications", "POST", { enabled }, true),
     me: () => request<UserProfile>("/v1/me", "GET", undefined, true),
     accounts: () => request<TradingAccount[] | null>("/v1/accounts", "GET", undefined, true),
     createAccount: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) =>
