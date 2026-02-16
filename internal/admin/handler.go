@@ -572,7 +572,7 @@ func (h *Handler) UpdateDepositMethods(w http.ResponseWriter, r *http.Request) {
 	}
 	methods, err := depositmethods.Save(r.Context(), h.pool, req.Methods)
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

@@ -1786,6 +1786,31 @@ export default function App() {
     ])
   }
 
+  const handleRequestRealWithdraw = async (payload: {
+    amountUSD: string
+    methodID: string
+    payoutDetails: string
+  }) => {
+    const res = await api.requestRealWithdraw({
+      amount_usd: payload.amountUSD,
+      method_id: payload.methodID,
+      payout_details: payload.payoutDetails,
+    })
+    addNotification({
+      kind: "deposit",
+      title: t("notifications.withdrawalPosted", lang),
+      message: t("notifications.withdrawalPostedMessage", lang).replace("{amount}", formatNumber(Number(res?.amount_usd || payload.amountUSD || 0), 2, 2)),
+      accountID: activeAccountId,
+    })
+    await Promise.all([
+      refreshAccounts(activeAccountId).catch(() => { }),
+      refreshMetrics().catch(() => { }),
+      refreshOrders().catch(() => { }),
+      fetchOrderHistory(true).catch(() => { }),
+    ])
+    refreshAccountSnapshots().catch(() => { })
+  }
+
   const handleRequestKYC = async (payload: {
     documentType: "passport" | "id_card" | "driver_license" | "other"
     fullName: string
@@ -1996,6 +2021,7 @@ export default function App() {
           depositBonus={depositBonus}
           onClaimSignupBonus={handleClaimSignupBonus}
           onRequestRealDeposit={handleRequestRealDeposit}
+          onRequestRealWithdraw={handleRequestRealWithdraw}
           newsUpcoming={newsUpcoming}
           activeAccount={activeTradingAccount}
           kycStatus={kycStatus}

@@ -245,6 +245,14 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.LedgerHandler.RequestRealDeposit(w, r, userID)
 			})
+			r.Post("/withdraw/real/request", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.LedgerHandler.RequestRealWithdraw(w, r, userID)
+			})
 			r.Get("/kyc/status", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {

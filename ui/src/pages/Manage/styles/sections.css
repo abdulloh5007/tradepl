@@ -152,14 +152,23 @@ input[type=number] {
 
 .deposit-method-input {
   width: 100%;
-  min-height: 58px;
-  resize: vertical;
+  min-height: 42px;
   padding: 9px 10px;
   border-radius: 9px;
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
   font-size: 12px;
+}
+
+.deposit-method-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.deposit-method-error {
+  font-size: 11px;
+  color: var(--status-danger);
 }
 
 .pairs-list {

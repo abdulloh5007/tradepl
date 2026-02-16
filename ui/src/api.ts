@@ -135,6 +135,19 @@ export type RealDepositRequestResponse = {
   method_id: string
 }
 
+export type RealWithdrawRequestPayload = {
+  amount_usd: string
+  method_id: string
+  payout_details: string
+}
+
+export type RealWithdrawRequestResponse = {
+  status: string
+  amount_usd: string
+  method_id: string
+  payout_details_masked: string
+}
+
 export type KYCStatus = {
   state: "available" | "pending" | "approved" | "blocked_temp" | "blocked_permanent" | "unavailable" | string
   can_submit: boolean
@@ -317,6 +330,8 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       ),
     requestRealDeposit: (payload: RealDepositRequestPayload) =>
       request<RealDepositRequestResponse>("/v1/deposits/real/request", "POST", payload, true),
+    requestRealWithdraw: (payload: RealWithdrawRequestPayload) =>
+      request<RealWithdrawRequestResponse>("/v1/withdraw/real/request", "POST", payload, true),
     kycStatus: () => request<KYCStatus>("/v1/kyc/status", "GET", undefined, true),
     requestKYC: (payload: KYCRequestPayload) =>
       request<KYCRequestResponse>("/v1/kyc/request", "POST", payload, true),

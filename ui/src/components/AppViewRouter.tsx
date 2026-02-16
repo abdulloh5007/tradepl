@@ -72,6 +72,11 @@ interface AppViewRouterProps {
     methodID: string
     proofFile: File
   }) => Promise<void>
+  onRequestRealWithdraw: (payload: {
+    amountUSD: string
+    methodID: string
+    payoutDetails: string
+  }) => Promise<void>
   newsUpcoming: MarketNewsEvent[]
   activeAccount: TradingAccount | null
   kycStatus: KYCStatus | null
@@ -176,6 +181,7 @@ export default function AppViewRouter({
   depositBonus,
   onClaimSignupBonus,
   onRequestRealDeposit,
+  onRequestRealWithdraw,
   newsUpcoming,
   activeAccount,
   kycStatus,
@@ -295,6 +301,7 @@ export default function AppViewRouter({
           depositBonus={depositBonus}
           onClaimSignupBonus={onClaimSignupBonus}
           onRequestRealDeposit={onRequestRealDeposit}
+          onRequestRealWithdraw={onRequestRealWithdraw}
           newsUpcoming={newsUpcoming}
           onCloseAll={async () => {
             await onCloseAll()

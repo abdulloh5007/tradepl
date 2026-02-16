@@ -3,6 +3,11 @@ import { Banknote, Bitcoin, Coins, CreditCard, Landmark, Wallet } from "lucide-r
 import type { DepositPaymentMethod } from "./types"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
+import {
+  formatMethodInputForEditing,
+  methodFormatExample,
+  validateAndNormalizeMethodInput,
+} from "../../utils/paymentMethodFormats"
 
 type DepositMethodsCardProps = {
   lang: Lang
@@ -64,6 +69,7 @@ export default function DepositMethodsCard({ lang, baseUrl, headers, canAccess }
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const activeCount = useMemo(() => methods.filter((m) => m.details.trim().length > 0).length, [methods])
 
@@ -114,18 +120,38 @@ export default function DepositMethodsCard({ lang, baseUrl, headers, canAccess }
                     <span className="deposit-method-title"><Icon size={14} /> {methodTitle(method, lang)}</span>
                     <span className="deposit-method-state">{enabled ? t("manage.depositMethods.stateEnabled", lang) : t("manage.depositMethods.stateDisabled", lang)}</span>
                   </div>
-                  <textarea
+                  <input
                     className="deposit-method-input"
-                    rows={2}
-                    placeholder={t("manage.depositMethods.placeholder", lang)}
+                    placeholder={methodFormatExample(method.id)}
                     value={method.details}
                     onChange={(e) => {
-                      const value = e.target.value
+                      const value = formatMethodInputForEditing(method.id, e.target.value)
                       setMethods((prev) => prev.map((item) => item.id === method.id
                         ? { ...item, details: value, enabled: value.trim().length > 0 }
                         : item))
+                      setFieldErrors((prev) => ({ ...prev, [method.id]: "" }))
+                    }}
+                    onBlur={(e) => {
+                      const value = String(e.target.value || "").trim()
+                      if (!value) {
+                        setFieldErrors((prev) => ({ ...prev, [method.id]: "" }))
+                        return
+                      }
+                      const check = validateAndNormalizeMethodInput(method.id, value)
+                      if (!check.valid) {
+                        setFieldErrors((prev) => ({ ...prev, [method.id]: t("manage.depositMethods.invalid", lang) }))
+                        return
+                      }
+                      setMethods((prev) => prev.map((item) => item.id === method.id ? { ...item, details: check.normalized } : item))
+                      setFieldErrors((prev) => ({ ...prev, [method.id]: "" }))
                     }}
                   />
+                  <div className="deposit-method-hint">
+                    {t("manage.depositMethods.format", lang).replace("{format}", methodFormatExample(method.id))}
+                  </div>
+                  {fieldErrors[method.id] ? (
+                    <div className="deposit-method-error">{fieldErrors[method.id]}</div>
+                  ) : null}
                 </div>
               )
             })}
@@ -139,7 +165,24 @@ export default function DepositMethodsCard({ lang, baseUrl, headers, canAccess }
                 setSaving(true)
                 setError(null)
                 try {
-                  const payload = { methods: methods.map((m) => ({ id: m.id, details: m.details.trim() })) }
+                  const nextErrors: Record<string, string> = {}
+                  const normalizedMethods = methods.map((m) => {
+                    const value = String(m.details || "").trim()
+                    if (!value) return { id: m.id, details: "" }
+                    const check = validateAndNormalizeMethodInput(m.id, value)
+                    if (!check.valid) {
+                      nextErrors[m.id] = t("manage.depositMethods.invalid", lang)
+                      return { id: m.id, details: value }
+                    }
+                    return { id: m.id, details: check.normalized }
+                  })
+                  if (Object.keys(nextErrors).length > 0) {
+                    setFieldErrors(nextErrors)
+                    throw new Error(t("manage.depositMethods.invalid", lang))
+                  }
+
+                  setFieldErrors({})
+                  const payload = { methods: normalizedMethods }
                   const res = await fetch(`${baseUrl}/v1/admin/deposit-methods`, {
                     method: "POST",
                     headers,

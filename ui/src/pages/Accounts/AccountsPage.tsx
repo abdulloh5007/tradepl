@@ -9,6 +9,7 @@ import AccountFundingModal from "../../components/accounts/AccountFundingModal"
 import AccountDetailsModal from "../../components/accounts/AccountDetailsModal"
 import AccountCreationModal from "../../components/accounts/AccountCreationModal"
 import RealDepositRequestModal from "../../components/accounts/RealDepositRequestModal"
+import RealWithdrawRequestModal from "../../components/accounts/RealWithdrawRequestModal"
 import type { AccountSnapshot } from "../../components/accounts/types"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
@@ -36,6 +37,11 @@ interface AccountsPageProps {
     voucherKind: "none" | "gold" | "diamond"
     methodID: string
     proofFile: File
+  }) => Promise<void>
+  onRequestRealWithdraw: (payload: {
+    amountUSD: string
+    methodID: string
+    payoutDetails: string
   }) => Promise<void>
   newsUpcoming: MarketNewsEvent[]
   onCloseAll: () => Promise<void>
@@ -119,6 +125,7 @@ export default function AccountsPage({
   depositBonus,
   onClaimSignupBonus,
   onRequestRealDeposit,
+  onRequestRealWithdraw,
   newsUpcoming,
   onCloseAll,
   onGoTrade,
@@ -232,6 +239,7 @@ export default function AccountsPage({
   }
 
   const isRealDepositFlow = fundingOpen === "deposit" && activeAccount.mode === "real"
+  const isRealWithdrawFlow = fundingOpen === "withdraw" && activeAccount.mode === "real"
 
   return (
     <div className="accounts-page pb-24">
@@ -380,7 +388,7 @@ export default function AccountsPage({
 
       <AccountFundingModal
         lang={lang}
-        open={fundingOpen !== null && !isRealDepositFlow}
+        open={fundingOpen !== null && !isRealDepositFlow && !isRealWithdrawFlow}
         mode={activeAccount.mode as "demo" | "real"}
         type={fundingOpen || "deposit"}
         amount={fundingAmount}
@@ -428,6 +436,31 @@ export default function AccountsPage({
           try {
             await onRequestRealDeposit(payload)
             toast.success(t("accounts.requestSubmittedReview", lang))
+            setFundingOpen(null)
+            setFundingVoucherKind("none")
+          } catch (err: any) {
+            toast.error(err?.message || t("accounts.errors.submitFailed", lang))
+          } finally {
+            setFundingBusy(false)
+          }
+        }}
+      />
+
+      <RealWithdrawRequestModal
+        lang={lang}
+        open={isRealWithdrawFlow}
+        status={depositBonus}
+        loading={fundingBusy}
+        onClose={() => {
+          if (fundingBusy) return
+          setFundingOpen(null)
+          setFundingVoucherKind("none")
+        }}
+        onSubmit={async (payload) => {
+          setFundingBusy(true)
+          try {
+            await onRequestRealWithdraw(payload)
+            toast.success(t("accounts.withdrawCompleted", lang))
             setFundingOpen(null)
             setFundingVoucherKind("none")
           } catch (err: any) {

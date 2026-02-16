@@ -1,0 +1,32 @@
+.rwm-form {
+  gap: 14px;
+}
+
+.rwm-note {
+  text-align: left;
+}
+
+.rwm-note-warning {
+  text-align: left;
+  color: #f59e0b;
+}
+
+.rwm-format-hint {
+  margin-top: -6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rwm-format-error {
+  margin-top: -6px;
+  font-size: 12px;
+  color: var(--status-danger);
+}
+
+.rwm-input-error {
+  border-color: color-mix(in srgb, var(--status-danger) 65%, var(--border));
+}
+
+html[data-theme="light"] .rwm-note-warning {
+  color: #b45309;
+}
