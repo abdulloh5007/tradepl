@@ -406,6 +406,7 @@ export default function App() {
   const [telegramAuthError, setTelegramAuthError] = useState("")
   const [telegramBotNotificationsBusy, setTelegramBotNotificationsBusy] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
   const [signupBonus, setSignupBonus] = useState<SignupBonusStatus | null>(null)
   const [depositBonus, setDepositBonus] = useState<DepositBonusStatus | null>(null)
   const [kycStatus, setKycStatus] = useState<KYCStatus | null>(null)
@@ -425,6 +426,7 @@ export default function App() {
   const logout = useCallback(() => {
     setToken("")
     setProfile(null)
+    setProfileLoading(false)
     setTelegramAuthError("")
     setTelegramBotNotificationsBusy(false)
     telegramRedirectedRef.current = false
@@ -1236,13 +1238,17 @@ export default function App() {
   const refreshProfile = useCallback(async () => {
     if (!token) {
       setProfile(null)
+      setProfileLoading(false)
       return
     }
+    setProfileLoading(true)
     try {
       const user = await authApi.me()
       setProfile(normalizeProfile(user || null))
     } catch {
       // ignore profile refresh errors
+    } finally {
+      setProfileLoading(false)
     }
   }, [token, authApi])
 
@@ -2203,6 +2209,7 @@ export default function App() {
           onNotificationClick={markNotificationRead}
           onNotificationAction={handleNotificationAction}
           profile={profile}
+          profileLoading={profileLoading}
           setLang={setLang}
           setTheme={setTheme}
           notificationSettings={notificationSettings}

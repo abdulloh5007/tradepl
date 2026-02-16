@@ -16,6 +16,7 @@ interface ProfilePageProps {
     setTheme: (theme: Theme) => void
     onLogout: () => void
     profile: UserProfile | null
+    loading: boolean
     notificationSettings: NotificationSettings
     setNotificationSettings: (settings: NotificationSettings) => void
     telegramBotSwitchVisible: boolean
@@ -52,6 +53,7 @@ export default function ProfilePage({
     setTheme,
     onLogout,
     profile,
+    loading,
     notificationSettings,
     setNotificationSettings,
     telegramBotSwitchVisible,
@@ -214,6 +216,14 @@ export default function ProfilePage({
                 onBack={() => setShowSettings(false)}
                 onLogout={onLogout}
             />
+        )
+    }
+
+    if (loading && !profile) {
+        return (
+            <div className="profile-page">
+                <div className="profile-loading">{t("common.loading", lang)}</div>
+            </div>
         )
     }
 

@@ -104,6 +104,7 @@ interface AppViewRouterProps {
   onNotificationClick: (notificationID: string) => void
   onNotificationAction: (notificationID: string, action: NonNullable<AppNotification["action"]>) => void
   profile: UserProfile | null
+  profileLoading: boolean
   setLang: (lang: Lang) => void
   setTheme: (theme: Theme) => void
   notificationSettings: NotificationSettings
@@ -204,6 +205,7 @@ export default function AppViewRouter({
   onNotificationClick,
   onNotificationAction,
   profile,
+  profileLoading,
   setLang,
   setTheme,
   notificationSettings,
@@ -343,6 +345,7 @@ export default function AppViewRouter({
           setTheme={setTheme}
           onLogout={onLogout}
           profile={profile}
+          loading={profileLoading}
           notificationSettings={notificationSettings}
           setNotificationSettings={setNotificationSettings}
           telegramBotSwitchVisible={telegramBotSwitchVisible}

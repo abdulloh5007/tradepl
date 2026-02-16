@@ -236,6 +236,10 @@
     color: var(--muted);
 }
 
+.history-loading-empty {
+    padding: 40px;
+}
+
 .history-sentinel {
     height: 1px;
     width: 100%;

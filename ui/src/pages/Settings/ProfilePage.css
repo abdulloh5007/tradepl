@@ -1,11 +1,18 @@
 .profile-page {
   width: min(760px, 100%);
   margin: 0 auto;
-  padding: 0 0 100px;
+  padding: 10px 0 100px;
   display: flex;
   flex-direction: column;
   min-height: 100%;
   gap: 12px;
+}
+
+.profile-loading {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .profile-header {

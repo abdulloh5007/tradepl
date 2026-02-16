@@ -294,7 +294,9 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
             <div className="history-content">
                 <div className="history-list" ref={listRef}>
                     {hasMore && <div ref={loadSentinelTopRef} className="history-sentinel history-sentinel-top" aria-hidden="true" />}
-                    {filteredOrders.length === 0 ? (
+                    {loading && filteredOrders.length === 0 ? (
+                        <div className="history-loading history-loading-empty">{t("history.loading", lang)}</div>
+                    ) : filteredOrders.length === 0 ? (
                         <div className="history-empty">{t("history.emptyForPeriod", lang)}</div>
                     ) : (
                         filteredOrders.map(order => {
@@ -342,7 +344,7 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
                         })
                     )}
 
-                    {loading && <div className="history-loading">{t("history.loading", lang)}</div>}
+                    {loading && filteredOrders.length > 0 && <div className="history-loading">{t("history.loading", lang)}</div>}
                 </div>
 
                 <div className="history-footer">
