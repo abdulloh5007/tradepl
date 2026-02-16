@@ -537,6 +537,7 @@ export default function App() {
   const publicApi = useMemo(() => createApiClient({ baseUrl: normalizedBaseUrl, token: "" }), [normalizedBaseUrl])
   const telegramMiniApp = isTelegramMiniApp()
   const telegramModeActive = authFlowMode === "production" && telegramMiniApp
+  const telegramBotSettingsVisible = authFlowMode === "production"
   const lastDisplay = quote?.last ? parseFloat(quote.last) : NaN
   const rawBidDisplay = quote?.bid ? parseFloat(quote.bid) : NaN
   const rawAskDisplay = quote?.ask ? parseFloat(quote.ask) : NaN
@@ -1855,7 +1856,11 @@ export default function App() {
   }
 
   const handleToggleTelegramBotNotifications = useCallback(async (enabled: boolean) => {
-    if (!telegramModeActive || !token) return
+    if (!token) return
+    if (!telegramModeActive) {
+      toast.error(t("auth.openFromTelegram", lang))
+      return
+    }
     if (telegramBotNotificationsBusy) return
 
     setTelegramBotNotificationsBusy(true)
@@ -1992,7 +1997,7 @@ export default function App() {
           setTheme={setTheme}
           notificationSettings={notificationSettings}
           setNotificationSettings={setNotificationSettings}
-          telegramBotSwitchVisible={telegramModeActive}
+          telegramBotSwitchVisible={telegramBotSettingsVisible}
           telegramBotNotificationsEnabled={Boolean(profile?.telegram_notifications_enabled)}
           telegramBotNotificationsBusy={telegramBotNotificationsBusy}
           telegramWriteAccess={Boolean(profile?.telegram_write_access)}
