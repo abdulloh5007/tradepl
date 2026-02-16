@@ -44,6 +44,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer pool.Close()
+	if err := db.EnsureCoreReferenceData(ctx, pool); err != nil {
+		log.Fatalf("failed to ensure core reference data: %v", err)
+	}
 	bus := marketdata.NewBus()
 	market := marketdata.NewStore(pool)
 	accountSvc := accounts.NewService(pool)

@@ -11,7 +11,7 @@ UI_DIST ?=
 MARKETDATA_DIR ?= db/marketdata
 TELEGRAM_BOT_TOKEN ?=
 
-.PHONY: db api migrate seed run ui env run-env dev
+.PHONY: db api migrate seed repair-core run ui env run-env dev
 
 AIR_BIN := $(shell command -v air 2>/dev/null)
 ifeq ($(AIR_BIN),)
@@ -33,6 +33,11 @@ migrate:
 
 seed:
 	DB_DSN="$(DB_DSN)" ./scripts/seed.sh
+
+repair-core:
+	@set -e; \
+	if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	psql "$${DB_DSN:-$(DB_DSN)}" -v ON_ERROR_STOP=1 -f db/scripts/ensure_core_reference_data.sql
 
 api:
 	HTTP_ADDR="$(HTTP_ADDR)" DB_DSN="$(DB_DSN)" JWT_ISSUER="$(JWT_ISSUER)" JWT_SECRET="$(JWT_SECRET)" JWT_TTL="$(JWT_TTL)" INTERNAL_API_TOKEN="$(INTERNAL_API_TOKEN)" WS_ORIGIN="$(WS_ORIGIN)" PROJECT_MODE="$(PROJECT_MODE)" TELEGRAM_BOT_TOKEN="$(TELEGRAM_BOT_TOKEN)" TELEGRAM_BOT_USERNAME="$(TELEGRAM_BOT_USERNAME)" UI_DIST="$(UI_DIST)" MARKETDATA_DIR="$(MARKETDATA_DIR)" go run ./cmd/api
