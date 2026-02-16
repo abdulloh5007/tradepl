@@ -518,6 +518,26 @@ html[data-theme="light"] {
   min-height: 0;
 }
 
+/* Sonner toasts: keep away from Telegram/system top bar areas */
+[data-sonner-toaster] {
+  --toast-safe-top: calc(var(--app-safe-top) + var(--tg-safe-top-extra) + 12px);
+  --toast-safe-right: calc(var(--app-safe-right) + 10px);
+  --toast-safe-left: calc(var(--app-safe-left) + 10px);
+  --offset: var(--toast-safe-top);
+}
+
+[data-sonner-toaster][data-y-position="top"] {
+  top: var(--toast-safe-top) !important;
+}
+
+[data-sonner-toaster][data-x-position="right"] {
+  right: var(--toast-safe-right) !important;
+}
+
+[data-sonner-toaster][data-x-position="left"] {
+  left: var(--toast-safe-left) !important;
+}
+
 /* Global dropdown */
 .ui-dropdown {
   position: relative;

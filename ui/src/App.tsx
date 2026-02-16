@@ -137,7 +137,7 @@ function applyTelegramSafeAreaInsets(): void {
   root.style.setProperty("--tg-safe-bottom", `${clampInsetValue(inset?.bottom)}px`)
   root.style.setProperty("--tg-safe-left", `${clampInsetValue(inset?.left)}px`)
   root.style.setProperty("--tg-safe-right", `${clampInsetValue(inset?.right)}px`)
-  root.style.setProperty("--tg-safe-top-extra", webApp ? `${webApp.isFullscreen ? 10 : 6}px` : "0px")
+  root.style.setProperty("--tg-safe-top-extra", webApp ? `${webApp.isFullscreen ? 18 : 14}px` : "0px")
 }
 
 function isCashFlowHistoryOrder(order: Order): boolean {
