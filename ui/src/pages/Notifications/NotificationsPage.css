@@ -14,6 +14,14 @@
   margin-bottom: 6px;
 }
 
+.notifications-back-slot {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .notifications-title {
   margin: 0;
   font-size: 22px;
@@ -33,6 +41,11 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.notifications-back-btn--ghost {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .notifications-read-btn:disabled {
