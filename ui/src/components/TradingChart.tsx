@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from "react"
 import { createChart, ColorType, ISeriesApi, IPriceLine } from "lightweight-charts"
 import type { Candle, Quote, Order, MarketConfig } from "../types"
 
-const VIEWPORT_COOKIE_KEY = "lv_chart_viewport_v1"
+const VIEWPORT_STORAGE_KEY = "lv_chart_viewport_v1"
 const VIEWPORT_TTL_MS = 45 * 60 * 1000 // 45 minutes
 const VIEWPORT_MAX_ENTRIES = 8
 
@@ -31,8 +31,7 @@ function writeCookie(name: string, value: string, maxAgeSec: number): void {
     document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSec}; samesite=lax`
 }
 
-function readSavedViewports(): SavedViewport[] {
-    const raw = readCookie(VIEWPORT_COOKIE_KEY)
+function parseSavedViewports(raw: string | null | undefined): SavedViewport[] {
     if (!raw) return []
     try {
         const parsed = JSON.parse(raw)
@@ -50,8 +49,45 @@ function readSavedViewports(): SavedViewport[] {
     }
 }
 
-function writeSavedViewports(entries: SavedViewport[]): void {
-    writeCookie(VIEWPORT_COOKIE_KEY, JSON.stringify(entries), 60 * 60 * 24 * 7)
+function readSavedViewportsFromCookie(): SavedViewport[] {
+    return parseSavedViewports(readCookie(VIEWPORT_STORAGE_KEY))
+}
+
+function writeSavedViewportsToCookie(entries: SavedViewport[]): void {
+    writeCookie(VIEWPORT_STORAGE_KEY, JSON.stringify(entries), 60 * 60 * 24 * 7)
+}
+
+function shouldUseTelegramCloudStorage(): boolean {
+    if (typeof window === "undefined") return false
+    const webApp = window.Telegram?.WebApp
+    if (!webApp?.initData) return false
+    return Boolean(webApp.CloudStorage?.getItem && webApp.CloudStorage?.setItem)
+}
+
+function readSavedViewportsFromCloudStorage(): Promise<SavedViewport[] | null> {
+    if (!shouldUseTelegramCloudStorage()) return Promise.resolve(null)
+    return new Promise((resolve) => {
+        try {
+            window.Telegram?.WebApp?.CloudStorage?.getItem?.(VIEWPORT_STORAGE_KEY, (error, value) => {
+                if (error) {
+                    resolve(null)
+                    return
+                }
+                resolve(parseSavedViewports(value))
+            })
+        } catch {
+            resolve(null)
+        }
+    })
+}
+
+function writeSavedViewportsToCloudStorage(entries: SavedViewport[]): void {
+    if (!shouldUseTelegramCloudStorage()) return
+    try {
+        window.Telegram?.WebApp?.CloudStorage?.setItem?.(VIEWPORT_STORAGE_KEY, JSON.stringify(entries), () => { })
+    } catch {
+        // Ignore cloud storage write errors and keep cookie fallback.
+    }
 }
 
 interface TradingChartProps {
@@ -90,6 +126,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
     const initialRenderDoneRef = useRef(false) // Skip lazy load on first render
     const lastRangeFromRef = useRef<number | null>(null) // Track scroll direction
     const saveViewportTimerRef = useRef<number | null>(null)
+    const savedViewportsRef = useRef<SavedViewport[]>(readSavedViewportsFromCookie())
+    const hasUserMovedViewportRef = useRef(false)
     const restoredViewportKeyRef = useRef<string>("")
     const viewportKeyRef = useRef("")
     const prevViewportKeyRef = useRef("")
@@ -123,7 +161,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
         if (!chart) return false
 
         const now = Date.now()
-        const entries = readSavedViewports().filter((entry) => now-entry.savedAt <= VIEWPORT_TTL_MS)
+        const entries = savedViewportsRef.current.filter((entry) => now-entry.savedAt <= VIEWPORT_TTL_MS)
+        savedViewportsRef.current = entries
         if (entries.length === 0) return false
 
         const entry = entries.find((item) => item.key === key)
@@ -154,11 +193,14 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             savedAt: Date.now()
         }
 
-        const active = readSavedViewports()
-            .filter((item) => Date.now()-item.savedAt <= VIEWPORT_TTL_MS)
+        const active = savedViewportsRef.current
+            .filter((item) => Date.now() - item.savedAt <= VIEWPORT_TTL_MS)
             .filter((item) => item.key !== key)
         active.unshift(entry)
-        writeSavedViewports(active.slice(0, VIEWPORT_MAX_ENTRIES))
+        const next = active.slice(0, VIEWPORT_MAX_ENTRIES)
+        savedViewportsRef.current = next
+        writeSavedViewportsToCookie(next)
+        writeSavedViewportsToCloudStorage(next)
     }, [])
 
     const schedulePersistViewport = useCallback((key: string) => {
@@ -170,6 +212,44 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
             saveViewportTimerRef.current = null
         }, 350)
     }, [persistViewport])
+
+    // In Telegram production mini app, load viewport from CloudStorage.
+    // Cookie storage remains as fallback and for non-Telegram/dev mode.
+    useEffect(() => {
+        let cancelled = false
+        readSavedViewportsFromCloudStorage()
+            .then((entries) => {
+                if (cancelled || entries === null) return
+
+                const now = Date.now()
+                const freshEntries = entries.filter((entry) => now - entry.savedAt <= VIEWPORT_TTL_MS)
+                savedViewportsRef.current = freshEntries
+                writeSavedViewportsToCookie(freshEntries)
+
+                // Do not override viewport after user already started interacting.
+                if (hasUserMovedViewportRef.current) return
+
+                const chart = chartRef.current
+                const key = viewportKeyRef.current
+                if (!chart || !key) return
+
+                const entry = freshEntries.find((item) => item.key === key)
+                if (!entry) return
+
+                const barSpacing = Math.max(0.5, Math.min(80, entry.barSpacing))
+                chart.timeScale().applyOptions({
+                    rightOffset: entry.rightOffset,
+                    barSpacing
+                })
+                chart.timeScale().setVisibleLogicalRange({ from: entry.from, to: entry.to })
+                restoredViewportKeyRef.current = key
+            })
+            .catch(() => { })
+
+        return () => {
+            cancelled = true
+        }
+    }, [])
 
     // Initialize chart
     useEffect(() => {
@@ -285,6 +365,8 @@ export default function TradingChart({ candles, quote, openOrders, marketPair, m
                 lastRangeFromRef.current = range.from
                 return
             }
+
+            hasUserMovedViewportRef.current = true
 
             // Persist viewport for both pan + zoom changes.
             schedulePersistViewport(viewportKeyRef.current)

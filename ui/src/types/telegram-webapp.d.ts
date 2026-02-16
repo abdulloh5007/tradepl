@@ -37,6 +37,11 @@ interface TelegramWebApp {
         onClick?: (callback: () => void) => void
         offClick?: (callback: () => void) => void
     }
+    CloudStorage?: {
+        getItem?: (key: string, callback: (error: string | null, value: string | null) => void) => void
+        setItem?: (key: string, value: string, callback?: (error: string | null, success?: boolean) => void) => void
+        removeItem?: (key: string, callback?: (error: string | null, success?: boolean) => void) => void
+    }
     ready?: () => void
     expand?: () => void
     requestFullscreen?: () => void | Promise<void>
