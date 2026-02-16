@@ -16,7 +16,7 @@ type Config struct {
 	JWTTTL           time.Duration
 	InternalToken    string
 	WebSocketOrigin  string
-	ProfectMode      string
+	ProjectMode      string
 	TelegramMode     string
 	TelegramBotToken string
 	TelegramBotName  string
@@ -64,16 +64,20 @@ func Load() (Config, error) {
 	if c.WebSocketOrigin == "" {
 		missing = append(missing, "WS_ORIGIN")
 	}
-	c.ProfectMode = strings.ToLower(strings.TrimSpace(os.Getenv("PROFECT_MODE")))
-	if c.ProfectMode == "" {
-		c.ProfectMode = "development"
+	modeRaw := strings.TrimSpace(os.Getenv("PROJECT_MODE"))
+	if modeRaw == "" {
+		modeRaw = strings.TrimSpace(os.Getenv("PROFECT_MODE")) // backward compatibility
 	}
-	if c.ProfectMode != "development" && c.ProfectMode != "production" {
-		return c, errors.New("invalid PROFECT_MODE: use development or production")
+	c.ProjectMode = strings.ToLower(modeRaw)
+	if c.ProjectMode == "" {
+		c.ProjectMode = "development"
+	}
+	if c.ProjectMode != "development" && c.ProjectMode != "production" {
+		return c, errors.New("invalid PROJECT_MODE: use development or production")
 	}
 	c.TelegramMode = strings.ToLower(strings.TrimSpace(os.Getenv("TELEGRAM_RUNTIME_MODE")))
 	if c.TelegramMode == "" {
-		if c.ProfectMode == "production" {
+		if c.ProjectMode == "production" {
 			c.TelegramMode = "external"
 		} else {
 			c.TelegramMode = "internal"
@@ -84,7 +88,7 @@ func Load() (Config, error) {
 	}
 	c.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	c.TelegramBotName = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME"))
-	if c.ProfectMode == "production" && c.TelegramBotToken == "" {
+	if c.ProjectMode == "production" && c.TelegramBotToken == "" {
 		missing = append(missing, "TELEGRAM_BOT_TOKEN")
 	}
 	ownerTelegramRaw := strings.TrimSpace(os.Getenv("OWNER_TELEGRAM_ID"))

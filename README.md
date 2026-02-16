@@ -17,7 +17,7 @@ Run
    - JWT_TTL
    - INTERNAL_API_TOKEN
    - WS_ORIGIN
-   - PROFECT_MODE (development or production)
+   - PROJECT_MODE (development or production; old `PROFECT_MODE` is still accepted for backward compatibility)
    - TELEGRAM_RUNTIME_MODE (internal or external; default: `internal` in development, `external` in production. `external` disables polling/review flows in Go server and expects external bot process)
    - TELEGRAM_BOT_TOKEN (optional, required for Telegram Mini App auth)
    - TELEGRAM_BOT_USERNAME (optional, used to build referral share deep-link; if empty backend will try Telegram `getMe` by token)

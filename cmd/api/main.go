@@ -54,7 +54,7 @@ func main() {
 	authSvc := auth.NewService(pool, cfg.JWTIssuer, []byte(cfg.JWTSecret), cfg.JWTTTL)
 	authSvc.SetTelegramBotToken(cfg.TelegramBotToken)
 	authSvc.SetAccountService(accountSvc)
-	authHandler := auth.NewHandler(authSvc, cfg.ProfectMode)
+	authHandler := auth.NewHandler(authSvc, cfg.ProjectMode)
 	faucetMax, err := decimal.NewFromString(cfg.FaucetMax)
 	if err != nil {
 		log.Fatal(err)
@@ -69,11 +69,11 @@ func main() {
 		cfg.TelegramMode,
 		cfg.TelegramBotName,
 		cfg.OwnerTelegramID,
-		cfg.ProfectMode,
+		cfg.ProjectMode,
 		cfg.WebSocketOrigin,
 	)
 	orderHandler := orders.NewHandler(orderSvc, accountSvc)
-	if cfg.ProfectMode == "production" && cfg.TelegramMode == "internal" {
+	if cfg.ProjectMode == "production" && cfg.TelegramMode == "internal" {
 		orderSvc.SetImportantNotifier(ledgerHandler.NotifyUserImportantTelegram)
 	}
 	marketWS := marketdata.NewMarketWS(cfg.WebSocketOrigin)
@@ -85,7 +85,7 @@ func main() {
 	volStore := volatility.NewStore(pool)
 	volHandler := volatility.NewHandler(volStore)
 	adminHandler := admin.NewHandler(pool, cfg.JWTSecret)
-	healthHandler := health.NewHandler(pool, startedAt, cfg.ProfectMode, cfg.TelegramMode, cfg.HTTPAddr, cfg.InternalToken)
+	healthHandler := health.NewHandler(pool, startedAt, cfg.ProjectMode, cfg.TelegramMode, cfg.HTTPAddr, cfg.InternalToken)
 	wsHandler := httpserver.NewWSHandler(bus, authSvc, accountSvc, orderSvc, cfg.WebSocketOrigin)
 	eventsWSHandler := httpserver.NewEventsWSHandler(bus, cfg.WebSocketOrigin)
 	router := httpserver.NewRouter(httpserver.RouterDeps{
@@ -124,7 +124,7 @@ func main() {
 
 	log.Printf("server listening on %s", cfg.HTTPAddr)
 	log.Printf("health endpoint: http://localhost%s/health", cfg.HTTPAddr)
-	log.Printf("auth mode: %s", cfg.ProfectMode)
+	log.Printf("auth mode: %s", cfg.ProjectMode)
 	log.Printf("telegram runtime mode: %s", cfg.TelegramMode)
 	if cfg.UIDist != "" {
 		log.Printf("ui dist: %s", cfg.UIDist)
