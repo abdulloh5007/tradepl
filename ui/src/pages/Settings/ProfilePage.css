@@ -36,7 +36,7 @@
 
 .profile-user-wrap {
   position: relative;
-  padding: 0 0 10px;
+  padding: 0 0 54px;
   margin-top: 10px;
   overflow: visible;
 }
@@ -125,38 +125,84 @@
 .profile-banner-particle.p11 { left: 88%; top: 56%; animation-duration: 4.9s; animation-delay: -1.0s; }
 .profile-banner-particle.p12 { left: 92%; top: 22%; animation-duration: 5.6s; animation-delay: -2.9s; }
 
-.profile-banner-signal {
+.profile-banner-candles {
   position: absolute;
-  left: 10px;
-  width: 56%;
-  height: 34px;
-  fill: none;
-  stroke-width: 2.3;
-  opacity: 0.85;
-  filter: drop-shadow(0 0 7px rgba(2, 6, 23, 0.45));
+  left: 14px;
+  top: 22px;
+  width: 45%;
+  height: 62%;
   pointer-events: none;
-  animation: profile-signal-pulse 3.8s ease-in-out infinite;
 }
 
-.profile-banner-signal polyline {
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.profile-candle {
+  position: absolute;
+  width: 7px;
+  display: block;
+  animation: profile-candle-float 4.2s ease-in-out infinite;
 }
 
-.profile-banner-signal.gain {
-  top: 28px;
+.profile-candle-wick {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+  transform: translateX(-50%);
+  opacity: 0.9;
 }
 
-.profile-banner-signal.gain polyline {
-  stroke: rgba(74, 222, 128, 0.94);
+.profile-candle-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 3px;
 }
 
-.profile-banner-signal.loss {
-  bottom: 20px;
+.profile-candle.gain .profile-candle-wick {
+  background: rgba(34, 197, 94, 0.85);
 }
 
-.profile-banner-signal.loss polyline {
-  stroke: rgba(248, 113, 113, 0.9);
+.profile-candle.loss .profile-candle-wick {
+  background: rgba(239, 68, 68, 0.86);
+}
+
+.profile-candle.gain .profile-candle-body {
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.98), rgba(22, 163, 74, 0.92));
+  box-shadow: 0 0 7px rgba(22, 163, 74, 0.52);
+}
+
+.profile-candle.loss .profile-candle-body {
+  background: linear-gradient(180deg, rgba(248, 113, 113, 0.98), rgba(220, 38, 38, 0.9));
+  box-shadow: 0 0 7px rgba(220, 38, 38, 0.44);
+}
+
+.profile-candle.c1 { left: 6%; top: 20%; height: 52px; animation-delay: -0.2s; }
+.profile-candle.c1 .profile-candle-body { top: 20px; height: 18px; }
+.profile-candle.c2 { left: 15%; top: 14%; height: 56px; animation-delay: -1.1s; }
+.profile-candle.c2 .profile-candle-body { top: 22px; height: 15px; }
+.profile-candle.c3 { left: 24%; top: 10%; height: 58px; animation-delay: -0.7s; }
+.profile-candle.c3 .profile-candle-body { top: 17px; height: 20px; }
+.profile-candle.c4 { left: 34%; top: 18%; height: 54px; animation-delay: -1.6s; }
+.profile-candle.c4 .profile-candle-body { top: 24px; height: 14px; }
+.profile-candle.c5 { left: 44%; top: 8%; height: 62px; animation-delay: -1.2s; }
+.profile-candle.c5 .profile-candle-body { top: 20px; height: 22px; }
+.profile-candle.c6 { left: 54%; top: 16%; height: 56px; animation-delay: -0.9s; }
+.profile-candle.c6 .profile-candle-body { top: 18px; height: 16px; }
+.profile-candle.c7 { left: 64%; top: 12%; height: 60px; animation-delay: -1.8s; }
+.profile-candle.c7 .profile-candle-body { top: 25px; height: 14px; }
+.profile-candle.c8 { left: 74%; top: 17%; height: 55px; animation-delay: -0.5s; }
+.profile-candle.c8 .profile-candle-body { top: 19px; height: 17px; }
+
+@keyframes profile-candle-float {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
 }
 
 .profile-banner-brand {
@@ -233,22 +279,6 @@
   display: none;
 }
 
-.profile-display-name {
-  margin: 62px 0 0;
-  font-size: 20px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.profile-display-name--offset {
-  margin-top: 58px;
-  padding-left: 122px;
-  text-align: left;
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-}
-
 .profile-nav-group {
   border: 1px solid rgba(96, 165, 250, 0.22);
   border-radius: 14px;
@@ -313,16 +343,6 @@
   100% {
     transform: translateY(-20px) scale(1.06);
     opacity: 0;
-  }
-}
-
-@keyframes profile-signal-pulse {
-  0%,
-  100% {
-    opacity: 0.7;
-  }
-  50% {
-    opacity: 0.95;
   }
 }
 
@@ -394,6 +414,14 @@ html[data-theme="light"] .profile-banner-brand {
     1px 1px 0 rgba(255, 255, 255, 0.9);
 }
 
+html[data-theme="light"] .profile-candle.gain .profile-candle-wick {
+  background: rgba(22, 163, 74, 0.82);
+}
+
+html[data-theme="light"] .profile-candle.loss .profile-candle-wick {
+  background: rgba(220, 38, 38, 0.82);
+}
+
 html[data-theme="light"] .profile-avatar-img,
 html[data-theme="light"] .profile-avatar-fallback {
   border-color: rgba(241, 245, 249, 0.98);
@@ -433,10 +461,6 @@ html[data-theme="light"] .profile-nav-right {
 
   .profile-avatar-float {
     top: 96px;
-  }
-
-  .profile-display-name--offset {
-    padding-left: 112px;
   }
 
   .profile-banner-brand {

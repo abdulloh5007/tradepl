@@ -237,12 +237,18 @@ export default function ProfilePage({
                             />
                         ))}
                     </div>
-                    <svg className="profile-banner-signal gain" viewBox="0 0 180 36" aria-hidden="true">
-                        <polyline points="0,28 20,24 32,26 56,14 76,20 98,8 116,14 136,4 158,12 180,6" />
-                    </svg>
-                    <svg className="profile-banner-signal loss" viewBox="0 0 180 36" aria-hidden="true">
-                        <polyline points="0,8 18,10 36,6 56,16 74,12 92,20 110,16 132,28 154,22 180,30" />
-                    </svg>
+                    <div className="profile-banner-candles" aria-hidden="true">
+                        {Array.from({ length: 8 }).map((_, index) => (
+                            <span
+                                // eslint-disable-next-line react/no-array-index-key
+                                key={index}
+                                className={`profile-candle ${index % 3 === 0 ? "loss" : "gain"} c${index + 1}`}
+                            >
+                                <span className="profile-candle-wick" />
+                                <span className="profile-candle-body" />
+                            </span>
+                        ))}
+                    </div>
                     <div className="profile-banner-brand" aria-hidden="true">BIAX</div>
                 </div>
                 <div className="profile-avatar-float profile-avatar-float--left">
@@ -273,7 +279,6 @@ export default function ProfilePage({
                         className="profile-image-input"
                     />
                 </div>
-                <h3 className="profile-display-name profile-display-name--offset">{displayName}</h3>
             </div>
 
             <button
