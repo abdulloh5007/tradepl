@@ -513,6 +513,14 @@ html[data-theme="light"] {
   padding: 10px 12px 8px;
 }
 
+.app-main-chart.app-main-chart-offset {
+  padding-top: 18px;
+}
+
+.app-main-default.app-main-accounts-offset {
+  padding-top: 24px;
+}
+
 .app-main-chart>* {
   flex: 1;
   min-height: 0;

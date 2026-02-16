@@ -2121,13 +2121,20 @@ export default function App() {
 
 
   const isChartView = view === "chart"
+  const isAccountsView = view === "accounts"
+  const mainClassName = [
+    "app-main",
+    isChartView ? "app-main-chart" : "app-main-default",
+    isChartView ? "app-main-chart-offset" : "",
+    isAccountsView ? "app-main-accounts-offset" : "",
+  ].filter(Boolean).join(" ")
 
   return (
     <div className="app-shell">
       <ConnectionBanner apiBackoff={apiBackoff} />
       <Toaster position="top-right" />
 
-      <main className={`app-main ${isChartView ? "app-main-chart" : "app-main-default"}`}>
+      <main className={mainClassName}>
         <AppViewRouter
           view={view}
           candles={candles}
