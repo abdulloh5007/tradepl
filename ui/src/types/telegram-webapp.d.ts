@@ -11,6 +11,18 @@ interface TelegramWebApp {
     initDataUnsafe?: {
         user?: TelegramWebAppInitDataUser
     }
+    HapticFeedback?: {
+        impactOccurred?: (style?: "light" | "medium" | "heavy" | "rigid" | "soft") => void
+        notificationOccurred?: (type?: "error" | "success" | "warning") => void
+        selectionChanged?: () => void
+    }
+    BackButton?: {
+        isVisible?: boolean
+        show?: () => void
+        hide?: () => void
+        onClick?: (callback: () => void) => void
+        offClick?: (callback: () => void) => void
+    }
     ready?: () => void
     requestWriteAccess?: (callback?: (allowed: boolean) => void) => void
     close?: () => void

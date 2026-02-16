@@ -1,7 +1,5 @@
-
-2. DB_DSN="postgres://postgres:postgres@localhost:5432/lvtrade?sslmode=disable" ./scripts/seed.sh
-psql: error: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "postgres"
-make: *** [Makefile:35: seed] Error 2
+1. Сделай логику для withdraw для реальных счетов чтобы был окно для withdraw и там можно было выбрать способ вывода которые будут управляться только овнером на панеле и ввести свои данные изходя из способа ! если карты то формат такой 1234 5678 90
 
 
-3. Если хочешь, следующим сообщением дам такой же пошаговый блок для автообновления (git pull + rebuild + restart) одной командой.
+2. Каждый раз когда что то меняешь то обязяательно делай git add . git commit and git push и версию тоже меняй
+

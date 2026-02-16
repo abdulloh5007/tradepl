@@ -4,6 +4,7 @@ import { ArrowLeft, ShieldCheck } from "lucide-react"
 import type { KYCStatus } from "../../api"
 import type { Lang, TradingAccount } from "../../types"
 import KYCVerificationModal from "../../components/accounts/KYCVerificationModal"
+import TelegramBackButton from "../../components/telegram/TelegramBackButton"
 import { t } from "../../utils/i18n"
 import "./KYCPage.css"
 
@@ -71,9 +72,12 @@ export default function KYCPage({
     return (
         <div className="kyc-page">
             <div className="kyc-page-header">
-                <button type="button" className="kyc-page-back" onClick={onBack} aria-label={t("profitStages.backToProfile", lang)}>
-                    <ArrowLeft size={17} />
-                </button>
+                <TelegramBackButton
+                    onBack={onBack}
+                    fallbackClassName="kyc-page-back"
+                    fallbackAriaLabel={t("profitStages.backToProfile", lang)}
+                    fallbackChildren={<ArrowLeft size={17} />}
+                />
                 <h2>{t("profile.identityBonus", lang)}</h2>
             </div>
 
@@ -150,4 +154,3 @@ export default function KYCPage({
         </div>
     )
 }
-

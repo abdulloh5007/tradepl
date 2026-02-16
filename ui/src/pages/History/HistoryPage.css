@@ -54,6 +54,25 @@
     padding: 0;
 }
 
+.history-back-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: color-mix(in srgb, var(--muted) 24%, transparent);
+    color: var(--text);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    padding: 0;
+}
+
+.history-back-btn:hover {
+    background-color: color-mix(in srgb, var(--muted) 34%, transparent);
+}
+
 .history-filter-btn:hover {
     background-color: color-mix(in srgb, var(--muted) 34%, transparent);
 }

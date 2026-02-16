@@ -3,6 +3,7 @@ import { toast } from "sonner"
 import type { ReferralStatus } from "../../api"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
+import TelegramBackButton from "../../components/telegram/TelegramBackButton"
 import "./ReferralPage.css"
 
 interface ReferralPageProps {
@@ -73,9 +74,12 @@ export default function ReferralPage({
     return (
         <div className="ref-page">
             <div className="ref-page-header">
-                <button type="button" className="ref-page-back" onClick={onBack} aria-label={t("profitStages.backToProfile", lang)}>
-                    <ArrowLeft size={17} />
-                </button>
+                <TelegramBackButton
+                    onBack={onBack}
+                    fallbackClassName="ref-page-back"
+                    fallbackAriaLabel={t("profitStages.backToProfile", lang)}
+                    fallbackChildren={<ArrowLeft size={17} />}
+                />
                 <h2>{t("profile.referral", lang)}</h2>
             </div>
 
@@ -117,4 +121,3 @@ export default function ReferralPage({
         </div>
     )
 }
-

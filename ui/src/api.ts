@@ -94,6 +94,13 @@ export type DepositVoucherStatus = {
   used: boolean
 }
 
+export type DepositPaymentMethod = {
+  id: string
+  title: string
+  details: string
+  enabled: boolean
+}
+
 export type DepositBonusStatus = {
   min_amount_usd: string
   max_amount_usd: string
@@ -104,11 +111,13 @@ export type DepositBonusStatus = {
   next_review_due_at?: string
   eligible_account_id?: string
   vouchers: DepositVoucherStatus[]
+  payment_methods: DepositPaymentMethod[]
 }
 
 export type RealDepositRequestPayload = {
   amount_usd: string
   voucher_kind?: "none" | "gold" | "diamond"
+  method_id: string
   proof_file_name: string
   proof_mime_type: string
   proof_base64: string
@@ -123,6 +132,7 @@ export type RealDepositRequestResponse = {
   bonus_amount_usd: string
   total_credit_usd: string
   voucher_kind: "none" | "gold" | "diamond" | string
+  method_id: string
 }
 
 export type KYCStatus = {

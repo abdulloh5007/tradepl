@@ -9,6 +9,7 @@ type SystemHealthCardProps = {
     baseUrl: string
     headers: Record<string, string>
     canAccess: boolean
+    showSummary?: boolean
     showUpdater?: boolean
     showDangerZone?: boolean
     showRaw?: boolean
@@ -158,6 +159,7 @@ export default function SystemHealthCard({
     baseUrl,
     headers,
     canAccess,
+    showSummary = true,
     showUpdater = true,
     showDangerZone = true,
     showRaw = true,
@@ -390,53 +392,55 @@ export default function SystemHealthCard({
                 </div>
             ) : (
                 <>
-                    <div className="system-health-grid">
-                        <div className={`system-health-stat ${overallOk ? "ok" : "warn"}`}>
-                            <span>{t("manage.system.api", lang)}</span>
-                            <strong>{overallOk ? t("manage.system.status.ok", lang) : t("manage.system.status.degraded", lang)}</strong>
+                    {showSummary && (
+                        <div className="system-health-grid">
+                            <div className={`system-health-stat ${overallOk ? "ok" : "warn"}`}>
+                                <span>{t("manage.system.api", lang)}</span>
+                                <strong>{overallOk ? t("manage.system.status.ok", lang) : t("manage.system.status.degraded", lang)}</strong>
+                            </div>
+                            <div className={`system-health-stat ${dbOk ? "ok" : "warn"}`}>
+                                <span><Database size={14} /> {t("manage.system.db", lang)}</span>
+                                <strong>{dbOk ? t("manage.system.status.up", lang) : t("manage.system.status.down", lang)}</strong>
+                            </div>
+                            <div className="system-health-stat">
+                                <span>{t("manage.system.ping", lang)}</span>
+                                <strong>{formatPingMs(metrics.db_ping_ms, metrics.db_up)}</strong>
+                            </div>
+                            <div className="system-health-stat">
+                                <span>{t("manage.system.uptime", lang)}</span>
+                                <strong>{formatUptime(health.uptime_sec ?? metrics.uptime_sec, {
+                                    day: t("manage.system.unit.day", lang),
+                                    hour: t("manage.system.unit.hour", lang),
+                                    minute: t("manage.system.unit.minute", lang),
+                                    second: t("manage.system.unit.second", lang),
+                                })}</strong>
+                            </div>
+                            <div className="system-health-stat">
+                                <span>{t("manage.system.goroutines", lang)}</span>
+                                <strong>{metrics.runtime.goroutines}</strong>
+                            </div>
+                            <div className="system-health-stat">
+                                <span>{t("manage.system.version", lang)}</span>
+                                <strong>{fmtVersion(health.build)}</strong>
+                            </div>
+                            <div className="system-health-stat">
+                                <span>{t("manage.system.memory", lang)}</span>
+                                <strong>{bytesToHuman(metrics.memory.alloc_bytes)}</strong>
+                            </div>
+                            <div className="system-health-stat">
+                                <span>{t("manage.system.deployedAt", lang)}</span>
+                                <strong>{fmtDateTime(health.build?.updated_at)}</strong>
+                            </div>
+                            <div className="system-health-stat">
+                                <span>{t("manage.system.dbPool", lang)}</span>
+                                <strong>{metrics.db_pool.acquired_conns}/{metrics.db_pool.max_conns} {t("manage.system.dbPoolHint", lang)}</strong>
+                            </div>
+                            <div className="system-health-stat">
+                                <span>{t("manage.system.updated", lang)}</span>
+                                <strong>{fmtDateTime(metrics.timestamp)}</strong>
+                            </div>
                         </div>
-                        <div className={`system-health-stat ${dbOk ? "ok" : "warn"}`}>
-                            <span><Database size={14} /> {t("manage.system.db", lang)}</span>
-                            <strong>{dbOk ? t("manage.system.status.up", lang) : t("manage.system.status.down", lang)}</strong>
-                        </div>
-                        <div className="system-health-stat">
-                            <span>{t("manage.system.ping", lang)}</span>
-                            <strong>{formatPingMs(metrics.db_ping_ms, metrics.db_up)}</strong>
-                        </div>
-                        <div className="system-health-stat">
-                            <span>{t("manage.system.uptime", lang)}</span>
-                            <strong>{formatUptime(health.uptime_sec ?? metrics.uptime_sec, {
-                                day: t("manage.system.unit.day", lang),
-                                hour: t("manage.system.unit.hour", lang),
-                                minute: t("manage.system.unit.minute", lang),
-                                second: t("manage.system.unit.second", lang),
-                            })}</strong>
-                        </div>
-                        <div className="system-health-stat">
-                            <span>{t("manage.system.goroutines", lang)}</span>
-                            <strong>{metrics.runtime.goroutines}</strong>
-                        </div>
-                        <div className="system-health-stat">
-                            <span>{t("manage.system.version", lang)}</span>
-                            <strong>{fmtVersion(health.build)}</strong>
-                        </div>
-                        <div className="system-health-stat">
-                            <span>{t("manage.system.memory", lang)}</span>
-                            <strong>{bytesToHuman(metrics.memory.alloc_bytes)}</strong>
-                        </div>
-                        <div className="system-health-stat">
-                            <span>{t("manage.system.deployedAt", lang)}</span>
-                            <strong>{fmtDateTime(health.build?.updated_at)}</strong>
-                        </div>
-                        <div className="system-health-stat">
-                            <span>{t("manage.system.dbPool", lang)}</span>
-                            <strong>{metrics.db_pool.acquired_conns}/{metrics.db_pool.max_conns} {t("manage.system.dbPoolHint", lang)}</strong>
-                        </div>
-                        <div className="system-health-stat">
-                            <span>{t("manage.system.updated", lang)}</span>
-                            <strong>{fmtDateTime(metrics.timestamp)}</strong>
-                        </div>
-                    </div>
+                    )}
 
                     {showUpdater && updater && (
                         <div className={`system-updater ${updaterAvailable ? "update-available" : ""}`}>
@@ -555,6 +559,12 @@ export default function SystemHealthCard({
                         <details className="system-health-raw">
                         <summary>{t("manage.system.rawMetrics", lang)}</summary>
                         <pre>{JSON.stringify(metrics, null, 2)}</pre>
+                    </details>
+                    )}
+                    {showRaw && showUpdater && updater && (
+                        <details className="system-health-raw">
+                        <summary>{t("manage.system.updater.raw", lang)}</summary>
+                        <pre>{JSON.stringify(updater, null, 2)}</pre>
                     </details>
                     )}
 

@@ -6,6 +6,7 @@ import type { Lang, TradingAccount } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
 import SmartDropdown from "../../components/ui/SmartDropdown"
+import TelegramBackButton from "../../components/telegram/TelegramBackButton"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
 import "../../components/accounts/SharedAccountSheet.css"
 import "./ProfitStagesPage.css"
@@ -93,9 +94,12 @@ export default function ProfitStagesPage({ lang, status, accounts, onBack, onRef
   return (
     <div className="profit-stage-page">
       <header className="profit-stage-header">
-        <button type="button" className="profit-stage-icon-btn" onClick={onBack} aria-label={t("profitStages.backToProfile", lang)}>
-          <ArrowLeft size={18} />
-        </button>
+        <TelegramBackButton
+          onBack={onBack}
+          fallbackClassName="profit-stage-icon-btn"
+          fallbackAriaLabel={t("profitStages.backToProfile", lang)}
+          fallbackChildren={<ArrowLeft size={18} />}
+        />
         <h2>{t("profile.profitStages", lang)}</h2>
         <button
           type="button"

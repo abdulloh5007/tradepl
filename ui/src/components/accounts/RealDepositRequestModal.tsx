@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { CheckCircle2, Gift, Upload, X } from "lucide-react"
+import { Banknote, Bitcoin, CheckCircle2, Coins, CreditCard, Gift, Landmark, Upload, Wallet, X } from "lucide-react"
 import { toast } from "sonner"
-import type { DepositBonusStatus } from "../../api"
+import type { DepositBonusStatus, DepositPaymentMethod } from "../../api"
 import type { Lang } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
@@ -21,6 +21,7 @@ interface RealDepositRequestModalProps {
   onSubmit: (payload: {
     amountUSD: string
     voucherKind: VoucherKind
+    methodID: string
     proofFile: File
   }) => Promise<void>
 }
@@ -59,6 +60,16 @@ const amountToApi = (raw: string) => {
   return n.toFixed(2)
 }
 
+const paymentMethodIcon = (id: string) => {
+  const key = String(id || "").toLowerCase()
+  if (key === "humo" || key === "uzcard") return Landmark
+  if (key === "paypal") return Wallet
+  if (key === "ton") return Coins
+  if (key === "usdt") return Banknote
+  if (key === "btc") return Bitcoin
+  return CreditCard
+}
+
 export default function RealDepositRequestModal({
   lang,
   open,
@@ -73,6 +84,7 @@ export default function RealDepositRequestModal({
   const [amountRaw, setAmountRaw] = useState("")
   const [amountDisplay, setAmountDisplay] = useState("")
   const [voucherKind, setVoucherKind] = useState<VoucherKind>("none")
+  const [methodID, setMethodID] = useState("")
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -96,6 +108,20 @@ export default function RealDepositRequestModal({
       .filter(v => v.id === "gold" || v.id === "diamond")
   }, [status?.vouchers, status?.pending_count, allowVouchers])
 
+  const paymentMethods = useMemo<DepositPaymentMethod[]>(() => {
+    const list = Array.isArray(status?.payment_methods) ? status?.payment_methods : []
+    return list.map((item) => ({
+      id: String(item?.id || "").trim().toLowerCase(),
+      title: String(item?.title || item?.id || "").trim(),
+      details: String(item?.details || "").trim(),
+      enabled: Boolean(item?.enabled && String(item?.details || "").trim()),
+    })).filter((item) => item.id !== "")
+  }, [status?.payment_methods])
+
+  const availableMethodIDs = useMemo(() => {
+    return paymentMethods.filter((item) => item.enabled).map((item) => item.id)
+  }, [paymentMethods])
+
   const availableVoucherIds = useMemo(() => {
     return vouchers.filter(v => v.available).map(v => v.id)
   }, [vouchers])
@@ -115,6 +141,7 @@ export default function RealDepositRequestModal({
   const bonusAmount = amountValid ? (amountNum * activeVoucherPercent) / 100 : 0
   const totalAmount = amountValid ? amountNum + bonusAmount : 0
   const amountUZS = amountValid ? amountNum * uzsRate : 0
+  const selectedMethod = paymentMethods.find((item) => item.id === methodID) || null
 
   const resetState = () => {
     const preferred = normalizeVoucherKind(defaultVoucher)
@@ -125,6 +152,7 @@ export default function RealDepositRequestModal({
     setAmountDisplay(initialAmount ? formatIntWithSpaces(initialAmount) : "")
     setProofFile(null)
     setDragOver(false)
+    setMethodID(availableMethodIDs[0] || "")
 
     if (preferred !== "none" && availableVoucherIds.includes(preferred)) {
       setVoucherKind(preferred)
@@ -141,7 +169,7 @@ export default function RealDepositRequestModal({
     if (!open) return
     resetState()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultVoucher, status?.eligible_account_id, status?.pending_count, status?.vouchers])
+  }, [open, defaultVoucher, status?.eligible_account_id, status?.pending_count, status?.vouchers, status?.payment_methods])
 
   useEffect(() => {
     if (voucherKind === "diamond" && amountValid && amountNum < DIAMOND_MIN_AMOUNT) {
@@ -157,6 +185,11 @@ export default function RealDepositRequestModal({
     }
   }, [voucherKind, availableVoucherIds])
 
+  useEffect(() => {
+    if (methodID && availableMethodIDs.includes(methodID)) return
+    setMethodID(availableMethodIDs[0] || "")
+  }, [methodID, availableMethodIDs])
+
   if (!shouldRender) return null
 
   const pickProof = (file?: File | null) => {
@@ -168,7 +201,7 @@ export default function RealDepositRequestModal({
     setProofFile(file)
   }
 
-  const disabledSubmit = loading || !withinLimits || !proofFile
+  const disabledSubmit = loading || !withinLimits || !proofFile || !selectedMethod || !selectedMethod.enabled
 
   return (
     <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
@@ -211,6 +244,43 @@ export default function RealDepositRequestModal({
             <div className="rdm-hints">
               <span>{t("accounts.min", lang)}: {formatNumber(minAmount, 2, 2)} USD</span>
               <span>{t("accounts.max", lang)}: {formatNumber(maxAmount, 2, 2)} USD</span>
+            </div>
+
+            <div className="rdm-methods-block">
+              <div className="rdm-methods-title">{t("accounts.paymentMethodChoose", lang)}</div>
+              <div className="rdm-methods-grid">
+                {paymentMethods.map((method) => {
+                  const Icon = paymentMethodIcon(method.id)
+                  const disabled = !method.enabled
+                  const active = methodID === method.id
+                  const titleKey = `accounts.paymentMethod.${method.id}`
+                  const title = t(titleKey, lang) === titleKey ? method.title : t(titleKey, lang)
+                  return (
+                    <button
+                      key={method.id}
+                      type="button"
+                      className={`rdm-method-btn ${active ? "active" : ""} ${disabled ? "disabled" : ""}`}
+                      disabled={disabled}
+                      onClick={() => {
+                        if (!disabled) setMethodID(method.id)
+                      }}
+                    >
+                      <span className="rdm-method-icon"><Icon size={14} /></span>
+                      <span className="rdm-method-name">{title}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              {selectedMethod?.enabled ? (
+                <div className="rdm-method-details">
+                  <span>{t("accounts.paymentMethodDetails", lang)}:</span>
+                  <strong>{selectedMethod.details}</strong>
+                </div>
+              ) : (
+                <div className="acm-note" style={{ textAlign: "left", color: "#f59e0b" }}>
+                  {paymentMethods.length === 0 ? t("accounts.noPaymentMethods", lang) : t("accounts.paymentMethodRequired", lang)}
+                </div>
+              )}
             </div>
 
             <div className="rdm-vouchers">
@@ -351,10 +421,15 @@ export default function RealDepositRequestModal({
                 toast.error(t("accounts.uploadPaymentProof", lang))
                 return
               }
+              if (!selectedMethod || !selectedMethod.enabled) {
+                toast.error(t("accounts.paymentMethodRequired", lang))
+                return
+              }
 
               await onSubmit({
                 amountUSD: amountToApi(amountRaw),
                 voucherKind,
+                methodID: selectedMethod.id,
                 proofFile,
               })
             }}

@@ -679,6 +679,7 @@
   "manage.system.updater.unavailable": "API обновления пока недоступен. Обновите/перезапустите backend на VPS до последней сборки.",
   "manage.system.updater.confirmUpdate": "Запустить полное обновление сервера сейчас?",
   "manage.system.updater.output": "Вывод последнего обновления",
+  "manage.system.updater.raw": "updater сырой JSON",
   "manage.depositMethods.title": "Методы пополнения",
   "manage.depositMethods.desc": "Заполните реквизиты только для методов, которые должны быть доступны в real deposit.",
   "manage.depositMethods.placeholder": "Номер карты / кошелек / инструкция оплаты",

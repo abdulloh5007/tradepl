@@ -93,3 +93,10 @@ export type TradingPairSpec = {
     max_lot: string
     status: string
 }
+
+export type DepositPaymentMethod = {
+    id: string
+    title: string
+    details: string
+    enabled: boolean
+}

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Filter, X } from "lucide-react"
+import { ArrowLeft, Filter, X } from "lucide-react"
 import type { Lang, Order } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
+import TelegramBackButton from "../../components/telegram/TelegramBackButton"
 import "./HistoryPage.css"
 import "../../components/accounts/SharedAccountSheet.css"
 import HistoryFilterModal, { DateRange } from "./HistoryFilterModal"
@@ -15,6 +16,7 @@ interface HistoryPageProps {
     hasMore: boolean
     onRefresh: () => Promise<void> | void
     onLoadMore: () => Promise<void> | void
+    onBack: () => void
 }
 
 const isMarketSymbol = (value?: string) => /^[A-Z0-9]{2,12}-[A-Z0-9]{2,12}$/.test(String(value || "").trim().toUpperCase())
@@ -119,7 +121,7 @@ const formatTicket = (order: Order) => {
     return `#BX-${String(value).padStart(7, "0")}`
 }
 
-export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore }: HistoryPageProps) {
+export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore, onBack }: HistoryPageProps) {
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
     const [selectedOrderCache, setSelectedOrderCache] = useState<Order | null>(null)
     const [showFilter, setShowFilter] = useState(false)
@@ -283,7 +285,12 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
     return (
         <div className="history-container">
             <div className="history-header">
-                <div style={{ width: 36 }} />
+                <TelegramBackButton
+                    onBack={onBack}
+                    fallbackClassName="history-back-btn"
+                    fallbackAriaLabel={t("notifications.backToAccounts", lang)}
+                    fallbackChildren={<ArrowLeft size={18} />}
+                />
                 <h3 className="history-title">{t("history", lang)}</h3>
                 <button className="history-filter-btn" onClick={() => setShowFilter(true)} aria-label={t("history.openFilters", lang)}>
                     <Filter size={20} />

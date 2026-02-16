@@ -1,0 +1,2 @@
+pkill -f lvtrade-deploy || true
+bash -x /usr/local/bin/lvtrade-deploy 2>&1 | tee /root/lvtrade-deploy.log

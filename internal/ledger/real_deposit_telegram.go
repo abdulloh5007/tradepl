@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+	"lv-tradepl/internal/depositmethods"
 	"lv-tradepl/internal/types"
 )
 
@@ -34,6 +35,7 @@ type pendingTelegramDepositReview struct {
 	AccountMode      string
 	PlanID           string
 	AmountUSD        decimal.Decimal
+	PaymentMethodID  string
 	VoucherKind      string
 	BonusAmountUSD   decimal.Decimal
 	TotalCreditUSD   decimal.Decimal
@@ -143,9 +145,10 @@ func (h *Handler) dispatchPendingRealDepositReviewsToTelegram(ctx context.Contex
 			r.trading_account_id::text,
 			COALESCE(ta.name, ''),
 			COALESCE(ta.mode, ''),
-			COALESCE(ta.plan_id, ''),
-			r.amount_usd,
-			r.voucher_kind,
+				COALESCE(ta.plan_id, ''),
+				r.amount_usd,
+				COALESCE(r.payment_method_id, ''),
+				r.voucher_kind,
 			r.bonus_amount_usd,
 			r.total_credit_usd,
 			r.proof_file_name,
@@ -179,6 +182,7 @@ func (h *Handler) dispatchPendingRealDepositReviewsToTelegram(ctx context.Contex
 			&req.AccountMode,
 			&req.PlanID,
 			&req.AmountUSD,
+			&req.PaymentMethodID,
 			&req.VoucherKind,
 			&req.BonusAmountUSD,
 			&req.TotalCreditUSD,
@@ -249,6 +253,7 @@ func formatTelegramDepositReviewCaption(req pendingTelegramDepositReview, ticket
 			"Email: <code>%s</code>\n"+
 			"Account: <code>%s</code> (%s/%s)\n"+
 			"Amount: <b>%s USD</b>\n"+
+			"Method: <b>%s</b>\n"+
 			"Voucher: <b>%s</b>\n"+
 			"Bonus: <b>%s USD</b>\n"+
 			"Total credit: <b>%s USD</b>\n"+
@@ -259,6 +264,7 @@ func formatTelegramDepositReviewCaption(req pendingTelegramDepositReview, ticket
 		safeHTML(req.UserEmail),
 		safeHTML(account), mode, plan,
 		req.AmountUSD.StringFixed(2),
+		safeHTML(depositmethods.TitleByID(req.PaymentMethodID)),
 		voucher,
 		req.BonusAmountUSD.StringFixed(2),
 		req.TotalCreditUSD.StringFixed(2),

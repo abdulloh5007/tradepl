@@ -34,6 +34,7 @@ interface AccountsPageProps {
   onRequestRealDeposit: (payload: {
     amountUSD: string
     voucherKind: "none" | "gold" | "diamond"
+    methodID: string
     proofFile: File
   }) => Promise<void>
   newsUpcoming: MarketNewsEvent[]

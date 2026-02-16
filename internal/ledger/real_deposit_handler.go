@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
+	"lv-tradepl/internal/depositmethods"
 	"lv-tradepl/internal/httputil"
 	"lv-tradepl/internal/types"
 )
@@ -22,6 +23,7 @@ const maxRealDepositProofBytes = 5 * 1024 * 1024
 type realDepositRequestInput struct {
 	AmountUSD   string `json:"amount_usd"`
 	VoucherKind string `json:"voucher_kind"`
+	MethodID    string `json:"method_id"`
 	ProofName   string `json:"proof_file_name"`
 	ProofMime   string `json:"proof_mime_type"`
 	ProofBase64 string `json:"proof_base64"`
@@ -36,6 +38,7 @@ type realDepositRequestResponse struct {
 	BonusAmountUSD string    `json:"bonus_amount_usd"`
 	TotalCreditUSD string    `json:"total_credit_usd"`
 	VoucherKind    string    `json:"voucher_kind"`
+	MethodID       string    `json:"method_id"`
 }
 
 type dueDepositRequest struct {
@@ -110,6 +113,10 @@ func (h *Handler) DepositBonusStatus(w http.ResponseWriter, r *http.Request, use
 	}
 
 	available := strings.TrimSpace(eligibleAccountID) != ""
+	paymentMethods, methodsErr := depositmethods.Load(r.Context(), h.svc.pool)
+	if methodsErr != nil {
+		paymentMethods = depositmethods.Defaults()
+	}
 	resp := depositBonusStatusResponse{
 		MinAmountUSD:      cfg.RealDepositMinUSD.StringFixed(2),
 		MaxAmountUSD:      cfg.RealDepositMaxUSD.StringFixed(2),
@@ -123,6 +130,7 @@ func (h *Handler) DepositBonusStatus(w http.ResponseWriter, r *http.Request, use
 			{ID: "gold", Title: voucherTitle("gold"), Percent: "100", Available: available && !goldUsed, Used: goldUsed},
 			{ID: "diamond", Title: voucherTitle("diamond"), Percent: "50", Available: available && !diamondUsed, Used: diamondUsed},
 		},
+		PaymentMethods: paymentMethods,
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
@@ -200,6 +208,28 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 		}
 	}
 
+	methodID := strings.ToLower(strings.TrimSpace(req.MethodID))
+	if methodID == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "payment method is required"})
+		return
+	}
+	methods, methodsErr := depositmethods.Load(r.Context(), h.svc.pool)
+	if methodsErr != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: methodsErr.Error()})
+		return
+	}
+	methodAvailable := false
+	for _, item := range methods {
+		if strings.EqualFold(item.ID, methodID) {
+			methodAvailable = item.Enabled
+			break
+		}
+	}
+	if !methodAvailable {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "selected payment method is unavailable"})
+		return
+	}
+
 	proofName := strings.TrimSpace(req.ProofName)
 	proofMime := strings.TrimSpace(req.ProofMime)
 	if proofName == "" || proofMime == "" {
@@ -231,32 +261,33 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 	var requestID string
 	var ticketNo int64
 	err = tx.QueryRow(r.Context(), `
-		INSERT INTO real_deposit_requests (
-			user_id,
-			trading_account_id,
-			amount_usd,
-			amount_uzs,
-			voucher_kind,
-			bonus_percent,
-			bonus_amount_usd,
-			total_credit_usd,
-			proof_file_name,
+			INSERT INTO real_deposit_requests (
+				user_id,
+				trading_account_id,
+				amount_usd,
+				amount_uzs,
+				voucher_kind,
+				payment_method_id,
+				bonus_percent,
+				bonus_amount_usd,
+				total_credit_usd,
+				proof_file_name,
 			proof_mime_type,
 			proof_size_bytes,
 			proof_blob,
 			status,
 			review_due_at,
 			updated_at
-		) VALUES (
-			$1, $2, $3, $4,
-			$5, $6, $7, $8,
-			$9, $10, $11, $12,
-			'pending', $13, NOW()
-		)
-		RETURNING id::text, ticket_no
-	`, userID, account.ID, amountUSD, amountUZS, voucherKind, percent, bonusAmount, totalCredit, proofName, proofMime, len(proofBlob), proofBlob, reviewDue).Scan(&requestID, &ticketNo)
+			) VALUES (
+				$1, $2, $3, $4,
+				$5, $6, $7, $8, $9,
+				$10, $11, $12, $13,
+				'pending', $14, NOW()
+			)
+			RETURNING id::text, ticket_no
+		`, userID, account.ID, amountUSD, amountUZS, voucherKind, methodID, percent, bonusAmount, totalCredit, proofName, proofMime, len(proofBlob), proofBlob, reviewDue).Scan(&requestID, &ticketNo)
 	if err != nil {
-		if isUndefinedTableError(err) {
+		if isUndefinedTableError(err) || isUndefinedColumnError(err) {
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "real deposits are unavailable: run migrations"})
 			return
 		}
@@ -286,6 +317,7 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 		BonusAmountUSD: bonusAmount.StringFixed(2),
 		TotalCreditUSD: totalCredit.StringFixed(2),
 		VoucherKind:    voucherKind,
+		MethodID:       methodID,
 	})
 }
 

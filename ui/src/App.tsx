@@ -9,6 +9,7 @@ import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedA
 import { formatNumber, normalizeBaseUrl, toDisplayCandle } from "./utils/format"
 import { t } from "./utils/i18n"
 import { calcDisplayedOrderProfit } from "./utils/trading"
+import { triggerTelegramHaptic } from "./utils/telegramHaptics"
 import { useMarketWebSocket } from "./hooks/useMarketWebSocket"
 
 // API
@@ -43,6 +44,7 @@ const defaultNotificationSettings: NotificationSettings = {
     deposit: true,
     news: true,
   },
+  haptics: "normal",
 }
 
 type PollKey = "metrics" | "orders"
@@ -246,7 +248,10 @@ function readStoredNotificationSettings(): NotificationSettings {
         bonus: typeof kinds.bonus === "boolean" ? kinds.bonus : defaultNotificationSettings.kinds.bonus,
         deposit: typeof kinds.deposit === "boolean" ? kinds.deposit : defaultNotificationSettings.kinds.deposit,
         news: typeof kinds.news === "boolean" ? kinds.news : defaultNotificationSettings.kinds.news,
-      }
+      },
+      haptics: parsed?.haptics === "frequent" || parsed?.haptics === "normal" || parsed?.haptics === "off"
+        ? parsed.haptics
+        : defaultNotificationSettings.haptics,
     }
   } catch {
     return defaultNotificationSettings
@@ -529,6 +534,21 @@ export default function App() {
       // ignore localStorage write errors
     }
   }, [notificationSettings])
+
+  useEffect(() => {
+    if (notificationSettings.haptics !== "frequent") return
+    const onPointerUp = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      const interactive = target.closest("button, a, [role='button'], .bottom-nav-btn")
+      if (!interactive) return
+      triggerTelegramHaptic("tap", "frequent")
+    }
+    document.addEventListener("pointerup", onPointerUp, true)
+    return () => {
+      document.removeEventListener("pointerup", onPointerUp, true)
+    }
+  }, [notificationSettings.haptics])
 
   // Memoized API client (prevents recreation on every render = fixes lag)
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
@@ -1742,12 +1762,14 @@ export default function App() {
   const handleRequestRealDeposit = async (payload: {
     amountUSD: string
     voucherKind: "none" | "gold" | "diamond"
+    methodID: string
     proofFile: File
   }) => {
     const proofBase64 = await fileToBase64(payload.proofFile)
     await api.requestRealDeposit({
       amount_usd: payload.amountUSD,
       voucher_kind: payload.voucherKind,
+      method_id: payload.methodID,
       proof_file_name: payload.proofFile.name,
       proof_mime_type: payload.proofFile.type || "application/octet-stream",
       proof_base64: proofBase64,
@@ -1988,6 +2010,7 @@ export default function App() {
           hasUnreadNotifications={hasUnreadNotifications}
           onOpenNotifications={() => setView("notifications")}
           notifications={notifications}
+          onBackFromHistory={() => setView("accounts")}
           onBackFromNotifications={() => setView("accounts")}
           onMarkAllNotificationsRead={markAllNotificationsRead}
           onNotificationClick={markNotificationRead}
@@ -2012,7 +2035,7 @@ export default function App() {
         />
       </main>
 
-      <BottomNav view={view} setView={setView} lang={lang} />
+      <BottomNav view={view} setView={setView} lang={lang} hapticMode={notificationSettings.haptics} />
     </div>
   )
 }

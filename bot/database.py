@@ -92,6 +92,18 @@ class Database:
             )
         return self._affected_rows(result)
 
+    async def delete_tokens_by_type(self, token_type: str) -> int:
+        """Delete all panel tokens for the provided token type."""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                '''
+                DELETE FROM access_tokens
+                WHERE token_type = $1
+                ''',
+                token_type,
+            )
+        return self._affected_rows(result)
+
     async def delete_all_panel_tokens(self) -> int:
         """Delete all panel access tokens regardless of owner/admin type."""
         async with self.pool.acquire() as conn:

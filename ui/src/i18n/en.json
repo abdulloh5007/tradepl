@@ -707,6 +707,7 @@
   "manage.system.updater.unavailable": "Updater API is not available yet. Update/restart backend on VPS to latest build.",
   "manage.system.updater.confirmUpdate": "Run full server update now?",
   "manage.system.updater.output": "Last update output",
+  "manage.system.updater.raw": "updater raw JSON",
   "manage.depositMethods.title": "Deposit Payment Methods",
   "manage.depositMethods.desc": "Fill details only for methods you want to enable in real deposit.",
   "manage.depositMethods.placeholder": "Card number / wallet / payment instructions",

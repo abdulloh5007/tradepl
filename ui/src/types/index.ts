@@ -152,6 +152,7 @@ export interface NotificationSettings {
         deposit: boolean
         news: boolean
     }
+    haptics: "frequent" | "normal" | "off"
 }
 
 export interface MarketNewsEvent {

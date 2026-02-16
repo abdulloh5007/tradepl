@@ -1094,9 +1094,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             baseUrl={baseUrl}
                             headers={headers}
                             canAccess={userRole === "owner"}
+                            showSummary={false}
                             showUpdater={true}
                             showDangerZone={false}
-                            showRaw={false}
+                            showRaw={true}
                         />
                     )}
 

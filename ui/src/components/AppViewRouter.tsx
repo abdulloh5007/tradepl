@@ -69,6 +69,7 @@ interface AppViewRouterProps {
   onRequestRealDeposit: (payload: {
     amountUSD: string
     voucherKind: "none" | "gold" | "diamond"
+    methodID: string
     proofFile: File
   }) => Promise<void>
   newsUpcoming: MarketNewsEvent[]
@@ -92,6 +93,7 @@ interface AppViewRouterProps {
   hasUnreadNotifications: boolean
   onOpenNotifications: () => void
   notifications: AppNotification[]
+  onBackFromHistory: () => void
   onBackFromNotifications: () => void
   onMarkAllNotificationsRead: () => void
   onNotificationClick: (notificationID: string) => void
@@ -188,6 +190,7 @@ export default function AppViewRouter({
   hasUnreadNotifications,
   onOpenNotifications,
   notifications,
+  onBackFromHistory,
   onBackFromNotifications,
   onMarkAllNotificationsRead,
   onNotificationClick,
@@ -265,6 +268,7 @@ export default function AppViewRouter({
           hasMore={historyHasMore}
           onRefresh={onRefreshHistory}
           onLoadMore={onLoadMoreHistory}
+          onBack={onBackFromHistory}
         />
       </LazyView>
     )

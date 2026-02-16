@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+	"lv-tradepl/internal/depositmethods"
 )
 
 var (
@@ -45,15 +46,16 @@ type depositVoucherStatus struct {
 }
 
 type depositBonusStatusResponse struct {
-	MinAmountUSD      string                 `json:"min_amount_usd"`
-	MaxAmountUSD      string                 `json:"max_amount_usd"`
-	USDToUZSRate      string                 `json:"usd_to_uzs_rate"`
-	ReviewMinutes     int                    `json:"review_minutes"`
-	OneTimeUsed       bool                   `json:"one_time_used"`
-	PendingCount      int                    `json:"pending_count"`
-	NextReviewDueAt   *time.Time             `json:"next_review_due_at,omitempty"`
-	EligibleAccountID string                 `json:"eligible_account_id,omitempty"`
-	Vouchers          []depositVoucherStatus `json:"vouchers"`
+	MinAmountUSD      string                  `json:"min_amount_usd"`
+	MaxAmountUSD      string                  `json:"max_amount_usd"`
+	USDToUZSRate      string                  `json:"usd_to_uzs_rate"`
+	ReviewMinutes     int                     `json:"review_minutes"`
+	OneTimeUsed       bool                    `json:"one_time_used"`
+	PendingCount      int                     `json:"pending_count"`
+	NextReviewDueAt   *time.Time              `json:"next_review_due_at,omitempty"`
+	EligibleAccountID string                  `json:"eligible_account_id,omitempty"`
+	Vouchers          []depositVoucherStatus  `json:"vouchers"`
+	PaymentMethods    []depositmethods.Method `json:"payment_methods"`
 }
 
 func defaultBonusProgramConfig() bonusProgramConfig {

@@ -1,6 +1,8 @@
 import { ArrowLeft } from "lucide-react"
 import type { Lang, NotificationSettings, Theme } from "../../types"
 import { t } from "../../utils/i18n"
+import TelegramBackButton from "../../components/telegram/TelegramBackButton"
+import { triggerTelegramHaptic } from "../../utils/telegramHaptics"
 import "./SettingsPage.css"
 
 interface SettingsPageProps {
@@ -35,8 +37,10 @@ export default function SettingsPage({
     onLogout,
 }: SettingsPageProps) {
     const kinds = notificationSettings.kinds
+    const hapticMode = notificationSettings.haptics
 
     const toggleGlobal = () => {
+        triggerTelegramHaptic("toggle", hapticMode)
         setNotificationSettings({
             ...notificationSettings,
             enabled: !notificationSettings.enabled,
@@ -44,6 +48,7 @@ export default function SettingsPage({
     }
 
     const toggleKind = (key: keyof NotificationSettings["kinds"]) => {
+        triggerTelegramHaptic("toggle", hapticMode)
         setNotificationSettings({
             ...notificationSettings,
             kinds: {
@@ -53,17 +58,29 @@ export default function SettingsPage({
         })
     }
 
+    const setHapticMode = (next: NotificationSettings["haptics"]) => {
+        triggerTelegramHaptic("toggle", next)
+        setNotificationSettings({
+            ...notificationSettings,
+            haptics: next,
+        })
+    }
+
     const handleToggleTelegram = async () => {
         if (telegramBotNotificationsBusy) return
+        triggerTelegramHaptic("toggle", hapticMode)
         await onToggleTelegramBotNotifications(!telegramBotNotificationsEnabled)
     }
 
     return (
         <div className="settings-page">
             <div className="settings-header">
-                <button type="button" className="settings-back-btn" onClick={onBack} aria-label={t("profitStages.backToProfile", lang)}>
-                    <ArrowLeft size={17} />
-                </button>
+                <TelegramBackButton
+                    onBack={onBack}
+                    fallbackClassName="settings-back-btn"
+                    fallbackAriaLabel={t("profitStages.backToProfile", lang)}
+                    fallbackChildren={<ArrowLeft size={17} />}
+                />
                 <h2>{t("settings", lang)}</h2>
             </div>
 
@@ -77,21 +94,30 @@ export default function SettingsPage({
                         <button
                             type="button"
                             className={lang === "en" ? "active" : ""}
-                            onClick={() => setLang("en")}
+                            onClick={() => {
+                                triggerTelegramHaptic("toggle", hapticMode)
+                                setLang("en")
+                            }}
                         >
                             EN
                         </button>
                         <button
                             type="button"
                             className={lang === "uz" ? "active" : ""}
-                            onClick={() => setLang("uz")}
+                            onClick={() => {
+                                triggerTelegramHaptic("toggle", hapticMode)
+                                setLang("uz")
+                            }}
                         >
                             UZ
                         </button>
                         <button
                             type="button"
                             className={lang === "ru" ? "active" : ""}
-                            onClick={() => setLang("ru")}
+                            onClick={() => {
+                                triggerTelegramHaptic("toggle", hapticMode)
+                                setLang("ru")
+                            }}
                         >
                             RU
                         </button>
@@ -109,16 +135,53 @@ export default function SettingsPage({
                         <button
                             type="button"
                             className={theme === "light" ? "active" : ""}
-                            onClick={() => setTheme("light")}
+                            onClick={() => {
+                                triggerTelegramHaptic("toggle", hapticMode)
+                                setTheme("light")
+                            }}
                         >
                             {t("light", lang)}
                         </button>
                         <button
                             type="button"
                             className={theme === "dark" ? "active" : ""}
-                            onClick={() => setTheme("dark")}
+                            onClick={() => {
+                                triggerTelegramHaptic("toggle", hapticMode)
+                                setTheme("dark")
+                            }}
                         >
                             {t("dark", lang)}
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section className="settings-card">
+                <div className="settings-row">
+                    <div>
+                        <div className="settings-title">{t("settings.haptics.title", lang)}</div>
+                    </div>
+                    <div className="settings-segment">
+                        <button
+                            type="button"
+                            className={hapticMode === "frequent" ? "active" : ""}
+                            onClick={() => setHapticMode("frequent")}
+                        >
+                            {t("settings.haptics.frequent", lang)}
+                        </button>
+                        <button
+                            type="button"
+                            className={hapticMode === "normal" ? "active" : ""}
+                            onClick={() => setHapticMode("normal")}
+                        >
+                            {t("settings.haptics.normal", lang)}
+                        </button>
+                        <button
+                            type="button"
+                            className={hapticMode === "off" ? "active" : ""}
+                            onClick={() => setHapticMode("off")}
+                        >
+                            {t("settings.haptics.off", lang)}
                         </button>
                     </div>
                 </div>

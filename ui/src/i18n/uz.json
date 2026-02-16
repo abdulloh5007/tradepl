@@ -679,6 +679,7 @@
   "manage.system.updater.unavailable": "Updater API hozircha mavjud emas. VPS dagi backendni eng so'nggi build bilan yangilang/qayta ishga tushiring.",
   "manage.system.updater.confirmUpdate": "Serverni hozir to'liq yangilashni ishga tushiraymi?",
   "manage.system.updater.output": "Oxirgi yangilash chiqishi",
+  "manage.system.updater.raw": "updater xom JSON",
   "manage.depositMethods.title": "Depozit to'lov usullari",
   "manage.depositMethods.desc": "Faqat yoqmoqchi bo'lgan usullar uchun rekvizitlarni to'ldiring.",
   "manage.depositMethods.placeholder": "Karta raqami / wallet / to'lov yo'riqnomasi",

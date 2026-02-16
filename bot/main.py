@@ -783,6 +783,7 @@ async def cmd_help(message: types.Message):
         help_text += (
             "\n<b>🔐 Owner Commands:</b>\n"
             "/getownerpanel [time] - Get owner panel link\n"
+            "/deladminpanel - Delete all admin panel links\n"
             "/review_chat - Get deposit review chat join link\n"
             "/health - Bot review listener health\n"
             "/off - Graceful shutdown bot\n"
@@ -982,6 +983,28 @@ async def cmd_delallpanel(message: types.Message):
     )
 
 
+@dp.message(Command("deladminpanel"))
+async def cmd_deladminpanel(message: types.Message):
+    """Owner-only command: revoke all admin panel access links with confirmation."""
+    user_id = int(message.from_user.id)
+    if user_id != OWNER_TELEGRAM_ID:
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Разрешить", callback_data="pt:deladmin:yes", style="success"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data="pt:deladmin:no", style="danger"),
+        ]
+    ])
+    await message.answer(
+        "⚠️ <b>Delete all admin panel links?</b>\n\n"
+        "Owner panel links will stay active.\n"
+        "Only admin panel tokens will be removed.",
+        parse_mode="HTML",
+        reply_markup=keyboard,
+    )
+
+
 @dp.callback_query(F.data.startswith("pt:delall:"))
 async def callback_delallpanel(query: types.CallbackQuery):
     user_id = int(query.from_user.id)
@@ -1009,6 +1032,35 @@ async def callback_delallpanel(query: types.CallbackQuery):
             parse_mode="HTML",
         )
     await safe_callback_answer(query, "All panel links deleted", show_alert=False)
+
+
+@dp.callback_query(F.data.startswith("pt:deladmin:"))
+async def callback_deladminpanel(query: types.CallbackQuery):
+    user_id = int(query.from_user.id)
+    if user_id != OWNER_TELEGRAM_ID:
+        await safe_callback_answer(query, "Owner only", show_alert=True)
+        return
+    if not query.message:
+        await safe_callback_answer(query, "Message context is missing", show_alert=True)
+        return
+
+    action = str(query.data or "").split(":")[-1].strip().lower()
+    if action == "no":
+        with contextlib.suppress(Exception):
+            await query.message.edit_text("❎ /deladminpanel cancelled.")
+        await safe_callback_answer(query, "Cancelled", show_alert=False)
+        return
+    if action != "yes":
+        await safe_callback_answer(query, "Invalid callback", show_alert=True)
+        return
+
+    removed = await db.delete_tokens_by_type("admin")
+    with contextlib.suppress(Exception):
+        await query.message.edit_text(
+            f"✅ Admin panel links were deleted.\nRemoved tokens: <b>{removed}</b>",
+            parse_mode="HTML",
+        )
+    await safe_callback_answer(query, "Admin panel links deleted", show_alert=False)
 
 
 @dp.callback_query(F.data.startswith("pt:"))
