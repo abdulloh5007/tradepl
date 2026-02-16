@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { KeyboardEvent as ReactKeyboardEvent } from "react"
-import { ArrowLeft, CheckCheck, Bell, ShieldAlert, Gift, Newspaper, X } from "lucide-react"
+import { ArrowLeft, CheckCheck, Bell, ShieldAlert, Gift, Newspaper, Users, X } from "lucide-react"
 import type { AppNotification, Lang } from "../../types"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
@@ -33,6 +33,7 @@ const iconForKind = (kind: AppNotification["kind"]) => {
   if (kind === "system") return ShieldAlert
   if (kind === "bonus") return Gift
   if (kind === "news") return Newspaper
+  if (kind === "referral") return Users
   return Bell
 }
 

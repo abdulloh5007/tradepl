@@ -2,6 +2,7 @@ import { ArrowLeft, X } from "lucide-react"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
+import TelegramBackButton from "../telegram/TelegramBackButton"
 import "./SharedAccountSheet.css"
 
 interface AccountFundingModalProps {
@@ -32,14 +33,24 @@ export default function AccountFundingModal({
   const isPageLayout = layout === "page"
   const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
   if (isPageLayout ? !open : !shouldRender) return null
+  const hasTelegramBackButton = isPageLayout &&
+    typeof window !== "undefined" &&
+    Boolean(window.Telegram?.WebApp?.BackButton?.show) &&
+    Boolean(window.Telegram?.WebApp?.BackButton?.onClick)
   const title = type === "deposit" ? t("accounts.deposit", lang) : t("accounts.withdraw", lang)
   const disabled = mode !== "demo"
   const disabledText = type === "deposit" ? t("accounts.realDepositUnavailable", lang) : t("accounts.realWithdrawUnavailable", lang)
 
   const modalContent = (
-      <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet" : ""}`}>
+      <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet afm-page-sheet" : ""}`}>
         <div className="acm-header">
-          <button onClick={onClose} className="acm-close-btn">
+          {isPageLayout ? (
+            <TelegramBackButton onBack={onClose} showFallback={false} />
+          ) : null}
+          <button
+            onClick={onClose}
+            className={`acm-close-btn ${hasTelegramBackButton ? "acm-close-btn--ghost" : ""}`}
+          >
             {isPageLayout ? <ArrowLeft size={24} /> : <X size={24} />}
           </button>
           <h2 className="acm-title">{title} - {mode === "demo" ? t("accounts.modeDemo", lang) : t("accounts.modeReal", lang)}</h2>

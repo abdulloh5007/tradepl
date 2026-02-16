@@ -130,7 +130,7 @@ export interface SystemNoticeDetails {
 
 export interface AppNotification {
     id: string
-    kind: "system" | "bonus" | "deposit" | "news"
+    kind: "system" | "bonus" | "deposit" | "news" | "referral"
     title: string
     message: string
     created_at: string
@@ -151,6 +151,7 @@ export interface NotificationSettings {
         bonus: boolean
         deposit: boolean
         news: boolean
+        referral: boolean
     }
     haptics: "frequent" | "normal" | "off"
 }

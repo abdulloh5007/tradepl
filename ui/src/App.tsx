@@ -43,6 +43,7 @@ const defaultNotificationSettings: NotificationSettings = {
     bonus: true,
     deposit: true,
     news: true,
+    referral: true,
   },
   haptics: "normal",
 }
@@ -189,7 +190,7 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
     }
     if (ticket.includes("bxref")) {
       return {
-        kind: "bonus",
+        kind: "referral",
         title: t("notifications.referralBalancePayout", lang),
         message: t("notifications.referralBalancePayoutMessage", lang).replace("{amount}", amountAbs),
       }
@@ -265,7 +266,7 @@ function readStoredNotifications(): AppNotification[] {
       .filter((item: any) => item && typeof item === "object")
       .map((item: any) => ({
         id: String(item.id || ""),
-        kind: item.kind === "system" || item.kind === "bonus" || item.kind === "deposit" || item.kind === "news" ? item.kind : "news",
+        kind: item.kind === "system" || item.kind === "bonus" || item.kind === "deposit" || item.kind === "news" || item.kind === "referral" ? item.kind : "news",
         title: String(item.title || ""),
         message: String(item.message || ""),
         created_at: String(item.created_at || ""),
@@ -320,6 +321,7 @@ function readStoredNotificationSettings(): NotificationSettings {
         bonus: typeof kinds.bonus === "boolean" ? kinds.bonus : defaultNotificationSettings.kinds.bonus,
         deposit: typeof kinds.deposit === "boolean" ? kinds.deposit : defaultNotificationSettings.kinds.deposit,
         news: typeof kinds.news === "boolean" ? kinds.news : defaultNotificationSettings.kinds.news,
+        referral: typeof kinds.referral === "boolean" ? kinds.referral : defaultNotificationSettings.kinds.referral,
       },
       haptics: parsed?.haptics === "frequent" || parsed?.haptics === "normal" || parsed?.haptics === "off"
         ? parsed.haptics
@@ -1987,7 +1989,7 @@ export default function App() {
       : undefined
     const res = await api.referralWithdraw(payload)
     addNotification({
-      kind: "bonus",
+      kind: "referral",
       title: t("notifications.referralWithdrawalCompleted", lang),
       message: t("notifications.referralWithdrawalCompletedMessage", lang).replace("{amount}", formatNumber(Number(res?.amount_usd || 0), 2, 2)),
       accountID: activeAccountId,

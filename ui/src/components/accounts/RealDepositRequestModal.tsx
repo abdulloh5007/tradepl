@@ -6,6 +6,7 @@ import type { Lang } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
+import TelegramBackButton from "../telegram/TelegramBackButton"
 import PaymentMethodIcon from "./PaymentMethodIcon"
 import "./RealDepositRequestModal.css"
 
@@ -75,6 +76,10 @@ export default function RealDepositRequestModal({
 }: RealDepositRequestModalProps) {
   const isPageLayout = layout === "page"
   const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
+  const hasTelegramBackButton = isPageLayout &&
+    typeof window !== "undefined" &&
+    Boolean(window.Telegram?.WebApp?.BackButton?.show) &&
+    Boolean(window.Telegram?.WebApp?.BackButton?.onClick)
   const [amountRaw, setAmountRaw] = useState("")
   const [amountDisplay, setAmountDisplay] = useState("")
   const [voucherKind, setVoucherKind] = useState<VoucherKind>("none")
@@ -198,11 +203,17 @@ export default function RealDepositRequestModal({
   const disabledSubmit = loading || !withinLimits || !proofFile || !selectedMethod || !selectedMethod.enabled
 
   const modalContent = (
-      <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet" : ""}`}>
+      <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet rdm-page-sheet" : ""}`}>
         <div className="acm-header">
-          <button onClick={() => {
-            if (!loading) onClose()
-          }} className="acm-close-btn">
+          {isPageLayout ? (
+            <TelegramBackButton onBack={onClose} showFallback={false} />
+          ) : null}
+          <button
+            onClick={() => {
+              if (!loading) onClose()
+            }}
+            className={`acm-close-btn ${hasTelegramBackButton ? "acm-close-btn--ghost" : ""}`}
+          >
             {isPageLayout ? <ArrowLeft size={24} /> : <X size={24} />}
           </button>
           <h2 className="acm-title">{t("accounts.realDeposit", lang)}</h2>
