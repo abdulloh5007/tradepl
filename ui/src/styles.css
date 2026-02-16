@@ -528,7 +528,7 @@ html[data-theme="light"] {
 
 /* Sonner toasts: keep away from Telegram/system top bar areas */
 [data-sonner-toaster] {
-  --toast-safe-top: calc(var(--app-safe-top) + var(--tg-safe-top-extra) + 12px);
+  --toast-safe-top: calc(var(--app-safe-top) + var(--tg-safe-top-extra) + 22px);
   --toast-safe-right: calc(var(--app-safe-right) + 10px);
   --toast-safe-left: calc(var(--app-safe-left) + 10px);
   --offset: var(--toast-safe-top);

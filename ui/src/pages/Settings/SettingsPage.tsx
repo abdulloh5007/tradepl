@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowLeft, ChevronDown } from "lucide-react"
 import type { TelegramNotificationKinds } from "../../api"
 import type { Lang, NotificationSettings, Theme } from "../../types"
@@ -25,6 +25,20 @@ interface SettingsPageProps {
     onLogout: () => void
 }
 
+const SYSTEM_CARD_STATE_KEY = "settings_notifications_system_expanded"
+const BOT_CARD_STATE_KEY = "settings_notifications_bot_expanded"
+
+const readStoredExpanded = (key: string, fallback = true) => {
+    if (typeof window === "undefined") return fallback
+    try {
+        const raw = window.localStorage.getItem(key)
+        if (raw === null) return fallback
+        return raw === "1"
+    } catch {
+        return fallback
+    }
+}
+
 export default function SettingsPage({
     lang,
     setLang,
@@ -44,8 +58,26 @@ export default function SettingsPage({
 }: SettingsPageProps) {
     const kinds = notificationSettings.kinds
     const hapticMode = notificationSettings.haptics
-    const [systemExpanded, setSystemExpanded] = useState(true)
-    const [botExpanded, setBotExpanded] = useState(true)
+    const [systemExpanded, setSystemExpanded] = useState(() => readStoredExpanded(SYSTEM_CARD_STATE_KEY, true))
+    const [botExpanded, setBotExpanded] = useState(() => readStoredExpanded(BOT_CARD_STATE_KEY, true))
+
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        try {
+            window.localStorage.setItem(SYSTEM_CARD_STATE_KEY, systemExpanded ? "1" : "0")
+        } catch {
+            // Ignore localStorage errors and keep in-memory state.
+        }
+    }, [systemExpanded])
+
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        try {
+            window.localStorage.setItem(BOT_CARD_STATE_KEY, botExpanded ? "1" : "0")
+        } catch {
+            // Ignore localStorage errors and keep in-memory state.
+        }
+    }, [botExpanded])
 
     const toggleGlobal = () => {
         triggerTelegramHaptic("toggle", hapticMode)
