@@ -107,6 +107,14 @@ const formatUptime = (rawSeconds?: number, units?: { day: string; hour: string; 
     return parts.join(" ")
 }
 
+const formatPingMs = (pingMs?: number, dbUp?: number) => {
+    const raw = Number.isFinite(Number(pingMs)) ? Number(pingMs) : 0
+    if ((dbUp ?? 0) === 1 && raw <= 0) {
+        return "<1 ms"
+    }
+    return `${Math.max(0, Math.round(raw))} ms`
+}
+
 export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: SystemHealthCardProps) {
     const [health, setHealth] = useState<HealthResponse | null>(null)
     const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
@@ -191,7 +199,7 @@ export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: 
                         </div>
                         <div className="system-health-stat">
                             <span>{t("manage.system.ping", lang)}</span>
-                            <strong>{metrics.db_ping_ms} ms</strong>
+                            <strong>{formatPingMs(metrics.db_ping_ms, metrics.db_up)}</strong>
                         </div>
                         <div className="system-health-stat">
                             <span>{t("manage.system.uptime", lang)}</span>
@@ -220,7 +228,7 @@ export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: 
                         </div>
                         <div className="system-health-stat">
                             <span>{t("manage.system.dbPool", lang)}</span>
-                            <strong>{metrics.db_pool.acquired_conns}/{metrics.db_pool.max_conns}</strong>
+                            <strong>{metrics.db_pool.acquired_conns}/{metrics.db_pool.max_conns} {t("manage.system.dbPoolHint", lang)}</strong>
                         </div>
                         <div className="system-health-stat">
                             <span>{t("manage.system.updated", lang)}</span>

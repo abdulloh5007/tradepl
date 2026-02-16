@@ -626,6 +626,7 @@
   "manage.system.memory": "Memory",
   "manage.system.deployedAt": "Deployed",
   "manage.system.dbPool": "DB Pool",
+  "manage.system.dbPoolHint": "used/max",
   "manage.system.updated": "Updated",
   "manage.system.rawHealth": "health/admin raw JSON",
   "manage.system.rawMetrics": "metrics raw JSON",

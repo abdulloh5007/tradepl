@@ -598,6 +598,7 @@
   "manage.system.memory": "Память",
   "manage.system.deployedAt": "Деплой",
   "manage.system.dbPool": "Пул БД",
+  "manage.system.dbPoolHint": "исп/макс",
   "manage.system.updated": "Обновлено",
   "manage.system.rawHealth": "health/admin сырой JSON",
   "manage.system.rawMetrics": "metrics сырой JSON",

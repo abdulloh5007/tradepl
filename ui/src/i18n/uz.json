@@ -598,6 +598,7 @@
   "manage.system.memory": "Xotira",
   "manage.system.deployedAt": "Deploy",
   "manage.system.dbPool": "DB Pool",
+  "manage.system.dbPoolHint": "ish/max",
   "manage.system.updated": "Yangilangan",
   "manage.system.rawHealth": "health/admin xom JSON",
   "manage.system.rawMetrics": "metrics xom JSON",

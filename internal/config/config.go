@@ -73,7 +73,11 @@ func Load() (Config, error) {
 	}
 	c.TelegramMode = strings.ToLower(strings.TrimSpace(os.Getenv("TELEGRAM_RUNTIME_MODE")))
 	if c.TelegramMode == "" {
-		c.TelegramMode = "internal"
+		if c.ProfectMode == "production" {
+			c.TelegramMode = "external"
+		} else {
+			c.TelegramMode = "internal"
+		}
 	}
 	if c.TelegramMode != "internal" && c.TelegramMode != "external" {
 		return c, errors.New("invalid TELEGRAM_RUNTIME_MODE: use internal or external")
