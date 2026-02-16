@@ -387,6 +387,8 @@
   "profile.kycSubmitFailed": "Failed to submit KYC",
   "profile.open": "Open",
   "profile.openSettings": "Open settings",
+  "profile.changeBanner": "Change banner",
+  "profile.changeAvatar": "Change profile photo",
   "profile.notVerified": "Not verified",
   "profile.pendingReview": "Pending review",
   "profile.profitStages": "Profit stages",

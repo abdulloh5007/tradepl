@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
-import { ChevronRight, Settings2, ShieldCheck, Trophy, User, Users } from "lucide-react"
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
+import { Camera, ChevronRight, Settings2, ShieldCheck, Trophy, User, Users } from "lucide-react"
 import type { KYCStatus, ProfitRewardStatus, ReferralStatus, UserProfile } from "../../api"
 import type { Lang, NotificationSettings, Theme, TradingAccount } from "../../types"
 import ProfitStagesPage from "./ProfitStagesPage"
@@ -69,11 +69,15 @@ export default function ProfilePage({
     accounts,
     openProfitStagesSignal = 0,
 }: ProfilePageProps) {
+    const bannerInputRef = useRef<HTMLInputElement | null>(null)
+    const avatarInputRef = useRef<HTMLInputElement | null>(null)
     const [showSettings, setShowSettings] = useState(false)
     const [referralBusy, setReferralBusy] = useState(false)
     const [showProfitStages, setShowProfitStages] = useState(false)
     const [showKYCPage, setShowKYCPage] = useState(false)
     const [showReferralPage, setShowReferralPage] = useState(false)
+    const [customBannerUrl, setCustomBannerUrl] = useState("")
+    const [customAvatarUrl, setCustomAvatarUrl] = useState("")
 
     const displayName = useMemo(() => {
         const preferred = (profile?.display_name || "").trim()
@@ -83,7 +87,65 @@ export default function ProfilePage({
         return t("profile.trader", lang)
     }, [profile, lang])
 
+    const profileStorageID = useMemo(() => {
+        const rawID = String(profile?.id || "").trim()
+        return rawID || "guest"
+    }, [profile?.id])
+    const bannerStorageKey = useMemo(() => `profile_banner_${profileStorageID}`, [profileStorageID])
+    const avatarStorageKey = useMemo(() => `profile_avatar_${profileStorageID}`, [profileStorageID])
+
+    useEffect(() => {
+        try {
+            setCustomBannerUrl(String(window.localStorage.getItem(bannerStorageKey) || ""))
+            setCustomAvatarUrl(String(window.localStorage.getItem(avatarStorageKey) || ""))
+        } catch {
+            setCustomBannerUrl("")
+            setCustomAvatarUrl("")
+        }
+    }, [bannerStorageKey, avatarStorageKey])
+
+    const readAsDataURL = (file: File) =>
+        new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onerror = () => reject(reader.error || new Error("read_failed"))
+            reader.onload = () => resolve(String(reader.result || ""))
+            reader.readAsDataURL(file)
+        })
+
+    const pickImage = async (
+        file: File | undefined,
+        setState: (value: string) => void,
+        storageKey: string
+    ) => {
+        if (!file || !file.type.startsWith("image/")) return
+        try {
+            const dataURL = await readAsDataURL(file)
+            if (!dataURL) return
+            setState(dataURL)
+            try {
+                window.localStorage.setItem(storageKey, dataURL)
+            } catch {
+                // Ignore quota/storage errors, image still applies for current session.
+            }
+        } catch {
+            // Ignore picker/read errors to keep UX interruption-free.
+        }
+    }
+
+    const onPickBanner = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        await pickImage(file, setCustomBannerUrl, bannerStorageKey)
+        event.target.value = ""
+    }
+
+    const onPickAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        await pickImage(file, setCustomAvatarUrl, avatarStorageKey)
+        event.target.value = ""
+    }
+
     const avatarUrl = (profile?.avatar_url || "").trim()
+    const activeAvatarUrl = (customAvatarUrl || avatarUrl).trim()
     const initial = displayName.charAt(0).toUpperCase()
     const kycState = String(kycStatus?.state || "unavailable")
     const kycPending = kycState === "pending"
@@ -179,18 +241,74 @@ export default function ProfilePage({
             </div>
 
             <div className="profile-user-wrap">
-                <div className="profile-user-card">
-                    {avatarUrl ? (
-                        <img
-                            src={avatarUrl}
-                            alt={displayName}
-                            className="profile-avatar-img"
-                        />
-                    ) : (
-                        <div className="profile-avatar-fallback">
-                            {initial || <User size={34} />}
+                <div className="profile-user-card profile-user-card--cover">
+                    <div
+                        className={`profile-banner ${customBannerUrl ? "profile-banner--image" : ""}`}
+                        style={customBannerUrl ? { backgroundImage: `url(${customBannerUrl})` } : undefined}
+                    >
+                        <div className="profile-banner-grid" />
+                        <div className="profile-banner-particles">
+                            {Array.from({ length: 12 }).map((_, index) => (
+                                <span
+                                    // eslint-disable-next-line react/no-array-index-key
+                                    key={index}
+                                    className={`profile-banner-particle ${index % 2 === 0 ? "gain" : "loss"} p${index + 1}`}
+                                />
+                            ))}
                         </div>
-                    )}
+                        <svg className="profile-banner-signal gain" viewBox="0 0 180 36" aria-hidden="true">
+                            <polyline points="0,28 20,24 32,26 56,14 76,20 98,8 116,14 136,4 158,12 180,6" />
+                        </svg>
+                        <svg className="profile-banner-signal loss" viewBox="0 0 180 36" aria-hidden="true">
+                            <polyline points="0,8 18,10 36,6 56,16 74,12 92,20 110,16 132,28 154,22 180,30" />
+                        </svg>
+                        <div className="profile-banner-brand" aria-hidden="true">BIAX</div>
+                        <button
+                            type="button"
+                            className="profile-banner-edit-btn"
+                            onClick={() => bannerInputRef.current?.click()}
+                            aria-label={t("profile.changeBanner", lang)}
+                        >
+                            <Camera size={15} />
+                        </button>
+                        <input
+                            ref={bannerInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={onPickBanner}
+                            className="profile-image-input"
+                        />
+                    </div>
+
+                    <div className="profile-avatar-float">
+                        {activeAvatarUrl ? (
+                            <img
+                                src={activeAvatarUrl}
+                                alt={displayName}
+                                className="profile-avatar-img"
+                            />
+                        ) : (
+                            <div className="profile-avatar-fallback">
+                                {initial || <User size={34} />}
+                            </div>
+                        )}
+                        <button
+                            type="button"
+                            className="profile-avatar-edit-btn"
+                            onClick={() => avatarInputRef.current?.click()}
+                            aria-label={t("profile.changeAvatar", lang)}
+                        >
+                            <Camera size={14} />
+                        </button>
+                        <input
+                            ref={avatarInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={onPickAvatar}
+                            className="profile-image-input"
+                        />
+                    </div>
+
                     <h3 className="profile-display-name">{displayName}</h3>
                 </div>
             </div>

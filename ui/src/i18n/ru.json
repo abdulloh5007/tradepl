@@ -359,6 +359,8 @@
   "profile.kycSubmitFailed": "Не удалось отправить KYC",
   "profile.open": "Открыть",
   "profile.openSettings": "Открыть настройки",
+  "profile.changeBanner": "Сменить баннер",
+  "profile.changeAvatar": "Сменить фото профиля",
   "profile.notVerified": "Не подтверждено",
   "profile.pendingReview": "Ожидает проверки",
   "profile.profitStages": "Этапы прибыли",

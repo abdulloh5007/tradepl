@@ -359,6 +359,8 @@
   "profile.kycSubmitFailed": "KYC yuborilmadi",
   "profile.open": "Ochish",
   "profile.openSettings": "Sozlamalarni ochish",
+  "profile.changeBanner": "Bannerni o‘zgartirish",
+  "profile.changeAvatar": "Profil rasmini o‘zgartirish",
   "profile.notVerified": "Tasdiqlanmagan",
   "profile.pendingReview": "Tekshiruv kutilmoqda",
   "profile.profitStages": "Foyda bosqichlari",
