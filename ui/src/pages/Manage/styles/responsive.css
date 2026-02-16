@@ -45,6 +45,7 @@
 
   .admin-grid {
     grid-template-columns: 1fr;
+    gap: 14px;
   }
 
   .admin-tabs-shell {
@@ -52,14 +53,23 @@
   }
 
   .admin-tabs {
-    gap: 8px;
+    gap: 6px;
     border-radius: 12px;
     padding: 4px;
+    scroll-padding-inline: 4px;
   }
 
   .admin-tab-btn {
     padding: 8px 10px;
     font-size: 12px;
+    flex: 0 0 auto;
+    min-height: 34px;
+  }
+
+  .admin-tab-label {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .admin-tab-caption {
@@ -70,6 +80,18 @@
   .admin-card {
     border-radius: 16px;
     padding: 18px;
+  }
+
+  .admin-card-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .mode-toggle {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .sessions-grid {
@@ -115,6 +137,7 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+    padding: 12px;
   }
 
   .admin-info {
@@ -128,7 +151,8 @@
   .admin-actions {
     margin-left: 0;
     width: 100%;
-    justify-content: flex-end;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .admin-content {
@@ -233,15 +257,26 @@
     border-radius: 14px;
   }
 
+  .admin-grid {
+    gap: 12px;
+  }
+
   .admin-tabs {
     border-radius: 10px;
+    gap: 4px;
+    padding: 3px;
   }
 
   .admin-tab-btn {
-    padding: 7px 9px;
+    padding: 6px 8px;
     border-radius: 9px;
     font-size: 11px;
     gap: 6px;
+    min-height: 32px;
+  }
+
+  .admin-tab-label {
+    max-width: 92px;
   }
 
   .admin-card-header {
@@ -250,6 +285,17 @@
 
   .admin-card-header h2 {
     font-size: 14px;
+  }
+
+  .risk-field input,
+  .risk-field select,
+  .risk-field .ui-dropdown-trigger {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .pair-item {
+    padding: 12px;
   }
 
   .sessions-grid {

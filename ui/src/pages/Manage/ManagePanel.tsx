@@ -324,6 +324,10 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
         return tabs.find(tab => tab.id === activeTab) || null
     }, [tabs, activeTab])
 
+    const showTradingPairsCard = useMemo(() => {
+        return canTradingConfig && (initialLoad || tradingConfigLoading || tradingPairs.length > 0)
+    }, [canTradingConfig, initialLoad, tradingConfigLoading, tradingPairs.length])
+
     useEffect(() => {
         if (tabs.length === 0) return
         if (!tabs.some(tab => tab.id === activeTab)) {
@@ -1059,14 +1063,16 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                 onSave={saveTradingRisk}
                             />
 
-                            <TradingPairsCard
-                                lang={lang}
-                                pairs={tradingPairs}
-                                loading={tradingConfigLoading}
-                                initialLoad={initialLoad}
-                                canAccess={canTradingConfig}
-                                onSave={saveTradingPair}
-                            />
+                            {showTradingPairsCard && (
+                                <TradingPairsCard
+                                    lang={lang}
+                                    pairs={tradingPairs}
+                                    loading={tradingConfigLoading}
+                                    initialLoad={initialLoad}
+                                    canAccess={canTradingConfig}
+                                    onSave={saveTradingPair}
+                                />
+                            )}
                         </>
                     )}
 

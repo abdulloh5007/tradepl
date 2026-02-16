@@ -25,6 +25,7 @@ export default function TradingPairsCard({ lang, pairs, loading, initialLoad, ca
     }, [pairs])
 
     if (!canAccess) return null
+    if (!initialLoad && pairs.length === 0) return null
 
     const update = (symbol: string, key: keyof TradingPairSpec, val: string) => {
         setDrafts(prev => ({
