@@ -21,6 +21,7 @@ Run
    - TELEGRAM_RUNTIME_MODE (internal or external; default: `internal` in development, `external` in production. `external` disables polling/review flows in Go server and expects external bot process)
    - TELEGRAM_BOT_TOKEN (optional, required for Telegram Mini App auth)
    - TELEGRAM_BOT_USERNAME (optional, used to build referral share deep-link; if empty backend will try Telegram `getMe` by token)
+   - TELEGRAM_MINIAPP_SHORT_NAME (optional but recommended for referral deep-links; your BotFather Mini App short name, e.g. `trade`)
    - APP_VERSION (optional, shown in owner System panel)
    - APP_UPDATED_AT (optional RFC3339 time, shown in owner System panel as deploy/update time)
    - API_BASE_URL (optional, used by `bot` process for internal review callbacks; default http://localhost:8080)

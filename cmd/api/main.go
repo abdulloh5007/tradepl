@@ -68,6 +68,7 @@ func main() {
 		cfg.TelegramBotToken,
 		cfg.TelegramMode,
 		cfg.TelegramBotName,
+		cfg.TelegramMiniApp,
 		cfg.OwnerTelegramID,
 		cfg.ProjectMode,
 		cfg.WebSocketOrigin,

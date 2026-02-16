@@ -20,6 +20,7 @@ type Config struct {
 	TelegramMode     string
 	TelegramBotToken string
 	TelegramBotName  string
+	TelegramMiniApp  string
 	OwnerTelegramID  int64
 	UIDist           string
 	FaucetEnabled    bool
@@ -88,6 +89,7 @@ func Load() (Config, error) {
 	}
 	c.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	c.TelegramBotName = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_USERNAME"))
+	c.TelegramMiniApp = strings.Trim(strings.TrimSpace(os.Getenv("TELEGRAM_MINIAPP_SHORT_NAME")), "/")
 	if c.ProjectMode == "production" && c.TelegramBotToken == "" {
 		missing = append(missing, "TELEGRAM_BOT_TOKEN")
 	}

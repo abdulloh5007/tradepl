@@ -26,6 +26,7 @@ type Handler struct {
 	ownerTgID             int64
 	telegramNotifyEnabled bool
 	telegramAppBaseURL    string
+	telegramMiniAppShort  string
 }
 
 func NewHandler(
@@ -37,6 +38,7 @@ func NewHandler(
 	tgBotToken string,
 	telegramRuntimeMode string,
 	tgBotUsername string,
+	telegramMiniAppShortName string,
 	ownerTelegramID int64,
 	profectMode string,
 	webSocketOrigin string,
@@ -54,6 +56,7 @@ func NewHandler(
 		tgBotToken:            strings.TrimSpace(tgBotToken),
 		telegramRuntimeMode:   mode,
 		tgBotUsername:         strings.TrimSpace(strings.TrimPrefix(tgBotUsername, "@")),
+		telegramMiniAppShort:  strings.Trim(strings.TrimSpace(telegramMiniAppShortName), "/"),
 		ownerTgID:             ownerTelegramID,
 		telegramNotifyEnabled: strings.EqualFold(strings.TrimSpace(profectMode), "production"),
 		telegramAppBaseURL:    normalizeTelegramAppBaseURL(webSocketOrigin),

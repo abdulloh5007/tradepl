@@ -63,7 +63,11 @@ func (h *Handler) telegramReferralDeepLink(ctx context.Context, code string) str
 	if normalized == "" {
 		return ""
 	}
-	return fmt.Sprintf("https://t.me/%s/app?startapp=ref_%s", bot, normalized)
+	shortName := strings.Trim(strings.TrimSpace(h.telegramMiniAppShort), "/")
+	if shortName != "" {
+		return fmt.Sprintf("https://t.me/%s/%s?startapp=ref_%s", bot, shortName, normalized)
+	}
+	return fmt.Sprintf("https://t.me/%s?startapp=ref_%s", bot, normalized)
 }
 
 func (h *Handler) ensureReferralWalletTx(ctx context.Context, tx pgx.Tx, userID string) error {
