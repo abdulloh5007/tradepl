@@ -1506,6 +1506,7 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 		return nil, err
 	}
 	defer cashRows.Close()
+	realDepositTicketCache := make(map[string]string)
 
 	for cashRows.Next() {
 		var entryID string
@@ -1532,6 +1533,17 @@ func (s *Service) ListOrderHistoryByAccount(ctx context.Context, userID, account
 			eventType = string(types.LedgerEntryTypeDeposit)
 		}
 		ticket := formatLedgerTicket(accountMode, eventType, sequence, entryID)
+		if eventType == string(types.LedgerEntryTypeDeposit) {
+			if requestID, ok := realDepositRequestIDFromRef(txRef); ok {
+				realDepositTicket, ticketErr := s.resolveRealDepositRequestTicket(ctx, realDepositTicketCache, requestID)
+				if ticketErr != nil {
+					return nil, ticketErr
+				}
+				if strings.TrimSpace(realDepositTicket) != "" {
+					ticket = realDepositTicket
+				}
+			}
+		}
 		if eventType == string(types.LedgerEntryTypeDeposit) && isSystemNegativeCoverRef(txRef) {
 			ticket = formatSystemCoverTicket(accountMode, sequence, entryID)
 		} else if eventType == string(types.LedgerEntryTypeDeposit) && isSignupRewardRef(txRef) {
@@ -1786,9 +1798,20 @@ func formatProfitRewardTicket(accountMode string, sequence int64, seed string) s
 	return modeTicketPrefix(accountMode) + "BXprf-" + digits + letters
 }
 
+func formatRealDepositRequestTicket(ticketNo int64, requestID string) string {
+	digits := normalizeTicketNumber(ticketNo, requestID)
+	letters := ticketSeedLetters(fmt.Sprintf("real_deposit:%d:%s", ticketNo, requestID))
+	return "BXdep" + digits + letters
+}
+
 func isUndefinedTableError(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "42P01"
+}
+
+func isUndefinedColumnError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42703"
 }
 
 func isSystemNegativeCoverRef(ref string) bool {
@@ -1819,6 +1842,49 @@ func isReferralRef(ref string) bool {
 func isProfitRewardRef(ref string) bool {
 	ref = strings.ToLower(strings.TrimSpace(ref))
 	return strings.HasPrefix(ref, "profit_reward:")
+}
+
+func realDepositRequestIDFromRef(ref string) (string, bool) {
+	trimmed := strings.TrimSpace(ref)
+	if trimmed == "" {
+		return "", false
+	}
+	const prefix = "real_deposit_request:"
+	if !strings.HasPrefix(strings.ToLower(trimmed), prefix) {
+		return "", false
+	}
+	requestID := strings.TrimSpace(trimmed[len(prefix):])
+	if requestID == "" {
+		return "", false
+	}
+	return requestID, true
+}
+
+func (s *Service) resolveRealDepositRequestTicket(ctx context.Context, cache map[string]string, requestID string) (string, error) {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return "", nil
+	}
+	if ticket, ok := cache[requestID]; ok {
+		return ticket, nil
+	}
+
+	var ticketNo int64
+	if err := s.pool.QueryRow(ctx, `
+		SELECT ticket_no
+		FROM real_deposit_requests
+		WHERE id::text = $1
+	`, requestID).Scan(&ticketNo); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || isUndefinedTableError(err) || isUndefinedColumnError(err) {
+			cache[requestID] = ""
+			return "", nil
+		}
+		return "", err
+	}
+
+	ticket := formatRealDepositRequestTicket(ticketNo, requestID)
+	cache[requestID] = ticket
+	return ticket, nil
 }
 
 func (s *Service) CloseOrdersByScope(ctx context.Context, userID, accountID, scope string) (CloseOrdersResult, error) {
