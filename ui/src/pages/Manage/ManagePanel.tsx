@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSearchParams, useNavigate } from "react-router-dom"
-import { LogOut, Sun, Moon, Settings, AlertCircle, X, Target, ShieldAlert, Shield, Activity } from "lucide-react"
+import { LogOut, Sun, Moon, Settings, AlertCircle, X, Target, ShieldAlert, Shield, Activity, CreditCard, Database } from "lucide-react"
 import Skeleton from "../../components/Skeleton"
 
 // Components
@@ -36,10 +36,10 @@ interface ManagePanelProps {
     onThemeToggle: () => void
 }
 
-type ManageTabId = "market" | "events" | "trading" | "admins" | "system"
+type ManageTabId = "market" | "events" | "trading" | "payments" | "admins" | "updates" | "database"
 
 const MANAGE_TAB_STORAGE_KEY = "manage.panel.active-tab"
-const MANAGE_TAB_IDS: ManageTabId[] = ["market", "events", "trading", "admins", "system"]
+const MANAGE_TAB_IDS: ManageTabId[] = ["market", "events", "trading", "payments", "admins", "updates", "database"]
 
 const isManageTabId = (value: string | null): value is ManageTabId => {
     if (!value) return false
@@ -288,6 +288,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     visible: canTradingConfig,
                 },
                 {
+                    id: "payments",
+                    label: t("manage.tab.payments", lang),
+                    description: t("manage.tab.paymentsDesc", lang),
+                    icon: CreditCard,
+                    visible: userRole === "owner",
+                },
+                {
                     id: "admins",
                     label: t("manage.tab.admins", lang),
                     description: t("manage.tab.adminsDesc", lang),
@@ -295,10 +302,17 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     visible: userRole === "owner",
                 },
                 {
-                    id: "system",
-                    label: t("manage.tab.system", lang),
-                    description: t("manage.tab.systemDesc", lang),
+                    id: "updates",
+                    label: t("manage.tab.updates", lang),
+                    description: t("manage.tab.updatesDesc", lang),
                     icon: Activity,
+                    visible: userRole === "owner",
+                },
+                {
+                    id: "database",
+                    label: t("manage.tab.database", lang),
+                    description: t("manage.tab.databaseDesc", lang),
+                    icon: Database,
                     visible: userRole === "owner",
                 },
             ]
@@ -940,7 +954,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                 >
                                     <Icon size={16} />
                                     <span className="admin-tab-label">{tab.label}</span>
-                                    {tab.id === "system" && systemUpdateAvailable && <span className="admin-tab-dot" aria-label={t("manage.system.updater.badge", lang)} />}
+                                    {tab.id === "updates" && systemUpdateAvailable && <span className="admin-tab-dot" aria-label={t("manage.system.updater.badge", lang)} />}
                                 </button>
                             )
                         })}
@@ -1053,14 +1067,16 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                 canAccess={canTradingConfig}
                                 onSave={saveTradingPair}
                             />
-
-                            <DepositMethodsCard
-                                lang={lang}
-                                baseUrl={baseUrl}
-                                headers={headers}
-                                canAccess={userRole === "owner"}
-                            />
                         </>
+                    )}
+
+                    {activeTab === "payments" && (
+                        <DepositMethodsCard
+                            lang={lang}
+                            baseUrl={baseUrl}
+                            headers={headers}
+                            canAccess={userRole === "owner"}
+                        />
                     )}
 
                     {activeTab === "admins" && (
@@ -1072,12 +1088,27 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                         />
                     )}
 
-                    {activeTab === "system" && (
+                    {activeTab === "updates" && (
                         <SystemHealthCard
                             lang={lang}
                             baseUrl={baseUrl}
                             headers={headers}
                             canAccess={userRole === "owner"}
+                            showUpdater={true}
+                            showDangerZone={false}
+                            showRaw={false}
+                        />
+                    )}
+
+                    {activeTab === "database" && (
+                        <SystemHealthCard
+                            lang={lang}
+                            baseUrl={baseUrl}
+                            headers={headers}
+                            canAccess={userRole === "owner"}
+                            showUpdater={false}
+                            showDangerZone={true}
+                            showRaw={false}
                         />
                     )}
                 </div>

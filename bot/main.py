@@ -237,6 +237,66 @@ def humanize_seconds(total_seconds: int) -> str:
     return f"{seconds}s"
 
 
+def panel_action_callback(action: str, token_type: str, telegram_id: int, duration_seconds: int) -> str:
+    action_short = "rg" if action == "regen" else "dl"
+    kind_short = "o" if token_type == "owner" else "a"
+    safe_duration = max(60, int(duration_seconds or 3600))
+    return f"pt:{action_short}:{kind_short}:{int(telegram_id)}:{safe_duration}"
+
+
+def parse_panel_action_callback(raw: str):
+    parts = str(raw or "").strip().split(":")
+    if len(parts) != 5 or parts[0] != "pt":
+        return None
+    action_short = parts[1].strip().lower()
+    kind_short = parts[2].strip().lower()
+    try:
+        telegram_id = int(parts[3])
+        duration_seconds = int(parts[4])
+    except Exception:
+        return None
+    if action_short not in ("rg", "dl"):
+        return None
+    if kind_short not in ("o", "a"):
+        return None
+    token_type = "owner" if kind_short == "o" else "admin"
+    action = "regen" if action_short == "rg" else "delete"
+    return action, token_type, telegram_id, max(60, duration_seconds)
+
+
+def build_panel_keyboard(
+    link: str,
+    token_type: str,
+    telegram_id: int,
+    duration_seconds: int,
+    is_local: bool,
+    show_management_buttons: bool,
+):
+    rows: list[list[InlineKeyboardButton]] = []
+    if not is_local:
+        rows.append([
+            InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link, style="primary")
+        ])
+    if show_management_buttons:
+        rows.append([
+            InlineKeyboardButton(
+                text="🔁 Удалить и создать новый",
+                callback_data=panel_action_callback("regen", token_type, telegram_id, duration_seconds),
+                style="success",
+            )
+        ])
+        rows.append([
+            InlineKeyboardButton(
+                text="🗑 Удалить текущий",
+                callback_data=panel_action_callback("delete", token_type, telegram_id, duration_seconds),
+                style="danger",
+            )
+        ])
+    if not rows:
+        return None
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def format_deposit_review_caption(req: dict, ticket: str) -> str:
     voucher = str(req.get("voucher_kind") or "none").strip().lower() or "none"
     account_name = str(req.get("account_name") or "").strip() or str(req.get("trading_account_id") or "")
@@ -901,6 +961,131 @@ async def cmd_off(message: types.Message):
     await trigger_shutdown(f"telegram /off by {user_id}")
 
 
+@dp.message(Command("delallpanel"))
+async def cmd_delallpanel(message: types.Message):
+    """Owner-only command: revoke all panel access links with confirmation."""
+    user_id = int(message.from_user.id)
+    if user_id != OWNER_TELEGRAM_ID:
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Разрешить", callback_data="pt:delall:yes", style="success"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data="pt:delall:no", style="danger"),
+        ]
+    ])
+    await message.answer(
+        "⚠️ <b>Delete all panel links?</b>\n\n"
+        "This will immediately revoke ALL owner/admin panel tokens.",
+        parse_mode="HTML",
+        reply_markup=keyboard,
+    )
+
+
+@dp.callback_query(F.data.startswith("pt:delall:"))
+async def callback_delallpanel(query: types.CallbackQuery):
+    user_id = int(query.from_user.id)
+    if user_id != OWNER_TELEGRAM_ID:
+        await safe_callback_answer(query, "Owner only", show_alert=True)
+        return
+    if not query.message:
+        await safe_callback_answer(query, "Message context is missing", show_alert=True)
+        return
+
+    action = str(query.data or "").split(":")[-1].strip().lower()
+    if action == "no":
+        with contextlib.suppress(Exception):
+            await query.message.edit_text("❎ /delallpanel cancelled.")
+        await safe_callback_answer(query, "Cancelled", show_alert=False)
+        return
+    if action != "yes":
+        await safe_callback_answer(query, "Invalid callback", show_alert=True)
+        return
+
+    removed = await db.delete_all_panel_tokens()
+    with contextlib.suppress(Exception):
+        await query.message.edit_text(
+            f"✅ All panel links were deleted.\nRemoved tokens: <b>{removed}</b>",
+            parse_mode="HTML",
+        )
+    await safe_callback_answer(query, "All panel links deleted", show_alert=False)
+
+
+@dp.callback_query(F.data.startswith("pt:"))
+async def callback_panel_token_actions(query: types.CallbackQuery):
+    parsed = parse_panel_action_callback(query.data)
+    if not parsed:
+        return
+    if not query.message:
+        await safe_callback_answer(query, "Message context is missing", show_alert=True)
+        return
+
+    action, token_type, telegram_id, duration_seconds = parsed
+    caller_id = int(query.from_user.id)
+
+    if token_type == "owner":
+        if caller_id != OWNER_TELEGRAM_ID or telegram_id != OWNER_TELEGRAM_ID:
+            await safe_callback_answer(query, "Owner only", show_alert=True)
+            return
+    else:
+        if caller_id != telegram_id:
+            await safe_callback_answer(query, "This button is not for your account", show_alert=True)
+            return
+        is_admin = await db.is_panel_admin(caller_id)
+        if not is_admin:
+            await safe_callback_answer(query, "Admin access required", show_alert=True)
+            return
+
+    await safe_callback_answer(query, "Processing...", show_alert=False)
+
+    if action == "delete":
+        removed = await db.delete_user_tokens(token_type, telegram_id)
+        role_name = "Owner" if token_type == "owner" else "Admin"
+        with contextlib.suppress(Exception):
+            await query.message.edit_text(
+                f"🗑 <b>{role_name} panel link deleted.</b>\nRemoved tokens: <b>{removed}</b>",
+                parse_mode="HTML",
+            )
+        await safe_callback_answer(query, "Link deleted", show_alert=False)
+        return
+
+    # action == regen
+    await db.delete_user_tokens(token_type, telegram_id)
+    token = await db.create_token(token_type, telegram_id, duration_seconds)
+    duration_text = humanize_seconds(duration_seconds)
+    link = f"{SITE_URL}/manage-panel?token={token}"
+    is_local = "localhost" in SITE_URL or "127.0.0.1" in SITE_URL
+    keyboard = build_panel_keyboard(
+        link=link,
+        token_type=token_type,
+        telegram_id=telegram_id,
+        duration_seconds=duration_seconds,
+        is_local=is_local,
+        show_management_buttons=True,
+    )
+
+    if token_type == "owner":
+        text = (
+            f"🔐 <b>Owner Panel Access (new link)</b>\n\n"
+            f"⏱ <b>Valid for:</b> {duration_text}\n\n"
+            f"⚠️ <i>Previous link was removed and replaced.</i>"
+        )
+    else:
+        rights = await db.get_admin_rights(telegram_id)
+        text = (
+            f"👤 <b>Admin Panel Access (new link)</b>\n\n"
+            f"⏱ <b>Valid for:</b> {duration_text}\n"
+            f"🔑 <b>Your Rights:</b> {format_rights(rights)}\n\n"
+            f"⚠️ <i>Previous link was removed and replaced.</i>"
+        )
+    if is_local:
+        text += f"\n\n🔗 {link}"
+
+    with contextlib.suppress(Exception):
+        await query.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+    await safe_callback_answer(query, "New link created", show_alert=False)
+
+
 @dp.chat_join_request()
 async def on_chat_join_request(req: types.ChatJoinRequest):
     """Approve join requests only for owner/admins with deposit_review in configured deposit chat."""
@@ -1078,18 +1263,21 @@ async def cmd_getownerpanel(message: types.Message):
         token = str(active.get("token") or "")
         expires_at = active.get("expires_at")
         if not expires_at:
-            remaining_seconds = 0
+            remaining_seconds = 3600
         else:
             if getattr(expires_at, "tzinfo", None) is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
             remaining_seconds = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+            if remaining_seconds <= 0:
+                remaining_seconds = 3600
         duration_text = humanize_seconds(remaining_seconds)
     else:
         # Parse duration from command arguments only when new token is needed.
         args = message.text.split(maxsplit=1)
         duration_str = args[1] if len(args) > 1 else ""
-        duration_seconds, duration_text = parse_duration(duration_str)
-        token = await db.create_token("owner", user_id, duration_seconds)
+        remaining_seconds, duration_text = parse_duration(duration_str)
+        remaining_seconds = max(60, int(remaining_seconds or 3600))
+        token = await db.create_token("owner", user_id, remaining_seconds)
 
     # Generate link
     link = f"{SITE_URL}/manage-panel?token={token}"
@@ -1097,11 +1285,14 @@ async def cmd_getownerpanel(message: types.Message):
     # Check if local
     is_local = "localhost" in SITE_URL or "127.0.0.1" in SITE_URL
 
-    keyboard = None
-    if not is_local:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link, style="primary")]
-        ])
+    keyboard = build_panel_keyboard(
+        link=link,
+        token_type="owner",
+        telegram_id=user_id,
+        duration_seconds=remaining_seconds,
+        is_local=is_local,
+        show_management_buttons=reused_active,
+    )
 
     if reused_active:
         msg_text = (
@@ -1143,27 +1334,33 @@ async def cmd_getadminpanel(message: types.Message):
         token = str(active.get("token") or "")
         expires_at = active.get("expires_at")
         if not expires_at:
-            remaining_seconds = 0
+            remaining_seconds = 3600
         else:
             if getattr(expires_at, "tzinfo", None) is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
             remaining_seconds = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+            if remaining_seconds <= 0:
+                remaining_seconds = 3600
         duration_text = humanize_seconds(remaining_seconds)
     else:
         args = message.text.split(maxsplit=1)
         duration_str = args[1] if len(args) > 1 else ""
-        duration_seconds, duration_text = parse_duration(duration_str)
-        token = await db.create_token("admin", user_id, duration_seconds)
+        remaining_seconds, duration_text = parse_duration(duration_str)
+        remaining_seconds = max(60, int(remaining_seconds or 3600))
+        token = await db.create_token("admin", user_id, remaining_seconds)
     link = f"{SITE_URL}/manage-panel?token={token}"
 
     rights = await db.get_admin_rights(user_id)
 
-    keyboard = None
     is_local = "localhost" in SITE_URL or "127.0.0.1" in SITE_URL
-    if not is_local:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 КЛИКНИ ДЛЯ БЫСТРОГО ВХОДА", url=link, style="primary")]
-        ])
+    keyboard = build_panel_keyboard(
+        link=link,
+        token_type="admin",
+        telegram_id=user_id,
+        duration_seconds=remaining_seconds,
+        is_local=is_local,
+        show_management_buttons=reused_active,
+    )
 
     if reused_active:
         msg_text = (

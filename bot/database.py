@@ -47,6 +47,13 @@ class Database:
         
         return token
 
+    @staticmethod
+    def _affected_rows(result: str) -> int:
+        try:
+            return int(str(result).split()[-1])
+        except Exception:
+            return 0
+
     async def get_active_token(self, token_type: str, telegram_id: int) -> Optional[Dict[str, Any]]:
         """Return active access token for telegram user and token type, if any."""
         async with self.pool.acquire() as conn:
@@ -69,10 +76,27 @@ class Database:
         """Delete expired access tokens and return number of removed rows."""
         async with self.pool.acquire() as conn:
             result = await conn.execute('DELETE FROM access_tokens WHERE expires_at < NOW()')
-        try:
-            return int(str(result).split()[-1])
-        except Exception:
-            return 0
+        return self._affected_rows(result)
+
+    async def delete_user_tokens(self, token_type: str, telegram_id: int) -> int:
+        """Delete all panel tokens for a specific user and token type."""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                '''
+                DELETE FROM access_tokens
+                WHERE token_type = $1
+                  AND telegram_id = $2
+                ''',
+                token_type,
+                telegram_id,
+            )
+        return self._affected_rows(result)
+
+    async def delete_all_panel_tokens(self) -> int:
+        """Delete all panel access tokens regardless of owner/admin type."""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute('DELETE FROM access_tokens')
+        return self._affected_rows(result)
     
     async def is_panel_admin(self, telegram_id: int) -> bool:
         """Check if user is a panel admin."""

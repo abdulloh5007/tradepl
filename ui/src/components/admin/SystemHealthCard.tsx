@@ -9,6 +9,9 @@ type SystemHealthCardProps = {
     baseUrl: string
     headers: Record<string, string>
     canAccess: boolean
+    showUpdater?: boolean
+    showDangerZone?: boolean
+    showRaw?: boolean
 }
 
 type HealthResponse = {
@@ -150,7 +153,15 @@ const formatPingMs = (pingMs?: number, dbUp?: number) => {
     return `${Math.max(0, Math.round(raw))} ms`
 }
 
-export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: SystemHealthCardProps) {
+export default function SystemHealthCard({
+    lang,
+    baseUrl,
+    headers,
+    canAccess,
+    showUpdater = true,
+    showDangerZone = true,
+    showRaw = true,
+}: SystemHealthCardProps) {
     const [health, setHealth] = useState<HealthResponse | null>(null)
     const [metrics, setMetrics] = useState<MetricsResponse | null>(null)
     const [updater, setUpdater] = useState<UpdaterStatusResponse | null>(null)
@@ -427,7 +438,7 @@ export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: 
                         </div>
                     </div>
 
-                    {updater && (
+                    {showUpdater && updater && (
                         <div className={`system-updater ${updaterAvailable ? "update-available" : ""}`}>
                             <div className="system-updater-head">
                                 <h3>{t("manage.system.updater.title", lang)}</h3>
@@ -528,22 +539,27 @@ export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: 
                             )}
                         </div>
                     )}
-                    {!updater && updaterNotice && (
+                    {showUpdater && !updater && updaterNotice && (
                         <div className="system-updater">
                             <div className="system-updater-status">{updaterNotice}</div>
                         </div>
                     )}
 
-                    <details className="system-health-raw">
+                    {showRaw && (
+                        <details className="system-health-raw">
                         <summary>{t("manage.system.rawHealth", lang)}</summary>
                         <pre>{JSON.stringify(health, null, 2)}</pre>
                     </details>
-                    <details className="system-health-raw">
+                    )}
+                    {showRaw && (
+                        <details className="system-health-raw">
                         <summary>{t("manage.system.rawMetrics", lang)}</summary>
                         <pre>{JSON.stringify(metrics, null, 2)}</pre>
                     </details>
+                    )}
 
-                    <div className="system-danger-zone">
+                    {showDangerZone && (
+                        <div className="system-danger-zone">
                         <div className="system-danger-zone-title">
                             <Trash2 size={14} />
                             <span>{t("manage.system.reset.title", lang)}</span>
@@ -571,6 +587,7 @@ export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: 
                         </button>
                         {resetStatus && <div className="system-danger-zone-status">{resetStatus}</div>}
                     </div>
+                    )}
                 </>
             )}
         </div>
