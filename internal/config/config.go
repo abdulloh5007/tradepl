@@ -26,6 +26,10 @@ type Config struct {
 	FaucetEnabled    bool
 	FaucetMax        string
 	MarketDataDir    string
+	UpdaterEnabled   bool
+	UpdaterRepoDir   string
+	UpdaterDeployCmd string
+	UpdaterBranch    string
 }
 
 func Load() (Config, error) {
@@ -118,6 +122,30 @@ func Load() (Config, error) {
 		max = "100000"
 	}
 	c.FaucetMax = max
+	updaterEnabledRaw := strings.TrimSpace(os.Getenv("UPDATER_ENABLED"))
+	if updaterEnabledRaw == "" {
+		c.UpdaterEnabled = true
+	} else {
+		enabled, err := strconv.ParseBool(updaterEnabledRaw)
+		if err != nil {
+			return c, errors.New("invalid UPDATER_ENABLED")
+		}
+		c.UpdaterEnabled = enabled
+	}
+	c.UpdaterRepoDir = strings.TrimSpace(os.Getenv("UPDATER_REPO_DIR"))
+	if c.UpdaterRepoDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			c.UpdaterRepoDir = wd
+		}
+	}
+	c.UpdaterDeployCmd = strings.TrimSpace(os.Getenv("UPDATER_DEPLOY_CMD"))
+	if c.UpdaterDeployCmd == "" {
+		c.UpdaterDeployCmd = "/usr/local/bin/lvtrade-deploy"
+	}
+	c.UpdaterBranch = strings.TrimSpace(os.Getenv("UPDATER_DEFAULT_BRANCH"))
+	if c.UpdaterBranch == "" {
+		c.UpdaterBranch = "main"
+	}
 	if len(missing) > 0 {
 		return c, errors.New("missing required env: " + join(missing))
 	}

@@ -231,6 +231,19 @@
   background: color-mix(in srgb, var(--accent-2) 14%, var(--panel));
 }
 
+.admin-tab-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.admin-tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-danger) 18%, transparent);
+}
+
 .admin-tab-caption {
   margin: 8px 4px 0;
   font-size: 12px;

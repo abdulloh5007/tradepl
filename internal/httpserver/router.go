@@ -385,6 +385,11 @@ func NewRouter(d RouterDeps) http.Handler {
 					}
 					d.HealthHandler.MetricsJSONTrusted(w, r)
 				})
+				r.With(admin.RequireOwner).Post("/system/reset-db", d.AdminHandler.ResetDatabaseData)
+				r.With(admin.RequireOwner).Get("/system/updater", d.AdminHandler.GetSystemUpdater)
+				r.With(admin.RequireOwner).Post("/system/updater/check", d.AdminHandler.CheckSystemUpdater)
+				r.With(admin.RequireOwner).Post("/system/updater/update", d.AdminHandler.RunSystemUpdater)
+				r.With(admin.RequireOwner).Post("/system/updater/config", d.AdminHandler.UpdateSystemUpdaterConfig)
 				// Sessions
 				r.With(admin.RequireRight("sessions")).Get("/sessions", d.SessionsHandler.GetSessions)
 				r.With(admin.RequireRight("sessions")).Get("/sessions/active", d.SessionsHandler.GetActiveSession)
@@ -419,6 +424,9 @@ func NewRouter(d RouterDeps) http.Handler {
 				// Fixed P/L contract sizing (owner only, server-enforced)
 				r.Get("/trading/pnl", d.AdminHandler.GetTradingPnLConfig)
 				r.Post("/trading/pnl/{symbol}", d.AdminHandler.UpdateTradingPnLConfig)
+				// Real deposit payment methods (owner-only)
+				r.With(admin.RequireOwner).Get("/deposit-methods", d.AdminHandler.GetDepositMethods)
+				r.With(admin.RequireOwner).Post("/deposit-methods", d.AdminHandler.UpdateDepositMethods)
 				// Panel admins management (owner only feature on UI)
 				r.Get("/panel-admins", d.AdminHandler.GetPanelAdmins)
 				r.Post("/panel-admins", d.AdminHandler.CreatePanelAdmin)

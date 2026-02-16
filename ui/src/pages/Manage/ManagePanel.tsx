@@ -13,6 +13,7 @@ import PanelAdmins from "../../components/admin/PanelAdmins"
 import TradingRiskCard from "../../components/admin/TradingRiskCard"
 import TradingPairsCard from "../../components/admin/TradingPairsCard"
 import SystemHealthCard from "../../components/admin/SystemHealthCard"
+import DepositMethodsCard from "../../components/admin/DepositMethodsCard"
 
 // Types
 import {
@@ -43,6 +44,12 @@ const MANAGE_TAB_IDS: ManageTabId[] = ["market", "events", "trading", "admins", 
 const isManageTabId = (value: string | null): value is ManageTabId => {
     if (!value) return false
     return MANAGE_TAB_IDS.includes(value as ManageTabId)
+}
+
+const tabFromHash = (): ManageTabId | null => {
+    if (typeof window === "undefined") return null
+    const hash = window.location.hash.replace(/^#/, "").trim().toLowerCase()
+    return isManageTabId(hash) ? hash : null
 }
 
 // Helper to get date range for filter type
@@ -137,9 +144,12 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     })
     const [activeTab, setActiveTab] = useState<ManageTabId>(() => {
         if (typeof window === "undefined") return "market"
+        const hashTab = tabFromHash()
+        if (hashTab) return hashTab
         const stored = window.localStorage.getItem(MANAGE_TAB_STORAGE_KEY)
         return isManageTabId(stored) ? stored : "market"
     })
+    const [systemUpdateAvailable, setSystemUpdateAvailable] = useState(false)
 
     // Error logging flags
     const errorLogged = useRef({ fetchData: false, fetchEvents: false })
@@ -310,7 +320,24 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     useEffect(() => {
         if (typeof window === "undefined") return
         window.localStorage.setItem(MANAGE_TAB_STORAGE_KEY, activeTab)
+        const currentHash = window.location.hash.replace(/^#/, "").trim().toLowerCase()
+        if (currentHash !== activeTab) {
+            const url = `${window.location.pathname}${window.location.search}#${activeTab}`
+            window.history.replaceState(null, "", url)
+        }
     }, [activeTab])
+
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        const onHashChange = () => {
+            const next = tabFromHash()
+            if (!next) return
+            if (!tabs.some(tab => tab.id === next)) return
+            setActiveTab(prev => (prev === next ? prev : next))
+        }
+        window.addEventListener("hashchange", onHashChange)
+        return () => window.removeEventListener("hashchange", onHashChange)
+    }, [tabs])
 
     const fetchTradingConfig = useCallback(async () => {
         if (!adminToken || !canTradingConfig) return
@@ -335,6 +362,21 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             setTradingConfigLoading(false)
         }
     }, [adminToken, canTradingConfig, baseUrl, headers])
+
+    const fetchSystemUpdaterFlag = useCallback(async () => {
+        if (!adminToken || userRole !== "owner") {
+            setSystemUpdateAvailable(false)
+            return
+        }
+        try {
+            const res = await fetch(`${baseUrl}/v1/admin/system/updater`, { headers })
+            if (!res.ok) return
+            const data = await res.json().catch(() => null)
+            setSystemUpdateAvailable(Boolean(data?.update_available))
+        } catch {
+            // no-op: keep last known badge state
+        }
+    }, [adminToken, userRole, baseUrl, headers])
 
     // Fetch events with pagination
     const fetchEvents = useCallback(async (reset = false) => {
@@ -569,6 +611,16 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             if (userRole === "owner") fetchNewsEvents(true)
         }
     }, [isAuthorized, adminToken, canEvents, canTradingConfig, fetchData, fetchEvents, fetchTradingConfig, userRole, fetchNewsEvents])
+
+    useEffect(() => {
+        if (!isAuthorized || !adminToken || userRole !== "owner") {
+            setSystemUpdateAvailable(false)
+            return
+        }
+        fetchSystemUpdaterFlag()
+        const timer = setInterval(fetchSystemUpdaterFlag, 30000)
+        return () => clearInterval(timer)
+    }, [isAuthorized, adminToken, userRole, fetchSystemUpdaterFlag])
 
     // Reset events when filter changes
     useEffect(() => {
@@ -887,7 +939,8 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                     onClick={() => setActiveTab(tab.id)}
                                 >
                                     <Icon size={16} />
-                                    <span>{tab.label}</span>
+                                    <span className="admin-tab-label">{tab.label}</span>
+                                    {tab.id === "system" && systemUpdateAvailable && <span className="admin-tab-dot" aria-label={t("manage.system.updater.badge", lang)} />}
                                 </button>
                             )
                         })}
@@ -999,6 +1052,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                                 initialLoad={initialLoad}
                                 canAccess={canTradingConfig}
                                 onSave={saveTradingPair}
+                            />
+
+                            <DepositMethodsCard
+                                lang={lang}
+                                baseUrl={baseUrl}
+                                headers={headers}
+                                canAccess={userRole === "owner"}
                             />
                         </>
                     )}

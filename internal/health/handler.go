@@ -3,9 +3,11 @@ package health
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -214,9 +216,46 @@ func shortRevision(revision string) string {
 	return rev
 }
 
+var semverLikePattern = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$`)
+
+func isSemverLike(version string) bool {
+	return semverLikePattern.MatchString(strings.TrimSpace(version))
+}
+
+func readAppVersionFallback() string {
+	candidates := []string{}
+	if fromEnv := strings.TrimSpace(os.Getenv("APP_VERSION_FILE")); fromEnv != "" {
+		candidates = append(candidates, fromEnv)
+	}
+	candidates = append(candidates, "VERSION", "ui/package.json")
+
+	for _, candidate := range candidates {
+		raw, err := os.ReadFile(candidate)
+		if err != nil {
+			continue
+		}
+		content := strings.TrimSpace(string(raw))
+		if content == "" {
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(candidate), ".json") {
+			var payload struct {
+				Version string `json:"version"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				continue
+			}
+			content = strings.TrimSpace(payload.Version)
+		}
+		if isSemverLike(content) {
+			return content
+		}
+	}
+	return ""
+}
+
 func collectBuildStats() buildStats {
 	build := buildStats{}
-	envVersion := strings.TrimSpace(os.Getenv("APP_VERSION"))
 	envUpdatedAt := strings.TrimSpace(os.Getenv("APP_UPDATED_AT"))
 	mainVersion := ""
 	vcsRevision := ""
@@ -236,7 +275,7 @@ func collectBuildStats() buildStats {
 		}
 	}
 
-	version := envVersion
+	version := readAppVersionFallback()
 	if version == "" && mainVersion != "" && mainVersion != "(devel)" {
 		version = mainVersion
 	}

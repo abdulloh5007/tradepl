@@ -22,8 +22,12 @@ Run
    - TELEGRAM_BOT_TOKEN (optional, required for Telegram Mini App auth)
    - TELEGRAM_BOT_USERNAME (optional, used to build referral share deep-link; if empty backend will try Telegram `getMe` by token)
    - TELEGRAM_MINIAPP_SHORT_NAME (optional but recommended for referral deep-links; your BotFather Mini App short name, e.g. `trade`)
-   - APP_VERSION (optional, shown in owner System panel)
+   - APP_VERSION_FILE (optional path for version source; if omitted, backend reads `VERSION`, then `ui/package.json`)
    - APP_UPDATED_AT (optional RFC3339 time, shown in owner System panel as deploy/update time)
+   - UPDATER_ENABLED (optional, default true; owner System panel updater controls)
+   - UPDATER_REPO_DIR (optional, default current working directory)
+   - UPDATER_DEPLOY_CMD (optional, default `/usr/local/bin/lvtrade-deploy`)
+   - UPDATER_DEFAULT_BRANCH (optional, default `main`)
    - API_BASE_URL (optional, used by `bot` process for internal review callbacks; default http://localhost:8080)
    - BOT_REVIEW_NOTIFY_CHANNEL (optional, Postgres NOTIFY channel for bot review dispatch; default review_dispatch)
    - BOT_REVIEW_FALLBACK_SECONDS (optional, fallback resync interval when no notify; default 60)
@@ -52,6 +56,7 @@ Notes
 - `GET /health/admin` returns full JSON diagnostics (runtime, memory, DB pool snapshot) and requires `X-Internal-Token`.
 - `GET /metrics` returns Prometheus-style metrics and requires `X-Internal-Token`.
 - Owner panel API proxies: `GET /v1/admin/system/health` and `GET /v1/admin/system/metrics` (owner-auth, no internal token exposed to UI).
+- Owner panel updater API: `GET /v1/admin/system/updater`, `POST /v1/admin/system/updater/check`, `POST /v1/admin/system/updater/update`, `POST /v1/admin/system/updater/config` (owner-only).
 - Market orders are IOC only
 - FOK is rejected
 - WebSocket endpoint is /v1/ws and broadcasts trade events

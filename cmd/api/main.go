@@ -99,6 +99,13 @@ func main() {
 	volStore := volatility.NewStore(pool)
 	volHandler := volatility.NewHandler(volStore)
 	adminHandler := admin.NewHandler(pool, cfg.JWTSecret)
+	updaterManager := admin.NewUpdaterManager(pool, admin.UpdaterOptions{
+		Enabled:       cfg.UpdaterEnabled,
+		RepoDir:       cfg.UpdaterRepoDir,
+		DeployCommand: cfg.UpdaterDeployCmd,
+		DefaultBranch: cfg.UpdaterBranch,
+	})
+	adminHandler.SetUpdater(updaterManager)
 	healthHandler := health.NewHandler(pool, startedAt, cfg.ProjectMode, cfg.TelegramMode, cfg.HTTPAddr, cfg.InternalToken)
 	wsHandler := httpserver.NewWSHandler(bus, authSvc, accountSvc, orderSvc, cfg.WebSocketOrigin)
 	eventsWSHandler := httpserver.NewEventsWSHandler(bus, cfg.WebSocketOrigin)
@@ -135,6 +142,7 @@ func main() {
 	defer workerCancel()
 	go orderSvc.StartSwapRolloverWorker(workerCtx)
 	go ledgerHandler.StartRealDepositApprovalWorker(workerCtx)
+	go updaterManager.Start(workerCtx)
 
 	log.Printf("server listening on %s", cfg.HTTPAddr)
 	log.Printf("health endpoint: http://localhost%s/health", cfg.HTTPAddr)

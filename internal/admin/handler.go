@@ -3,14 +3,19 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
+	"lv-tradepl/internal/depositmethods"
 
 	"lv-tradepl/internal/httputil"
 
@@ -22,6 +27,7 @@ type Handler struct {
 	pool       *pgxpool.Pool
 	jwtSecret  []byte
 	tokenStore *TokenStore
+	updater    *UpdaterManager
 }
 
 // NewHandler creates a new admin handler
@@ -31,6 +37,10 @@ func NewHandler(pool *pgxpool.Pool, jwtSecret string) *Handler {
 		jwtSecret:  []byte(jwtSecret),
 		tokenStore: NewTokenStore(pool),
 	}
+}
+
+func (h *Handler) SetUpdater(updater *UpdaterManager) {
+	h.updater = updater
 }
 
 // Login handles admin login
@@ -535,6 +545,42 @@ func (h *Handler) UpdateTradingPnLConfig(w http.ResponseWriter, r *http.Request)
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
+func (h *Handler) GetDepositMethods(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	methods, err := depositmethods.Load(r.Context(), h.pool)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"methods": methods,
+	})
+}
+
+func (h *Handler) UpdateDepositMethods(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	var req struct {
+		Methods []depositmethods.Method `json:"methods"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
+		return
+	}
+	methods, err := depositmethods.Save(r.Context(), h.pool, req.Methods)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"status":  "ok",
+		"methods": methods,
+	})
+}
+
 // ValidateToken validates an access token from Telegram bot
 func (h *Handler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
@@ -714,6 +760,166 @@ func (h *Handler) ClearKYCBlock(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// ResetDatabaseData removes user/trading runtime data from DB (owner only).
+func (h *Handler) ResetDatabaseData(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	var req struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
+		return
+	}
+	if strings.TrimSpace(req.Confirm) != adminDBResetConfirmPhrase {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid confirmation phrase"})
+		return
+	}
+
+	username, _ := r.Context().Value(adminUsernameKey).(string)
+	if strings.TrimSpace(username) == "" {
+		username = "unknown"
+	}
+	role, _ := r.Context().Value(adminRoleKey).(string)
+	if strings.TrimSpace(role) == "" {
+		role = "owner"
+	}
+
+	tx, err := h.pool.BeginTx(r.Context(), pgx.TxOptions{})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "failed to start transaction"})
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	if err := ensureAdminAuditTable(r.Context(), tx); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "failed to ensure audit log table"})
+		return
+	}
+
+	tables, err := listAdminResetTables(r.Context(), tx)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "failed to prepare reset table list"})
+		return
+	}
+	if len(tables) > 0 {
+		var quoted []string
+		for _, table := range tables {
+			quoted = append(quoted, quoteIdentifier(table))
+		}
+		if _, err := tx.Exec(r.Context(), fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", strings.Join(quoted, ", "))); err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "failed to reset database data"})
+			return
+		}
+	}
+
+	details, _ := json.Marshal(map[string]interface{}{
+		"table_count": len(tables),
+		"tables":      tables,
+	})
+
+	var logID int64
+	if err := tx.QueryRow(r.Context(), `
+		INSERT INTO admin_audit_logs (action, actor_username, actor_role, details, created_at)
+		VALUES ($1, $2, $3, $4::jsonb, NOW())
+		RETURNING id
+	`, "db_reset", username, role, string(details)).Scan(&logID); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "failed to write reset audit log"})
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "failed to finalize reset"})
+		return
+	}
+
+	log.Printf("[admin-db-reset] actor=%s role=%s tables=%d log_id=%d", username, role, len(tables), logID)
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status":         "ok",
+		"log_id":         logID,
+		"deleted_tables": tables,
+		"deleted_count":  len(tables),
+	})
+}
+
+func (h *Handler) GetSystemUpdater(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	if h.updater == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorResponse{Error: "system updater is not configured"})
+		return
+	}
+	status, err := h.updater.Status(r.Context())
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, status)
+}
+
+func (h *Handler) CheckSystemUpdater(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	if h.updater == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorResponse{Error: "system updater is not configured"})
+		return
+	}
+	status, err := h.updater.CheckNow(r.Context())
+	if err != nil {
+		if errors.Is(err, ErrUpdaterBusy) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorResponse{Error: err.Error()})
+			return
+		}
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, status)
+}
+
+func (h *Handler) RunSystemUpdater(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	if h.updater == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorResponse{Error: "system updater is not configured"})
+		return
+	}
+	status, err := h.updater.UpdateNow(r.Context())
+	if err != nil {
+		if errors.Is(err, ErrUpdaterBusy) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorResponse{Error: err.Error()})
+			return
+		}
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, status)
+}
+
+func (h *Handler) UpdateSystemUpdaterConfig(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	if h.updater == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorResponse{Error: "system updater is not configured"})
+		return
+	}
+	var req UpdaterConfig
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
+		return
+	}
+	status, err := h.updater.UpdateConfig(r.Context(), req)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, status)
+}
+
 // AdminAuthMiddleware validates admin JWT token
 func AdminAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 	secret := []byte(jwtSecret)
@@ -839,4 +1045,73 @@ func RequireOwner(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+const adminDBResetConfirmPhrase = "DELETE ALL DATA"
+
+var adminDBResetExcludedTables = []string{
+	"admin_users",
+	"panel_admins",
+	"access_tokens",
+	"assets",
+	"trading_pairs",
+	"account_plans",
+	"trading_risk_config",
+	"trading_pair_contract_specs",
+	"session_configs",
+	"session_schedule",
+	"admin_settings",
+	"volatility_settings",
+	"system_settings",
+	"economic_news_events",
+	"admin_audit_logs",
+}
+
+func ensureAdminAuditTable(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS admin_audit_logs (
+			id BIGSERIAL PRIMARY KEY,
+			action TEXT NOT NULL,
+			actor_username TEXT NOT NULL,
+			actor_role TEXT NOT NULL,
+			details JSONB NOT NULL DEFAULT '{}'::jsonb,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`)
+	return err
+}
+
+func listAdminResetTables(ctx context.Context, tx pgx.Tx) ([]string, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT tablename
+		FROM pg_tables
+		WHERE schemaname = 'public'
+		  AND NOT (tablename = ANY($1))
+		ORDER BY tablename ASC
+	`, adminDBResetExcludedTables)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]string, 0, 32)
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return nil, err
+		}
+		table = strings.TrimSpace(table)
+		if table == "" {
+			continue
+		}
+		out = append(out, table)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func quoteIdentifier(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
