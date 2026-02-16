@@ -69,10 +69,45 @@ function normalizeTelegramBotNotificationKinds(raw?: Partial<TelegramNotificatio
 type PollKey = "metrics" | "orders"
 type PollBackoffState = Record<PollKey, { failures: number; retryAt: number }>
 
+function parseViewKey(raw: string): View | null {
+  const value = String(raw || "").trim().toLowerCase().replace(/^\/+|\/+$/g, "")
+  if (
+    value === "chart" ||
+    value === "positions" ||
+    value === "history" ||
+    value === "accounts" ||
+    value === "notifications" ||
+    value === "profile" ||
+    value === "api" ||
+    value === "faucet"
+  ) {
+    return value
+  }
+  if (value === "balance") return "positions"
+  return null
+}
+
+function isTelegramLaunchContext(): boolean {
+  if (typeof window === "undefined") return false
+  const webApp = window.Telegram?.WebApp
+  if (!webApp) return false
+  const initData = String(webApp.initData || "").trim()
+  if (initData.length > 0) return true
+  const unsafe = webApp.initDataUnsafe
+  return Boolean(unsafe && Object.keys(unsafe).length > 0)
+}
+
 function resolveView(): View {
-  const hash = typeof window !== "undefined" ? window.location.hash.replace("#", "") : ""
-  if (hash === "positions" || hash === "history" || hash === "accounts" || hash === "notifications" || hash === "profile" || hash === "api" || hash === "faucet") return hash
-  if (hash === "balance") return "positions"
+  if (typeof window === "undefined") return "chart"
+
+  const hashView = parseViewKey(window.location.hash.replace("#", ""))
+  if (hashView) return hashView
+
+  const pathView = parseViewKey(window.location.pathname)
+  if (pathView) return pathView
+
+  if (isTelegramLaunchContext()) return "accounts"
+
   return "chart"
 }
 
