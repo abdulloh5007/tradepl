@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -102,6 +103,44 @@ func (h *Handler) telegramNotificationLink(target string) string {
 	return base + "/" + trimmed
 }
 
+func normalizeTelegramStartAppPayload(target string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(target))
+	if trimmed == "" {
+		return "open_notifications"
+	}
+
+	switch {
+	case strings.Contains(trimmed, "notifications"):
+		return "open_notifications"
+	case strings.Contains(trimmed, "history"):
+		return "open_history"
+	case strings.Contains(trimmed, "settings"):
+		return "open_settings"
+	case strings.Contains(trimmed, "accounts"):
+		return "open_accounts"
+	case strings.Contains(trimmed, "chart"):
+		return "open_chart"
+	default:
+		return "open_app"
+	}
+}
+
+func (h *Handler) telegramMiniAppNotificationLink(ctx context.Context, target string) string {
+	if !h.telegramNotifyEnabled {
+		return ""
+	}
+	bot := strings.TrimSpace(h.telegramBotUsername(ctx))
+	if bot == "" {
+		return ""
+	}
+	payload := url.QueryEscape(normalizeTelegramStartAppPayload(target))
+	shortName := strings.Trim(strings.TrimSpace(h.telegramMiniAppShort), "/")
+	if shortName != "" {
+		return fmt.Sprintf("https://t.me/%s/%s?startapp=%s", bot, shortName, payload)
+	}
+	return fmt.Sprintf("https://t.me/%s?startapp=%s", bot, payload)
+}
+
 func (h *Handler) notifyUserTelegramAsync(userID, kind, title, message, target string) {
 	if strings.TrimSpace(userID) == "" {
 		return
@@ -189,7 +228,11 @@ func (h *Handler) NotifyUserImportantTelegram(ctx context.Context, userID, kind,
 		"parse_mode": "HTML",
 	}
 
-	if link := h.telegramNotificationLink(target); link != "" {
+	link := h.telegramMiniAppNotificationLink(ctx, target)
+	if link == "" {
+		link = h.telegramNotificationLink(target)
+	}
+	if link != "" {
 		payload["reply_markup"] = map[string]interface{}{
 			"inline_keyboard": [][]map[string]string{{
 				{
