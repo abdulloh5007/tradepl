@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { ArrowLeft, CircleCheck, RefreshCw, Trophy, Wallet2, X } from "lucide-react"
+import { CircleCheck, RefreshCw, Trophy, Wallet2, X } from "lucide-react"
 import { toast } from "sonner"
 import type { ProfitRewardStageStatus, ProfitRewardStatus } from "../../api"
 import type { Lang, TradingAccount } from "../../types"
@@ -93,36 +93,30 @@ export default function ProfitStagesPage({ lang, status, accounts, onBack, onRef
 
   return (
     <div className="profit-stage-page">
-      <header className="profit-stage-header">
-        <TelegramBackButton
-          onBack={onBack}
-          fallbackClassName="profit-stage-icon-btn"
-          fallbackAriaLabel={t("profitStages.backToProfile", lang)}
-          fallbackChildren={<ArrowLeft size={18} />}
-        />
-        <h2>{t("profile.profitStages", lang)}</h2>
-        <button
-          type="button"
-          className="profit-stage-icon-btn"
-          onClick={async () => {
-            if (refreshing) return
-            setRefreshing(true)
-            try {
-              await onRefresh()
-            } finally {
-              setRefreshing(false)
-            }
-          }}
-          aria-label={t("profitStages.refresh", lang)}
-        >
-          <RefreshCw size={18} className={refreshing ? "spin" : ""} />
-        </button>
-      </header>
+      <TelegramBackButton onBack={onBack} showFallback={false} />
 
       <section className="profit-stage-summary">
-        <div className="profit-stage-badge">
-          <Trophy size={14} />
-          <span>{t("profitStages.netClosedProfit", lang)}</span>
+        <div className="profit-stage-summary-top">
+          <div className="profit-stage-badge">
+            <Trophy size={14} />
+            <span>{t("profitStages.netClosedProfit", lang)}</span>
+          </div>
+          <button
+            type="button"
+            className="profit-stage-icon-btn"
+            onClick={async () => {
+              if (refreshing) return
+              setRefreshing(true)
+              try {
+                await onRefresh()
+              } finally {
+                setRefreshing(false)
+              }
+            }}
+            aria-label={t("profitStages.refresh", lang)}
+          >
+            <RefreshCw size={18} className={refreshing ? "spin" : ""} />
+          </button>
         </div>
         <div className="profit-stage-progress">${formatNumber(progress, 2, 2)}</div>
         <div className="profit-stage-meta">

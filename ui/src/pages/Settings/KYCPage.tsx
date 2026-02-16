@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { ArrowLeft, ShieldCheck } from "lucide-react"
+import { ShieldCheck } from "lucide-react"
 import type { KYCStatus } from "../../api"
 import type { Lang, TradingAccount } from "../../types"
 import KYCVerificationModal from "../../components/accounts/KYCVerificationModal"
@@ -71,15 +71,7 @@ export default function KYCPage({
 
     return (
         <div className="kyc-page">
-            <div className="kyc-page-header">
-                <TelegramBackButton
-                    onBack={onBack}
-                    fallbackClassName="kyc-page-back"
-                    fallbackAriaLabel={t("profitStages.backToProfile", lang)}
-                    fallbackChildren={<ArrowLeft size={17} />}
-                />
-                <h2>{t("profile.identityBonus", lang)}</h2>
-            </div>
+            <TelegramBackButton onBack={onBack} showFallback={false} />
 
             <section className="kyc-page-card">
                 <div className="kyc-page-head">

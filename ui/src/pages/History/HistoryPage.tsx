@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, Filter, X } from "lucide-react"
+import { Filter, X } from "lucide-react"
 import type { Lang, Order } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
-import TelegramBackButton from "../../components/telegram/TelegramBackButton"
 import "./HistoryPage.css"
 import "../../components/accounts/SharedAccountSheet.css"
 import HistoryFilterModal, { DateRange } from "./HistoryFilterModal"
@@ -121,7 +120,7 @@ const formatTicket = (order: Order) => {
     return `#BX-${String(value).padStart(7, "0")}`
 }
 
-export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore, onBack }: HistoryPageProps) {
+export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh: _onRefresh, onLoadMore }: HistoryPageProps) {
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
     const [selectedOrderCache, setSelectedOrderCache] = useState<Order | null>(null)
     const [showFilter, setShowFilter] = useState(false)
@@ -285,12 +284,7 @@ export default function HistoryPage({ orders, lang, loading, hasMore, onRefresh:
     return (
         <div className="history-container">
             <div className="history-header">
-                <TelegramBackButton
-                    onBack={onBack}
-                    fallbackClassName="history-back-btn"
-                    fallbackAriaLabel={t("notifications.backToAccounts", lang)}
-                    fallbackChildren={<ArrowLeft size={18} />}
-                />
+                <span className="history-header-spacer" aria-hidden />
                 <h3 className="history-title">{t("history", lang)}</h3>
                 <button className="history-filter-btn" onClick={() => setShowFilter(true)} aria-label={t("history.openFilters", lang)}>
                     <Filter size={20} />

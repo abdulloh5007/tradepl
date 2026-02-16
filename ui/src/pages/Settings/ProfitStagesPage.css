@@ -8,19 +8,6 @@
   padding: 0 0 100px;
 }
 
-.profit-stage-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.profit-stage-header h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-}
-
 .profit-stage-icon-btn {
   width: 36px;
   height: 36px;
@@ -53,6 +40,13 @@
   padding: 14px;
   display: grid;
   gap: 8px;
+}
+
+.profit-stage-summary-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .profit-stage-badge {

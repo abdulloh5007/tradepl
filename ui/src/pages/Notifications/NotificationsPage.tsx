@@ -4,7 +4,6 @@ import { ArrowLeft, CheckCheck, Bell, ShieldAlert, Gift, Newspaper, X } from "lu
 import type { AppNotification, Lang } from "../../types"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
-import TelegramBackButton from "../../components/telegram/TelegramBackButton"
 import "./NotificationsPage.css"
 
 interface NotificationsPageProps {
@@ -132,12 +131,14 @@ export default function NotificationsPage({ lang, items, onBack, onMarkAllRead, 
   return (
     <div className="notifications-page">
       <div className="notifications-header">
-        <TelegramBackButton
-          onBack={onBack}
-          fallbackClassName="notifications-back-btn"
-          fallbackAriaLabel={t("notifications.backToAccounts", lang)}
-          fallbackChildren={<ArrowLeft size={18} />}
-        />
+        <button
+          type="button"
+          className="notifications-back-btn"
+          onClick={onBack}
+          aria-label={t("notifications.backToAccounts", lang)}
+        >
+          <ArrowLeft size={18} />
+        </button>
         <h2 className="notifications-title">{t("notifications.title", lang)}</h2>
         <button
           type="button"

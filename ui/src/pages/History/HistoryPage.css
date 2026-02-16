@@ -32,6 +32,12 @@
     flex: 1;
 }
 
+.history-header-spacer {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+}
+
 .history-content {
     display: flex;
     flex-direction: column;

@@ -3,7 +3,7 @@
     flex: 0 0 auto;
     display: flex;
     justify-content: center;
-    padding: 8px 0 calc(10px + env(safe-area-inset-bottom));
+    padding: 8px 0 calc(10px + var(--app-safe-bottom));
 }
 
 .bottom-nav {
@@ -90,4 +90,3 @@ html[data-theme="light"] .bottom-nav-btn.active {
         padding: 8px 2px 6px;
     }
 }
-

@@ -1,4 +1,4 @@
-import { ArrowLeft, Share2, Users } from "lucide-react"
+import { Share2, Users } from "lucide-react"
 import { toast } from "sonner"
 import type { ReferralStatus } from "../../api"
 import type { Lang } from "../../types"
@@ -73,15 +73,7 @@ export default function ReferralPage({
 
     return (
         <div className="ref-page">
-            <div className="ref-page-header">
-                <TelegramBackButton
-                    onBack={onBack}
-                    fallbackClassName="ref-page-back"
-                    fallbackAriaLabel={t("profitStages.backToProfile", lang)}
-                    fallbackChildren={<ArrowLeft size={17} />}
-                />
-                <h2>{t("profile.referral", lang)}</h2>
-            </div>
+            <TelegramBackButton onBack={onBack} showFallback={false} />
 
             <section className="ref-page-card">
                 <div className="ref-page-head">

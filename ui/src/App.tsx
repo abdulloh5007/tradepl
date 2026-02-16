@@ -66,6 +66,24 @@ function isTelegramMiniApp(): boolean {
   return telegramInitData().length > 0
 }
 
+function clampInsetValue(value: unknown): number {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num <= 0) return 0
+  return Math.round(num)
+}
+
+function applyTelegramSafeAreaInsets(): void {
+  if (typeof document === "undefined") return
+  const root = document.documentElement
+  const webApp = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
+  const inset = webApp?.contentSafeAreaInset || webApp?.safeAreaInset
+
+  root.style.setProperty("--tg-safe-top", `${clampInsetValue(inset?.top)}px`)
+  root.style.setProperty("--tg-safe-bottom", `${clampInsetValue(inset?.bottom)}px`)
+  root.style.setProperty("--tg-safe-left", `${clampInsetValue(inset?.left)}px`)
+  root.style.setProperty("--tg-safe-right", `${clampInsetValue(inset?.right)}px`)
+}
+
 function isCashFlowHistoryOrder(order: Order): boolean {
   const side = String(order.side || "").toLowerCase()
   const type = String(order.type || "").toLowerCase()
@@ -549,6 +567,43 @@ export default function App() {
       document.removeEventListener("pointerup", onPointerUp, true)
     }
   }, [notificationSettings.haptics])
+
+  useEffect(() => {
+    applyTelegramSafeAreaInsets()
+    if (typeof window === "undefined") return
+    const webApp = window.Telegram?.WebApp
+    if (!webApp) return
+
+    webApp.ready?.()
+    webApp.expand?.()
+    webApp.disableVerticalSwipes?.()
+    const requestFullscreen = webApp.requestFullscreen
+    if (typeof requestFullscreen === "function") {
+      try {
+        const result = requestFullscreen.call(webApp)
+        if (result && typeof (result as Promise<void>).catch === "function") {
+          ; (result as Promise<void>).catch(() => { })
+        }
+      } catch {
+        // ignore unsupported fullscreen call
+      }
+    }
+
+    const syncViewport = () => {
+      applyTelegramSafeAreaInsets()
+      if (!webApp.isExpanded) {
+        webApp.expand?.()
+      }
+    }
+
+    syncViewport()
+    webApp.onEvent?.("viewportChanged", syncViewport)
+    webApp.onEvent?.("safeAreaChanged", syncViewport)
+    return () => {
+      webApp.offEvent?.("viewportChanged", syncViewport)
+      webApp.offEvent?.("safeAreaChanged", syncViewport)
+    }
+  }, [])
 
   // Memoized API client (prevents recreation on every render = fixes lag)
   const normalizedBaseUrl = useMemo(() => normalizeBaseUrl(baseUrl), [baseUrl])
