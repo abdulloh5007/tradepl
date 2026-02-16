@@ -1,7 +1,11 @@
 package ledger
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 )
 
@@ -23,17 +27,37 @@ func (h *Handler) telegramBotUsername(ctx context.Context) string {
 	if cached != "" {
 		return cached
 	}
-	if !h.telegramRuntimeEnabled() {
+	if strings.TrimSpace(h.tgBotToken) == "" {
 		return ""
 	}
-	if strings.TrimSpace(h.tgBotToken) == "" {
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.telegramMethodURL("getMe"), bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := h.telegramHTTPClient().Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	var parsed telegramAPIBasicResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ""
+	}
+	if !parsed.OK {
 		return ""
 	}
 
 	var me struct {
 		Username string `json:"username"`
 	}
-	if err := h.telegramCallJSON(ctx, "getMe", map[string]interface{}{}, &me); err != nil {
+	if err := json.Unmarshal(parsed.Result, &me); err != nil {
 		return ""
 	}
 	resolved := strings.TrimSpace(strings.TrimPrefix(me.Username, "@"))

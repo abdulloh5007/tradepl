@@ -18,9 +18,11 @@ Run
    - INTERNAL_API_TOKEN
    - WS_ORIGIN
    - PROFECT_MODE (development or production)
-   - TELEGRAM_RUNTIME_MODE (internal or external, default internal; `external` disables Telegram API calls from Go server and expects external bot process)
+   - TELEGRAM_RUNTIME_MODE (internal or external, default internal; `external` disables polling/review flows in Go server and expects external bot process)
    - TELEGRAM_BOT_TOKEN (optional, required for Telegram Mini App auth)
-   - TELEGRAM_BOT_USERNAME (optional, used to build referral share deep-link; if empty backend will try Telegram getMe by token)
+   - TELEGRAM_BOT_USERNAME (optional, used to build referral share deep-link; if empty backend will try Telegram `getMe` by token)
+   - APP_VERSION (optional, shown in owner System panel)
+   - APP_UPDATED_AT (optional RFC3339 time, shown in owner System panel as deploy/update time)
    - API_BASE_URL (optional, used by `bot` process for internal review callbacks; default http://localhost:8080)
    - BOT_REVIEW_NOTIFY_CHANNEL (optional, Postgres NOTIFY channel for bot review dispatch; default review_dispatch)
    - BOT_REVIEW_FALLBACK_SECONDS (optional, fallback resync interval when no notify; default 60)

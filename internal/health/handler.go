@@ -112,8 +112,10 @@ type poolStats struct {
 }
 
 type buildStats struct {
-	MainPath string `json:"main_path"`
-	Version  string `json:"version"`
+	MainPath  string `json:"main_path"`
+	Version   string `json:"version"`
+	Revision  string `json:"revision,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 type liveResponse struct {
@@ -145,6 +147,8 @@ type metricsSnapshot struct {
 	ProcessUp int                    `json:"process_up"`
 	DBUp      int                    `json:"db_up"`
 	DBPingMs  int64                  `json:"db_ping_ms"`
+	Version   string                 `json:"version,omitempty"`
+	UpdatedAt string                 `json:"updated_at,omitempty"`
 	Runtime   metricsRuntimeSnapshot `json:"runtime"`
 	Memory    metricsMemorySnapshot  `json:"memory"`
 	DBPool    metricsDBPoolSnapshot  `json:"db_pool"`
@@ -200,6 +204,58 @@ func formatUptimeCompact(uptime time.Duration) string {
 		return fmt.Sprintf("%dm %ds", minutes, seconds)
 	}
 	return fmt.Sprintf("%ds", seconds)
+}
+
+func shortRevision(revision string) string {
+	rev := strings.TrimSpace(revision)
+	if len(rev) > 12 {
+		return rev[:12]
+	}
+	return rev
+}
+
+func collectBuildStats() buildStats {
+	build := buildStats{}
+	envVersion := strings.TrimSpace(os.Getenv("APP_VERSION"))
+	envUpdatedAt := strings.TrimSpace(os.Getenv("APP_UPDATED_AT"))
+	mainVersion := ""
+	vcsRevision := ""
+	vcsTime := ""
+
+	if info, ok := debug.ReadBuildInfo(); ok && info != nil {
+		build.MainPath = strings.TrimSpace(info.Main.Path)
+		mainVersion = strings.TrimSpace(info.Main.Version)
+		for _, setting := range info.Settings {
+			key := strings.TrimSpace(setting.Key)
+			switch key {
+			case "vcs.revision":
+				vcsRevision = strings.TrimSpace(setting.Value)
+			case "vcs.time":
+				vcsTime = strings.TrimSpace(setting.Value)
+			}
+		}
+	}
+
+	version := envVersion
+	if version == "" && mainVersion != "" && mainVersion != "(devel)" {
+		version = mainVersion
+	}
+	if version == "" && vcsRevision != "" {
+		version = shortRevision(vcsRevision)
+	}
+	if version == "" {
+		version = "dev"
+	}
+
+	updatedAt := envUpdatedAt
+	if updatedAt == "" {
+		updatedAt = vcsTime
+	}
+
+	build.Version = version
+	build.Revision = vcsRevision
+	build.UpdatedAt = updatedAt
+	return build
 }
 
 func secureTokenEqual(a, b string) bool {
@@ -347,11 +403,7 @@ func (h *Handler) fullTrusted(w http.ResponseWriter, r *http.Request) {
 
 	db := h.collectDB(r.Context(), true)
 
-	build := buildStats{}
-	if info, ok := debug.ReadBuildInfo(); ok && info != nil {
-		build.MainPath = strings.TrimSpace(info.Main.Path)
-		build.Version = strings.TrimSpace(info.Main.Version)
-	}
+	build := collectBuildStats()
 
 	host := ""
 	if h, err := os.Hostname(); err == nil {
@@ -444,6 +496,7 @@ func (h *Handler) buildMetricsSnapshot(ctx context.Context) metricsSnapshot {
 	db := h.collectDB(ctx, true)
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
+	build := collectBuildStats()
 
 	dbUp := 0
 	if db.Reachable {
@@ -455,6 +508,8 @@ func (h *Handler) buildMetricsSnapshot(ctx context.Context) metricsSnapshot {
 		ProcessUp: 1,
 		DBUp:      dbUp,
 		DBPingMs:  db.PingMs,
+		Version:   build.Version,
+		UpdatedAt: build.UpdatedAt,
 		Runtime: metricsRuntimeSnapshot{
 			Goroutines: runtime.NumGoroutine(),
 			GOMAXPROCS: runtime.GOMAXPROCS(0),

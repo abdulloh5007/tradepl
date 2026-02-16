@@ -16,6 +16,12 @@ type HealthResponse = {
     timestamp: string
     uptime_sec: number
     uptime: string
+    build?: {
+        version?: string
+        revision?: string
+        updated_at?: string
+        main_path?: string
+    }
     database?: {
         reachable: boolean
         ping_ms: number
@@ -71,6 +77,18 @@ const fmtDateTime = (raw?: string) => {
     const t = new Date(raw)
     if (Number.isNaN(t.getTime())) return raw
     return t.toLocaleString()
+}
+
+const fmtVersion = (build?: HealthResponse["build"]) => {
+    if (!build) return "—"
+    const version = String(build.version || "").trim()
+    const revision = String(build.revision || "").trim()
+    if (version && revision && !version.includes(revision.slice(0, 7))) {
+        return `${version} (${revision.slice(0, 7)})`
+    }
+    if (version) return version
+    if (revision) return revision.slice(0, 7)
+    return "—"
 }
 
 const formatUptime = (rawSeconds?: number, units?: { day: string; hour: string; minute: string; second: string }) => {
@@ -189,8 +207,16 @@ export default function SystemHealthCard({ lang, baseUrl, headers, canAccess }: 
                             <strong>{metrics.runtime.goroutines}</strong>
                         </div>
                         <div className="system-health-stat">
+                            <span>{t("manage.system.version", lang)}</span>
+                            <strong>{fmtVersion(health.build)}</strong>
+                        </div>
+                        <div className="system-health-stat">
                             <span>{t("manage.system.memory", lang)}</span>
                             <strong>{bytesToHuman(metrics.memory.alloc_bytes)}</strong>
+                        </div>
+                        <div className="system-health-stat">
+                            <span>{t("manage.system.deployedAt", lang)}</span>
+                            <strong>{fmtDateTime(health.build?.updated_at)}</strong>
                         </div>
                         <div className="system-health-stat">
                             <span>{t("manage.system.dbPool", lang)}</span>
