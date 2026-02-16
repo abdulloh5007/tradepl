@@ -42,24 +42,27 @@
 
 .rdm-methods-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .rdm-method-btn {
-  min-height: 38px;
-  border-radius: 10px;
+  min-height: 96px;
+  border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: rgba(30, 41, 59, 0.48);
   color: #d1d5db;
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 12px;
   font-weight: 700;
-  padding: 6px 8px;
+  padding: 10px 8px;
   cursor: pointer;
+  text-align: center;
+  line-height: 1.25;
 }
 
 .rdm-method-btn.active {
@@ -77,22 +80,22 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
 }
 
 .rdm-method-icon-media {
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
   object-fit: contain;
 }
 
 .rdm-method-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .rdm-method-details {
@@ -187,6 +190,63 @@
   font-size: 12px;
 }
 
+.rdm-calc-row-copy {
+  align-items: center;
+}
+
+.rdm-copy-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rdm-copy-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: rgba(15, 23, 42, 0.32);
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.rdm-copy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rdm-copy-btn:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.62);
+  color: #dbeafe;
+}
+
+.rdm-uzs-notice {
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, #0ea5e9 38%, transparent);
+  background: color-mix(in srgb, #0ea5e9 12%, transparent);
+  color: #bfdbfe;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.rdm-page-sheet .acm-content {
+  border: none !important;
+  background: transparent !important;
+}
+
+.rdm-page-sheet .acm-form {
+  padding: 0;
+}
+
+.rdm-page-sheet .acm-footer {
+  padding-top: 12px;
+}
+
 .rdm-dropzone {
   border: 1px dashed rgba(148, 163, 184, 0.35);
   border-radius: 12px;
@@ -256,7 +316,10 @@
 }
 
 @media (max-width: 420px) {
-  .rdm-methods-grid,
+  .rdm-method-btn {
+    min-height: 88px;
+  }
+
   .rdm-vouchers {
     grid-template-columns: 1fr;
   }
@@ -322,6 +385,23 @@ html[data-theme="light"] .rdm-calc-row {
 html[data-theme="light"] .rdm-calc-row strong,
 html[data-theme="light"] .rdm-drop-title {
   color: var(--text);
+}
+
+html[data-theme="light"] .rdm-copy-btn {
+  border-color: color-mix(in srgb, var(--border) 85%, transparent);
+  background: color-mix(in srgb, var(--panel-alt) 90%, transparent);
+  color: var(--text);
+}
+
+html[data-theme="light"] .rdm-copy-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent-2) 52%, transparent);
+  color: color-mix(in srgb, var(--accent-2) 88%, #0f172a);
+}
+
+html[data-theme="light"] .rdm-uzs-notice {
+  border-color: color-mix(in srgb, var(--accent-2) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-2) 9%, transparent);
+  color: color-mix(in srgb, var(--accent-2) 80%, #0f172a);
 }
 
 html[data-theme="light"] .rdm-dropzone {

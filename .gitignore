@@ -38,3 +38,7 @@ db/marketdata/
 # Python
 venv/
 __pycache__/
+
+# Local remote controller bridge (must stay local)
+remotecontroller/
+remotecontroller.txt

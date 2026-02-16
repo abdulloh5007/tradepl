@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, CheckCircle2, Gift, Upload, X } from "lucide-react"
+import { ArrowLeft, CheckCircle2, Copy, Gift, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import type { DepositBonusStatus, DepositPaymentMethod } from "../../api"
 import type { Lang } from "../../types"
@@ -31,6 +31,7 @@ interface RealDepositRequestModalProps {
 
 const MAX_PROOF_SIZE = 5 * 1024 * 1024
 const DIAMOND_MIN_AMOUNT = 200
+const UZS_METHOD_IDS = new Set(["visa_sum", "uzcard", "humo"])
 
 const normalizeVoucherKind = (value?: string): VoucherKind => {
   const v = String(value || "").trim().toLowerCase()
@@ -40,27 +41,55 @@ const normalizeVoucherKind = (value?: string): VoucherKind => {
 
 const formatIntWithSpaces = (value: string) => value.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
 
-const normalizeAmountInput = (value: string): { raw: string; display: string } => {
+const normalizeAmountInput = (value: string, allowFraction: boolean): { raw: string; display: string } => {
   const stripped = value.replace(/\s+/g, "").replace(/,/g, ".").replace(/[^\d.]/g, "")
   if (!stripped) return { raw: "", display: "" }
 
   const dot = stripped.indexOf(".")
   let intPart = dot >= 0 ? stripped.slice(0, dot) : stripped
-  let fracPart = dot >= 0 ? stripped.slice(dot + 1).replace(/\./g, "") : ""
+  let fracPart = allowFraction && dot >= 0 ? stripped.slice(dot + 1).replace(/\./g, "") : ""
 
   intPart = intPart.replace(/^0+(?=\d)/, "")
   if (intPart === "") intPart = "0"
-  fracPart = fracPart.slice(0, 2)
+  fracPart = allowFraction ? fracPart.slice(0, 2) : ""
 
   const raw = fracPart ? `${intPart}.${fracPart}` : intPart
   const display = fracPart ? `${formatIntWithSpaces(intPart)}.${fracPart}` : formatIntWithSpaces(intPart)
   return { raw, display }
 }
 
-const amountToApi = (raw: string) => {
-  const n = Number(raw)
+const amountToApi = (value: number) => {
+  const n = Number(value)
   if (!Number.isFinite(n) || n <= 0) return ""
   return n.toFixed(2)
+}
+
+const isUzsMethod = (methodID: string) => UZS_METHOD_IDS.has(String(methodID || "").trim().toLowerCase())
+
+const copyToClipboard = async (text: string) => {
+  const value = String(text || "")
+  if (!value) return false
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value)
+      return true
+    }
+  } catch {
+    // Fall back below.
+  }
+  try {
+    const area = document.createElement("textarea")
+    area.value = value
+    area.style.position = "fixed"
+    area.style.opacity = "0"
+    document.body.appendChild(area)
+    area.select()
+    const ok = document.execCommand("copy")
+    document.body.removeChild(area)
+    return ok
+  } catch {
+    return false
+  }
 }
 
 export default function RealDepositRequestModal({
@@ -125,10 +154,23 @@ export default function RealDepositRequestModal({
     return vouchers.filter(v => v.available).map(v => v.id)
   }, [vouchers])
 
+  const selectedMethod = paymentMethods.find((item) => item.id === methodID) || null
+  const uzsMethodSelected = selectedMethod ? isUzsMethod(selectedMethod.id) : false
   const amountNum = Number(amountRaw)
   const amountValid = Number.isFinite(amountNum) && amountNum > 0
-  const amountTooHigh = amountValid && maxAmount > 0 && amountNum > maxAmount
-  const withinLimits = amountValid && amountNum >= minAmount && amountNum <= maxAmount
+  const hasRate = Number.isFinite(uzsRate) && uzsRate > 0
+  const amountUSDForValidation = uzsMethodSelected
+    ? (hasRate && amountValid ? amountNum / uzsRate : Number.NaN)
+    : amountNum
+  const amountTooHigh = Number.isFinite(amountUSDForValidation) && maxAmount > 0 && amountUSDForValidation > maxAmount
+  const withinLimits = Number.isFinite(amountUSDForValidation) &&
+    amountUSDForValidation >= minAmount &&
+    amountUSDForValidation <= maxAmount &&
+    (!uzsMethodSelected || hasRate)
+  const minLimitDisplay = uzsMethodSelected ? minAmount * uzsRate : minAmount
+  const maxLimitDisplay = uzsMethodSelected ? maxAmount * uzsRate : maxAmount
+  const inputCurrencyCode = uzsMethodSelected ? "UZS" : "USD"
+  const inputFractionAllowed = !uzsMethodSelected
 
   const activeVoucherPercent = useMemo(() => {
     if (voucherKind === "none") return 0
@@ -137,21 +179,22 @@ export default function RealDepositRequestModal({
     return item.percent
   }, [vouchers, voucherKind])
 
-  const bonusAmount = amountValid ? (amountNum * activeVoucherPercent) / 100 : 0
-  const totalAmount = amountValid ? amountNum + bonusAmount : 0
-  const amountUZS = amountValid ? amountNum * uzsRate : 0
-  const selectedMethod = paymentMethods.find((item) => item.id === methodID) || null
+  const bonusAmount = Number.isFinite(amountUSDForValidation) ? (amountUSDForValidation * activeVoucherPercent) / 100 : 0
+  const totalAmount = Number.isFinite(amountUSDForValidation) ? amountUSDForValidation + bonusAmount : 0
 
   const resetState = () => {
     const preferred = normalizeVoucherKind(defaultVoucher)
-    const baseDefaultAmount = minAmount > 0 ? minAmount : 0
-    const forcedAmount = preferred === "diamond" ? Math.max(baseDefaultAmount, DIAMOND_MIN_AMOUNT) : baseDefaultAmount
-    const initialAmount = forcedAmount > 0 ? String(forcedAmount) : ""
+    const initialMethod = availableMethodIDs[0] || ""
+    const initialIsUzs = isUzsMethod(initialMethod)
+    const baseDefaultAmountUSD = minAmount > 0 ? minAmount : 0
+    const forcedAmountUSD = preferred === "diamond" ? Math.max(baseDefaultAmountUSD, DIAMOND_MIN_AMOUNT) : baseDefaultAmountUSD
+    const forcedAmountInput = initialIsUzs ? forcedAmountUSD * uzsRate : forcedAmountUSD
+    const initialAmount = forcedAmountInput > 0 ? String(forcedAmountInput) : ""
     setAmountRaw(initialAmount)
-    setAmountDisplay(initialAmount ? formatIntWithSpaces(initialAmount) : "")
+    setAmountDisplay(initialAmount ? normalizeAmountInput(initialAmount, !initialIsUzs).display : "")
     setProofFile(null)
     setDragOver(false)
-    setMethodID(availableMethodIDs[0] || "")
+    setMethodID(initialMethod)
 
     if (preferred !== "none" && availableVoucherIds.includes(preferred)) {
       setVoucherKind(preferred)
@@ -171,10 +214,14 @@ export default function RealDepositRequestModal({
   }, [open, defaultVoucher, status?.eligible_account_id, status?.pending_count, status?.vouchers, status?.payment_methods])
 
   useEffect(() => {
-    if (voucherKind === "diamond" && amountValid && amountNum < DIAMOND_MIN_AMOUNT) {
+    if (
+      voucherKind === "diamond" &&
+      Number.isFinite(amountUSDForValidation) &&
+      amountUSDForValidation < DIAMOND_MIN_AMOUNT
+    ) {
       setVoucherKind("none")
     }
-  }, [voucherKind, amountValid, amountNum])
+  }, [voucherKind, amountUSDForValidation])
 
   useEffect(() => {
     if (voucherKind === "none") return
@@ -223,28 +270,29 @@ export default function RealDepositRequestModal({
         <div className="acm-content">
           <div className="acm-form rdm-form">
             <label className="acm-label">
-              {t("accounts.amountUsd", lang)}
+              {uzsMethodSelected ? t("accounts.amountUzs", lang) : t("accounts.amountUsd", lang)}
               <input
                 className={`acm-input ${amountTooHigh ? "rdm-input-error" : ""}`}
-                inputMode="decimal"
+                inputMode={uzsMethodSelected ? "numeric" : "decimal"}
                 value={amountDisplay}
                 onChange={e => {
-                  const next = normalizeAmountInput(e.target.value)
+                  const next = normalizeAmountInput(e.target.value, inputFractionAllowed)
                   setAmountRaw(next.raw)
                   setAmountDisplay(next.display)
                 }}
-                placeholder={t("accounts.amountPlaceholder", lang)}
+                placeholder={uzsMethodSelected ? t("accounts.amountPlaceholderUzs", lang) : t("accounts.amountPlaceholder", lang)}
               />
             </label>
             {amountTooHigh ? (
               <div className="rdm-input-error-text">
-                {t("accounts.amountExceedsMax", lang).replace("{max}", formatNumber(maxAmount, 2, 2))}
+                {(uzsMethodSelected ? t("accounts.amountExceedsMaxUzs", lang) : t("accounts.amountExceedsMax", lang))
+                  .replace("{max}", formatNumber(maxLimitDisplay, uzsMethodSelected ? 0 : 2, uzsMethodSelected ? 0 : 2))}
               </div>
             ) : null}
 
             <div className="rdm-hints">
-              <span>{t("accounts.min", lang)}: {formatNumber(minAmount, 2, 2)} USD</span>
-              <span>{t("accounts.max", lang)}: {formatNumber(maxAmount, 2, 2)} USD</span>
+              <span>{t("accounts.min", lang)}: {formatNumber(minLimitDisplay, uzsMethodSelected ? 0 : 2, uzsMethodSelected ? 0 : 2)} {inputCurrencyCode}</span>
+              <span>{t("accounts.max", lang)}: {formatNumber(maxLimitDisplay, uzsMethodSelected ? 0 : 2, uzsMethodSelected ? 0 : 2)} {inputCurrencyCode}</span>
             </div>
 
             <div className="rdm-methods-block">
@@ -262,7 +310,21 @@ export default function RealDepositRequestModal({
                       className={`rdm-method-btn ${active ? "active" : ""} ${disabled ? "disabled" : ""}`}
                       disabled={disabled}
                       onClick={() => {
-                        if (!disabled) setMethodID(method.id)
+                        if (disabled) return
+                        const nextIsUzs = isUzsMethod(method.id)
+                        const prevIsUzs = uzsMethodSelected
+                        if (amountValid && hasRate && nextIsUzs !== prevIsUzs) {
+                          const normalizedUSD = prevIsUzs ? amountNum / uzsRate : amountNum
+                          const convertedInput = nextIsUzs ? normalizedUSD * uzsRate : normalizedUSD
+                          const nextAmount = normalizeAmountInput(String(convertedInput), !nextIsUzs)
+                          setAmountRaw(nextAmount.raw)
+                          setAmountDisplay(nextAmount.display)
+                        } else if (amountDisplay) {
+                          const normalized = normalizeAmountInput(amountDisplay, !nextIsUzs)
+                          setAmountRaw(normalized.raw)
+                          setAmountDisplay(normalized.display)
+                        }
+                        setMethodID(method.id)
                       }}
                     >
                       <span className="rdm-method-icon">
@@ -285,6 +347,12 @@ export default function RealDepositRequestModal({
               )}
             </div>
 
+            {uzsMethodSelected ? (
+              <div className="rdm-uzs-notice">
+                {t("accounts.uzsPaymentNotice", lang)}
+              </div>
+            ) : null}
+
             <div className="rdm-vouchers">
               <button
                 type="button"
@@ -295,7 +363,7 @@ export default function RealDepositRequestModal({
               </button>
               {vouchers.map(v => {
                 const selected = voucherKind === v.id
-                const amountBlocked = v.id === "diamond" && amountValid && amountNum < DIAMOND_MIN_AMOUNT
+                const amountBlocked = v.id === "diamond" && Number.isFinite(amountUSDForValidation) && amountUSDForValidation < DIAMOND_MIN_AMOUNT
                 const disabled = !v.available || amountBlocked
                 return (
                   <button
@@ -304,8 +372,9 @@ export default function RealDepositRequestModal({
                     className={`rdm-voucher-btn ${selected ? "active" : ""}`}
                     disabled={disabled}
                     onClick={() => {
-                      if (v.id === "diamond" && amountNum < DIAMOND_MIN_AMOUNT) {
-                        const forced = normalizeAmountInput(String(DIAMOND_MIN_AMOUNT))
+                      if (v.id === "diamond" && (!Number.isFinite(amountUSDForValidation) || amountUSDForValidation < DIAMOND_MIN_AMOUNT)) {
+                        const forcedValue = uzsMethodSelected ? DIAMOND_MIN_AMOUNT * uzsRate : DIAMOND_MIN_AMOUNT
+                        const forced = normalizeAmountInput(String(forcedValue), !uzsMethodSelected)
                         setAmountRaw(forced.raw)
                         setAmountDisplay(forced.display)
                         return
@@ -327,8 +396,30 @@ export default function RealDepositRequestModal({
             <div className="rdm-calc-card">
               <div className="rdm-calc-row">
                 <span>{t("accounts.deposit", lang)}</span>
-                <strong>{formatNumber(amountValid ? amountNum : 0, 2, 2)} USD</strong>
+                <strong>
+                  {formatNumber(amountValid ? amountNum : 0, uzsMethodSelected ? 0 : 2, uzsMethodSelected ? 0 : 2)} {inputCurrencyCode}
+                </strong>
               </div>
+              {uzsMethodSelected ? (
+                <div className="rdm-calc-row rdm-calc-row-copy">
+                  <span>{t("accounts.exactTransferUzs", lang)}</span>
+                  <div className="rdm-copy-wrap">
+                    <strong>{formatNumber(amountValid ? amountNum : 0, 0, 0)} UZS</strong>
+                    <button
+                      type="button"
+                      className="rdm-copy-btn"
+                      disabled={!amountValid}
+                      onClick={async () => {
+                        const exact = formatNumber(amountValid ? amountNum : 0, 0, 0).replace(/\s+/g, " ")
+                        const copied = await copyToClipboard(exact)
+                        if (copied) toast.success(t("accounts.copied", lang))
+                      }}
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <div className="rdm-calc-row">
                 <span>{t("accounts.bonus", lang)}</span>
                 <strong>
@@ -340,7 +431,7 @@ export default function RealDepositRequestModal({
                 <strong>{formatNumber(totalAmount, 2, 2)} USD</strong>
               </div>
               <div className="rdm-calc-rate">
-                {formatNumber(amountUZS, 0, 0)} UZS at rate {formatNumber(uzsRate, 2, 2)}
+                {t("accounts.rateLine", lang).replace("{rate}", formatNumber(uzsRate, 2, 2))}
               </div>
             </div>
 
@@ -407,15 +498,23 @@ export default function RealDepositRequestModal({
             className="acm-submit-btn"
             disabled={disabledSubmit}
             onClick={async () => {
+              if (uzsMethodSelected && !hasRate) {
+                toast.error(t("accounts.uzsRateUnavailable", lang))
+                return
+              }
               if (!withinLimits) {
                 toast.error(
-                  t("accounts.amountBetween", lang)
-                    .replace("{min}", formatNumber(minAmount, 2, 2))
-                    .replace("{max}", formatNumber(maxAmount, 2, 2))
+                  (uzsMethodSelected ? t("accounts.amountBetweenUzs", lang) : t("accounts.amountBetween", lang))
+                    .replace("{min}", formatNumber(minLimitDisplay, uzsMethodSelected ? 0 : 2, uzsMethodSelected ? 0 : 2))
+                    .replace("{max}", formatNumber(maxLimitDisplay, uzsMethodSelected ? 0 : 2, uzsMethodSelected ? 0 : 2))
                 )
                 return
               }
-              if (voucherKind === "diamond" && amountNum < DIAMOND_MIN_AMOUNT) {
+              if (!Number.isFinite(amountUSDForValidation)) {
+                toast.error(t("accounts.errors.enterValidAmount", lang))
+                return
+              }
+              if (voucherKind === "diamond" && amountUSDForValidation < DIAMOND_MIN_AMOUNT) {
                 toast.error(t("accounts.diamondRequires", lang).replace("{amount}", formatNumber(DIAMOND_MIN_AMOUNT, 0, 0)))
                 return
               }
@@ -429,7 +528,7 @@ export default function RealDepositRequestModal({
               }
 
               await onSubmit({
-                amountUSD: amountToApi(amountRaw),
+                amountUSD: amountToApi(amountUSDForValidation),
                 voucherKind,
                 methodID: selectedMethod.id,
                 proofFile,
