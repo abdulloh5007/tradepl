@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Banknote, Bitcoin, CheckCircle2, Coins, CreditCard, Gift, Landmark, Upload, Wallet, X } from "lucide-react"
+import { ArrowLeft, CheckCircle2, Gift, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import type { DepositBonusStatus, DepositPaymentMethod } from "../../api"
 import type { Lang } from "../../types"
 import { formatNumber } from "../../utils/format"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
+import PaymentMethodIcon from "./PaymentMethodIcon"
 import "./RealDepositRequestModal.css"
 
 type VoucherKind = "none" | "gold" | "diamond"
@@ -13,6 +14,7 @@ type VoucherKind = "none" | "gold" | "diamond"
 interface RealDepositRequestModalProps {
   lang: Lang
   open: boolean
+  layout?: "modal" | "page"
   status: DepositBonusStatus | null
   allowVouchers: boolean
   defaultVoucher?: VoucherKind
@@ -60,19 +62,10 @@ const amountToApi = (raw: string) => {
   return n.toFixed(2)
 }
 
-const paymentMethodIcon = (id: string) => {
-  const key = String(id || "").toLowerCase()
-  if (key === "humo" || key === "uzcard") return Landmark
-  if (key === "paypal") return Wallet
-  if (key === "ton") return Coins
-  if (key === "usdt") return Banknote
-  if (key === "btc") return Bitcoin
-  return CreditCard
-}
-
 export default function RealDepositRequestModal({
   lang,
   open,
+  layout = "modal",
   status,
   allowVouchers,
   defaultVoucher = "none",
@@ -80,6 +73,7 @@ export default function RealDepositRequestModal({
   onClose,
   onSubmit,
 }: RealDepositRequestModalProps) {
+  const isPageLayout = layout === "page"
   const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
   const [amountRaw, setAmountRaw] = useState("")
   const [amountDisplay, setAmountDisplay] = useState("")
@@ -190,7 +184,7 @@ export default function RealDepositRequestModal({
     setMethodID(availableMethodIDs[0] || "")
   }, [methodID, availableMethodIDs])
 
-  if (!shouldRender) return null
+  if (isPageLayout ? !open : !shouldRender) return null
 
   const pickProof = (file?: File | null) => {
     if (!file) return
@@ -203,17 +197,13 @@ export default function RealDepositRequestModal({
 
   const disabledSubmit = loading || !withinLimits || !proofFile || !selectedMethod || !selectedMethod.enabled
 
-  return (
-    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
-      <div className="acm-backdrop" onClick={() => {
-        if (!loading) onClose()
-      }} />
-      <div className="acm-sheet">
+  const modalContent = (
+      <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet" : ""}`}>
         <div className="acm-header">
           <button onClick={() => {
             if (!loading) onClose()
           }} className="acm-close-btn">
-            <X size={24} />
+            {isPageLayout ? <ArrowLeft size={24} /> : <X size={24} />}
           </button>
           <h2 className="acm-title">{t("accounts.realDeposit", lang)}</h2>
           <div className="acm-spacer" />
@@ -250,7 +240,6 @@ export default function RealDepositRequestModal({
               <div className="rdm-methods-title">{t("accounts.paymentMethodChoose", lang)}</div>
               <div className="rdm-methods-grid">
                 {paymentMethods.map((method) => {
-                  const Icon = paymentMethodIcon(method.id)
                   const disabled = !method.enabled
                   const active = methodID === method.id
                   const titleKey = `accounts.paymentMethod.${method.id}`
@@ -265,7 +254,9 @@ export default function RealDepositRequestModal({
                         if (!disabled) setMethodID(method.id)
                       }}
                     >
-                      <span className="rdm-method-icon"><Icon size={14} /></span>
+                      <span className="rdm-method-icon">
+                        <PaymentMethodIcon methodID={method.id} size={15} className="rdm-method-icon-media" />
+                      </span>
                       <span className="rdm-method-name">{title}</span>
                     </button>
                   )
@@ -438,6 +429,22 @@ export default function RealDepositRequestModal({
           </button>
         </div>
       </div>
+  )
+
+  if (isPageLayout) {
+    return (
+      <div className="acm-page" role="dialog" aria-modal="true">
+        {modalContent}
+      </div>
+    )
+  }
+
+  return (
+    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
+      <div className="acm-backdrop" onClick={() => {
+        if (!loading) onClose()
+      }} />
+      {modalContent}
     </div>
   )
 }

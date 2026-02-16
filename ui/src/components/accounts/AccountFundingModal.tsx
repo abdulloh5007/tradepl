@@ -1,4 +1,4 @@
-import { X } from "lucide-react"
+import { ArrowLeft, X } from "lucide-react"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
@@ -7,6 +7,7 @@ import "./SharedAccountSheet.css"
 interface AccountFundingModalProps {
   lang: Lang
   open: boolean
+  layout?: "modal" | "page"
   mode: "demo" | "real"
   type: "deposit" | "withdraw"
   amount: string
@@ -19,6 +20,7 @@ interface AccountFundingModalProps {
 export default function AccountFundingModal({
   lang,
   open,
+  layout = "modal",
   mode,
   type,
   amount,
@@ -27,19 +29,18 @@ export default function AccountFundingModal({
   onSubmit,
   loading
 }: AccountFundingModalProps) {
+  const isPageLayout = layout === "page"
   const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
-  if (!shouldRender) return null
+  if (isPageLayout ? !open : !shouldRender) return null
   const title = type === "deposit" ? t("accounts.deposit", lang) : t("accounts.withdraw", lang)
   const disabled = mode !== "demo"
   const disabledText = type === "deposit" ? t("accounts.realDepositUnavailable", lang) : t("accounts.realWithdrawUnavailable", lang)
 
-  return (
-    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
-      <div className="acm-backdrop" onClick={onClose} />
-      <div className="acm-sheet">
+  const modalContent = (
+      <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet" : ""}`}>
         <div className="acm-header">
           <button onClick={onClose} className="acm-close-btn">
-            <X size={24} />
+            {isPageLayout ? <ArrowLeft size={24} /> : <X size={24} />}
           </button>
           <h2 className="acm-title">{title} - {mode === "demo" ? t("accounts.modeDemo", lang) : t("accounts.modeReal", lang)}</h2>
           <div className="acm-spacer" />
@@ -84,6 +85,20 @@ export default function AccountFundingModal({
           </button>
         </div>
       </div>
+  )
+
+  if (isPageLayout) {
+    return (
+      <div className="acm-page" role="dialog" aria-modal="true">
+        {modalContent}
+      </div>
+    )
+  }
+
+  return (
+    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
+      <div className="acm-backdrop" onClick={onClose} />
+      {modalContent}
     </div>
   )
 }

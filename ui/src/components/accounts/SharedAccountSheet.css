@@ -74,6 +74,19 @@
     transition-duration: 0.28s, 0.22s;
 }
 
+.acm-page {
+    display: flex;
+    justify-content: center;
+    padding: 0 0 calc(104px + var(--app-safe-bottom));
+}
+
+.acm-page-sheet {
+    transform: none;
+    opacity: 1;
+    border-radius: 16px;
+    max-height: none;
+}
+
 .acm-overlay.is-closing .acm-backdrop {
     opacity: 0;
     transition-duration: 0.22s;
@@ -456,6 +469,16 @@ html[data-theme="light"] .acm-footer {
     background-color: var(--panel);
     color: var(--text);
     border-color: var(--border);
+}
+
+@media (max-width: 767px) {
+    .acm-page {
+        padding-bottom: calc(96px + var(--app-safe-bottom));
+    }
+
+    .acm-page-sheet {
+        border-radius: 14px;
+    }
 }
 
 html[data-theme="light"] .acm-sheet {

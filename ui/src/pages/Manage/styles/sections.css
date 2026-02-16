@@ -143,6 +143,14 @@ input[type=number] {
   color: var(--text);
 }
 
+.deposit-method-icon-media {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .deposit-method-state {
   font-size: 10px;
   color: var(--muted);

@@ -241,6 +241,112 @@ export default function AccountsPage({
   const isRealDepositFlow = fundingOpen === "deposit" && activeAccount.mode === "real"
   const isRealWithdrawFlow = fundingOpen === "withdraw" && activeAccount.mode === "real"
 
+  if (fundingOpen) {
+    if (isRealDepositFlow) {
+      return (
+        <div className="accounts-page pb-24">
+          <RealDepositRequestModal
+            lang={lang}
+            open
+            layout="page"
+            status={depositBonus}
+            allowVouchers={isRealStandard}
+            defaultVoucher={fundingVoucherKind}
+            loading={fundingBusy}
+            onClose={() => {
+              if (fundingBusy) return
+              setFundingOpen(null)
+              setFundingVoucherKind("none")
+            }}
+            onSubmit={async (payload) => {
+              setFundingBusy(true)
+              try {
+                await onRequestRealDeposit(payload)
+                toast.success(t("accounts.requestSubmittedReview", lang))
+                setFundingOpen(null)
+                setFundingVoucherKind("none")
+              } catch (err: any) {
+                toast.error(err?.message || t("accounts.errors.submitFailed", lang))
+              } finally {
+                setFundingBusy(false)
+              }
+            }}
+          />
+        </div>
+      )
+    }
+
+    if (isRealWithdrawFlow) {
+      return (
+        <div className="accounts-page pb-24">
+          <RealWithdrawRequestModal
+            lang={lang}
+            open
+            layout="page"
+            status={depositBonus}
+            loading={fundingBusy}
+            onClose={() => {
+              if (fundingBusy) return
+              setFundingOpen(null)
+              setFundingVoucherKind("none")
+            }}
+            onSubmit={async (payload) => {
+              setFundingBusy(true)
+              try {
+                await onRequestRealWithdraw(payload)
+                toast.success(t("accounts.withdrawCompleted", lang))
+                setFundingOpen(null)
+                setFundingVoucherKind("none")
+              } catch (err: any) {
+                toast.error(err?.message || t("accounts.errors.submitFailed", lang))
+              } finally {
+                setFundingBusy(false)
+              }
+            }}
+          />
+        </div>
+      )
+    }
+
+    return (
+      <div className="accounts-page pb-24">
+        <AccountFundingModal
+          lang={lang}
+          open
+          layout="page"
+          mode={activeAccount.mode as "demo" | "real"}
+          type={fundingOpen}
+          amount={fundingAmount}
+          onAmountChange={setFundingAmount}
+          onClose={() => setFundingOpen(null)}
+          loading={fundingBusy}
+          onSubmit={async () => {
+            if (!fundingOpen) return
+            if (!fundingAmount || Number(fundingAmount) <= 0) {
+              toast.error(t("accounts.errors.enterValidAmount", lang))
+              return
+            }
+            setFundingBusy(true)
+            try {
+              if (fundingOpen === "deposit") {
+                await onTopUpDemo(fundingAmount)
+                toast.success(t("accounts.depositCompleted", lang))
+              } else {
+                await onWithdrawDemo(fundingAmount)
+                toast.success(t("accounts.withdrawCompleted", lang))
+              }
+              setFundingOpen(null)
+            } catch (err: any) {
+              toast.error(err?.message || t("accounts.errors.operationFailed", lang))
+            } finally {
+              setFundingBusy(false)
+            }
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="accounts-page pb-24">
       <div className="accounts-header">
@@ -384,91 +490,6 @@ export default function AccountsPage({
         snapshots={switcherSnapshots}
         onClose={() => setSwitcherOpen(false)}
         onSwitch={onSwitch}
-      />
-
-      <AccountFundingModal
-        lang={lang}
-        open={fundingOpen !== null && !isRealDepositFlow && !isRealWithdrawFlow}
-        mode={activeAccount.mode as "demo" | "real"}
-        type={fundingOpen || "deposit"}
-        amount={fundingAmount}
-        onAmountChange={setFundingAmount}
-        onClose={() => setFundingOpen(null)}
-        loading={fundingBusy}
-        onSubmit={async () => {
-          if (!fundingOpen) return
-          if (!fundingAmount || Number(fundingAmount) <= 0) {
-            toast.error(t("accounts.errors.enterValidAmount", lang))
-            return
-          }
-          setFundingBusy(true)
-          try {
-            if (fundingOpen === "deposit") {
-              await onTopUpDemo(fundingAmount)
-              toast.success(t("accounts.depositCompleted", lang))
-            } else {
-              await onWithdrawDemo(fundingAmount)
-              toast.success(t("accounts.withdrawCompleted", lang))
-            }
-            setFundingOpen(null)
-          } catch (err: any) {
-            toast.error(err?.message || t("accounts.errors.operationFailed", lang))
-          } finally {
-            setFundingBusy(false)
-          }
-        }}
-      />
-
-      <RealDepositRequestModal
-        lang={lang}
-        open={isRealDepositFlow}
-        status={depositBonus}
-        allowVouchers={isRealStandard}
-        defaultVoucher={fundingVoucherKind}
-        loading={fundingBusy}
-        onClose={() => {
-          if (fundingBusy) return
-          setFundingOpen(null)
-          setFundingVoucherKind("none")
-        }}
-        onSubmit={async (payload) => {
-          setFundingBusy(true)
-          try {
-            await onRequestRealDeposit(payload)
-            toast.success(t("accounts.requestSubmittedReview", lang))
-            setFundingOpen(null)
-            setFundingVoucherKind("none")
-          } catch (err: any) {
-            toast.error(err?.message || t("accounts.errors.submitFailed", lang))
-          } finally {
-            setFundingBusy(false)
-          }
-        }}
-      />
-
-      <RealWithdrawRequestModal
-        lang={lang}
-        open={isRealWithdrawFlow}
-        status={depositBonus}
-        loading={fundingBusy}
-        onClose={() => {
-          if (fundingBusy) return
-          setFundingOpen(null)
-          setFundingVoucherKind("none")
-        }}
-        onSubmit={async (payload) => {
-          setFundingBusy(true)
-          try {
-            await onRequestRealWithdraw(payload)
-            toast.success(t("accounts.withdrawCompleted", lang))
-            setFundingOpen(null)
-            setFundingVoucherKind("none")
-          } catch (err: any) {
-            toast.error(err?.message || t("accounts.errors.submitFailed", lang))
-          } finally {
-            setFundingBusy(false)
-          }
-        }}
       />
 
       <AccountDetailsModal

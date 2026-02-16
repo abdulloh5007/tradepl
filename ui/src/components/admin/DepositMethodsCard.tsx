@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Banknote, Bitcoin, Coins, CreditCard, Landmark, Wallet } from "lucide-react"
+import { CreditCard } from "lucide-react"
 import type { DepositPaymentMethod } from "./types"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
+import PaymentMethodIcon from "../accounts/PaymentMethodIcon"
 import {
   formatMethodInputForEditing,
   methodFormatExample,
@@ -27,16 +28,6 @@ const methodOrder = [
   "usdt",
   "btc",
 ]
-
-const methodIcon = (id: string) => {
-  const key = String(id || "").toLowerCase()
-  if (key === "humo" || key === "uzcard") return Landmark
-  if (key === "paypal") return Wallet
-  if (key === "ton") return Coins
-  if (key === "usdt") return Banknote
-  if (key === "btc") return Bitcoin
-  return CreditCard
-}
 
 const methodTitle = (method: DepositPaymentMethod, lang: Lang) => {
   const key = `accounts.paymentMethod.${method.id}`
@@ -112,12 +103,13 @@ export default function DepositMethodsCard({ lang, baseUrl, headers, canAccess }
           <p className="deposit-methods-desc">{t("manage.depositMethods.desc", lang)}</p>
           <div className="deposit-methods-grid">
             {methods.map((method) => {
-              const Icon = methodIcon(method.id)
               const enabled = method.details.trim().length > 0
               return (
                 <div key={method.id} className={`deposit-method-card ${enabled ? "enabled" : "disabled"}`}>
                   <div className="deposit-method-card-head">
-                    <span className="deposit-method-title"><Icon size={14} /> {methodTitle(method, lang)}</span>
+                    <span className="deposit-method-title">
+                      <PaymentMethodIcon methodID={method.id} size={14} className="deposit-method-icon-media" /> {methodTitle(method, lang)}
+                    </span>
                     <span className="deposit-method-state">{enabled ? t("manage.depositMethods.stateEnabled", lang) : t("manage.depositMethods.stateDisabled", lang)}</span>
                   </div>
                   <input

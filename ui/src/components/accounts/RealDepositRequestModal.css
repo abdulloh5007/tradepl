@@ -77,6 +77,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.rdm-method-icon-media {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: contain;
 }
 
 .rdm-method-name {

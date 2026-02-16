@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
-import { Banknote, Bitcoin, Coins, CreditCard, Landmark, Wallet, X } from "lucide-react"
+import { ArrowLeft, X } from "lucide-react"
 import { toast } from "sonner"
 import type { DepositBonusStatus, DepositPaymentMethod } from "../../api"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence"
+import PaymentMethodIcon from "./PaymentMethodIcon"
 import {
   formatMethodInputForEditing,
   methodFormatExample,
@@ -15,6 +16,7 @@ import "./RealWithdrawRequestModal.css"
 interface RealWithdrawRequestModalProps {
   lang: Lang
   open: boolean
+  layout?: "modal" | "page"
   status: DepositBonusStatus | null
   loading: boolean
   onClose: () => void
@@ -48,24 +50,16 @@ const amountToApi = (raw: string) => {
   return n.toFixed(2)
 }
 
-const paymentMethodIcon = (id: string) => {
-  const key = String(id || "").toLowerCase()
-  if (key === "humo" || key === "uzcard") return Landmark
-  if (key === "paypal") return Wallet
-  if (key === "ton") return Coins
-  if (key === "usdt") return Banknote
-  if (key === "btc") return Bitcoin
-  return CreditCard
-}
-
 export default function RealWithdrawRequestModal({
   lang,
   open,
+  layout = "modal",
   status,
   loading,
   onClose,
   onSubmit,
 }: RealWithdrawRequestModalProps) {
+  const isPageLayout = layout === "page"
   const { shouldRender, isVisible } = useAnimatedPresence(open, 220)
   const [amountRaw, setAmountRaw] = useState("")
   const [amountDisplay, setAmountDisplay] = useState("")
@@ -101,24 +95,20 @@ export default function RealWithdrawRequestModal({
     setMethodID(availableMethodIDs[0] || "")
   }, [methodID, availableMethodIDs])
 
-  if (!shouldRender) return null
+  if (isPageLayout ? !open : !shouldRender) return null
 
   const amountNum = Number(amountRaw)
   const amountValid = Number.isFinite(amountNum) && amountNum > 0
   const payoutCheck = validateAndNormalizeMethodInput(methodID, payoutDetails)
   const canSubmit = amountValid && selectedMethod?.enabled && payoutCheck.valid && !loading
 
-  return (
-    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
-      <div className="acm-backdrop" onClick={() => {
-        if (!loading) onClose()
-      }} />
-      <div className="acm-sheet">
+  const modalContent = (
+      <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet" : ""}`}>
         <div className="acm-header">
           <button onClick={() => {
             if (!loading) onClose()
           }} className="acm-close-btn">
-            <X size={24} />
+            {isPageLayout ? <ArrowLeft size={24} /> : <X size={24} />}
           </button>
           <h2 className="acm-title">{t("accounts.realWithdrawTitle", lang)}</h2>
           <div className="acm-spacer" />
@@ -145,7 +135,6 @@ export default function RealWithdrawRequestModal({
               <div className="rdm-methods-title">{t("accounts.withdrawMethodChoose", lang)}</div>
               <div className="rdm-methods-grid">
                 {paymentMethods.map((method) => {
-                  const Icon = paymentMethodIcon(method.id)
                   const disabled = !method.enabled
                   const active = methodID === method.id
                   const titleKey = `accounts.paymentMethod.${method.id}`
@@ -160,7 +149,9 @@ export default function RealWithdrawRequestModal({
                         if (!disabled) setMethodID(method.id)
                       }}
                     >
-                      <span className="rdm-method-icon"><Icon size={14} /></span>
+                      <span className="rdm-method-icon">
+                        <PaymentMethodIcon methodID={method.id} size={15} className="rdm-method-icon-media" />
+                      </span>
                       <span className="rdm-method-name">{title}</span>
                     </button>
                   )
@@ -227,7 +218,22 @@ export default function RealWithdrawRequestModal({
           </button>
         </div>
       </div>
+  )
+
+  if (isPageLayout) {
+    return (
+      <div className="acm-page" role="dialog" aria-modal="true">
+        {modalContent}
+      </div>
+    )
+  }
+
+  return (
+    <div className={`acm-overlay ${isVisible ? "is-open" : "is-closing"}`} role="dialog" aria-modal="true">
+      <div className="acm-backdrop" onClick={() => {
+        if (!loading) onClose()
+      }} />
+      {modalContent}
     </div>
   )
 }
-
