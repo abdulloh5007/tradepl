@@ -56,9 +56,6 @@ func (h *Handler) notifyUserTelegramAsync(userID, title, message, target string)
 }
 
 func (h *Handler) NotifyUserImportantTelegram(ctx context.Context, userID, title, message, target string) {
-	if !h.telegramRuntimeEnabled() {
-		return
-	}
 	if !h.telegramNotifyEnabled {
 		return
 	}
