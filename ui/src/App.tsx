@@ -137,6 +137,7 @@ function applyTelegramSafeAreaInsets(): void {
   root.style.setProperty("--tg-safe-bottom", `${clampInsetValue(inset?.bottom)}px`)
   root.style.setProperty("--tg-safe-left", `${clampInsetValue(inset?.left)}px`)
   root.style.setProperty("--tg-safe-right", `${clampInsetValue(inset?.right)}px`)
+  root.style.setProperty("--tg-safe-top-extra", webApp ? `${webApp.isFullscreen ? 10 : 6}px` : "0px")
 }
 
 function isCashFlowHistoryOrder(order: Order): boolean {
@@ -661,9 +662,11 @@ export default function App() {
     }
 
     syncViewport()
+    const delayedSyncTimers = [140, 420, 900].map(delay => window.setTimeout(syncViewport, delay))
     webApp.onEvent?.("viewportChanged", syncViewport)
     webApp.onEvent?.("safeAreaChanged", syncViewport)
     return () => {
+      delayedSyncTimers.forEach(timer => window.clearTimeout(timer))
       webApp.offEvent?.("viewportChanged", syncViewport)
       webApp.offEvent?.("safeAreaChanged", syncViewport)
     }
