@@ -30,6 +30,7 @@ type Service struct {
 	ttl              time.Duration
 	accountSvc       *accounts.Service
 	telegramBotToken string
+	referralNotifier func(ctx context.Context, inviterID, invitedUserID, rewardUSD string)
 }
 
 type User struct {
@@ -62,6 +63,10 @@ func (s *Service) SetAccountService(accountSvc *accounts.Service) {
 
 func (s *Service) SetTelegramBotToken(token string) {
 	s.telegramBotToken = strings.TrimSpace(token)
+}
+
+func (s *Service) SetReferralSignupNotifier(fn func(ctx context.Context, inviterID, invitedUserID, rewardUSD string)) {
+	s.referralNotifier = fn
 }
 
 func (s *Service) Register(ctx context.Context, email, password string) (string, error) {
@@ -126,6 +131,8 @@ func (s *Service) LoginTelegram(ctx context.Context, initData string) (string, U
 	email := fmt.Sprintf("tg_%d@telegram.local", payload.ID)
 	var userID string
 	isNewUser := false
+	referredByID := ""
+	referralRewardUSD := ""
 
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
@@ -192,9 +199,12 @@ func (s *Service) LoginTelegram(ctx context.Context, initData string) (string, U
 		}
 	}
 	if isNewUser {
-		if err := applyReferralFromStartParamTx(ctx, tx, userID, payload.StartParam); err != nil {
-			return "", User{}, err
+		inviterID, rewardUSD, refErr := applyReferralFromStartParamTx(ctx, tx, userID, payload.StartParam)
+		if refErr != nil {
+			return "", User{}, refErr
 		}
+		referredByID = strings.TrimSpace(inviterID)
+		referralRewardUSD = strings.TrimSpace(rewardUSD)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", User{}, err
@@ -213,6 +223,15 @@ func (s *Service) LoginTelegram(ctx context.Context, initData string) (string, U
 	user, err := s.GetUser(ctx, userID)
 	if err != nil {
 		return "", User{}, err
+	}
+	if isNewUser && referredByID != "" && referralRewardUSD != "" && s.referralNotifier != nil {
+		notifier := s.referralNotifier
+		invitedID := userID
+		go func() {
+			notifyCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			notifier(notifyCtx, referredByID, invitedID, referralRewardUSD)
+		}()
 	}
 	return token, user, nil
 }
@@ -370,10 +389,10 @@ func parseStartReferralCode(startParam string) string {
 	return value
 }
 
-func applyReferralFromStartParamTx(ctx context.Context, tx pgx.Tx, newUserID, startParam string) error {
+func applyReferralFromStartParamTx(ctx context.Context, tx pgx.Tx, newUserID, startParam string) (string, string, error) {
 	code := parseStartReferralCode(startParam)
 	if code == "" {
-		return nil
+		return "", "", nil
 	}
 	var inviterID string
 	err := tx.QueryRow(ctx, `
@@ -383,13 +402,13 @@ func applyReferralFromStartParamTx(ctx context.Context, tx pgx.Tx, newUserID, st
 	`, code).Scan(&inviterID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) || isUndefinedColumnError(err) {
-			return nil
+			return "", "", nil
 		}
-		return err
+		return "", "", err
 	}
 	inviterID = strings.TrimSpace(inviterID)
 	if inviterID == "" || inviterID == strings.TrimSpace(newUserID) {
-		return nil
+		return "", "", nil
 	}
 
 	tag, err := tx.Exec(ctx, `
@@ -401,12 +420,12 @@ func applyReferralFromStartParamTx(ctx context.Context, tx pgx.Tx, newUserID, st
 	`, newUserID, inviterID)
 	if err != nil {
 		if isUndefinedColumnError(err) {
-			return nil
+			return "", "", nil
 		}
-		return err
+		return "", "", err
 	}
 	if tag.RowsAffected() == 0 {
-		return nil
+		return "", "", nil
 	}
 
 	sourceRef := "ref_signup:" + newUserID
@@ -426,15 +445,15 @@ func applyReferralFromStartParamTx(ctx context.Context, tx pgx.Tx, newUserID, st
 	`, inviterID, newUserID, sourceRef).Scan(&eventID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) || isUndefinedTableError(err) || isUndefinedColumnError(err) {
-			return nil
+			return "", "", nil
 		}
-		return err
+		return "", "", err
 	}
 	if strings.TrimSpace(eventID) == "" {
-		return nil
+		return "", "", nil
 	}
 	if err := ensureReferralWalletTx(ctx, tx, inviterID); err != nil {
-		return err
+		return "", "", err
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE referral_wallets
@@ -444,9 +463,12 @@ func applyReferralFromStartParamTx(ctx context.Context, tx pgx.Tx, newUserID, st
 		WHERE user_id = $1
 	`, inviterID)
 	if err != nil && (isUndefinedTableError(err) || isUndefinedColumnError(err)) {
-		return nil
+		return "", "", nil
 	}
-	return err
+	if err != nil {
+		return "", "", err
+	}
+	return inviterID, "5.00", nil
 }
 
 func validateTelegramInitData(initData, botToken string) (telegramAuthPayload, error) {

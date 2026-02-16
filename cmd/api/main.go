@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -73,6 +74,18 @@ func main() {
 		cfg.ProjectMode,
 		cfg.WebSocketOrigin,
 	)
+	authSvc.SetReferralSignupNotifier(func(ctx context.Context, inviterID, _ string, rewardUSD string) {
+		if inviterID == "" || rewardUSD == "" {
+			return
+		}
+		ledgerHandler.NotifyUserImportantTelegram(
+			ctx,
+			inviterID,
+			"Referral bonus credited",
+			fmt.Sprintf("You received %s USD for a new referral signup.", rewardUSD),
+			"#notifications",
+		)
+	})
 	orderHandler := orders.NewHandler(orderSvc, accountSvc)
 	if cfg.ProjectMode == "production" && cfg.TelegramMode == "internal" {
 		orderSvc.SetImportantNotifier(ledgerHandler.NotifyUserImportantTelegram)

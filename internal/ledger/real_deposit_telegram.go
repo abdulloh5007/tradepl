@@ -1022,7 +1022,8 @@ func (h *Handler) saveTelegramDepositUpdateOffset(ctx context.Context, offset in
 }
 
 func (h *Handler) telegramCallJSON(ctx context.Context, method string, payload interface{}, out interface{}) error {
-	if !h.telegramRuntimeEnabled() {
+	methodName := strings.TrimSpace(method)
+	if !h.telegramRuntimeEnabled() && !allowTelegramOutboundMethod(methodName) {
 		return errors.New("telegram runtime is disabled for api server")
 	}
 	if strings.TrimSpace(h.tgBotToken) == "" {
@@ -1035,7 +1036,7 @@ func (h *Handler) telegramCallJSON(ctx context.Context, method string, payload i
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.telegramMethodURL(method), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.telegramMethodURL(methodName), bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -1068,6 +1069,15 @@ func (h *Handler) telegramCallJSON(ctx context.Context, method string, payload i
 		}
 	}
 	return nil
+}
+
+func allowTelegramOutboundMethod(method string) bool {
+	switch strings.ToLower(strings.TrimSpace(method)) {
+	case "sendmessage":
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *Handler) telegramMethodURL(method string) string {
