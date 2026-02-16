@@ -665,6 +665,9 @@ input[type=number] {
   border-radius: 12px;
   padding: 8px 10px;
   margin-top: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .system-health-raw summary {
@@ -678,7 +681,11 @@ input[type=number] {
 .system-health-raw pre {
   margin: 10px 0 0;
   max-height: 240px;
+  max-width: 100%;
   overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-size: 11px;
   line-height: 1.4;
   color: var(--muted);

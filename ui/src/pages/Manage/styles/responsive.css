@@ -204,6 +204,10 @@
   .date-range-inputs {
     grid-template-columns: 1fr;
   }
+
+  .system-health-raw pre {
+    max-height: 200px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -345,5 +349,10 @@
 
   .not-found-content p {
     font-size: 16px;
+  }
+
+  .system-health-raw pre {
+    max-height: 170px;
+    font-size: 10px;
   }
 }
