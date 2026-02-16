@@ -440,6 +440,7 @@ func (h *Handler) RequestKYC(w http.ResponseWriter, r *http.Request, userID stri
 	ticket := formatKYCRequestTicket(ticketNo, requestID)
 	h.notifyUserTelegramAsync(
 		userID,
+		"system",
 		"KYC request submitted",
 		fmt.Sprintf("Request %s is pending review. Expected review time is about %d hour(s).", ticket, cfg.KYCReviewETAHours),
 		"#notifications",

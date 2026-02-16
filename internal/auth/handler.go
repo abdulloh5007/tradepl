@@ -41,6 +41,14 @@ type telegramNotificationsRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
+type telegramNotificationKindsRequest struct {
+	System   bool `json:"system"`
+	Bonus    bool `json:"bonus"`
+	Deposit  bool `json:"deposit"`
+	News     bool `json:"news"`
+	Referral bool `json:"referral"`
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if h.profectMode == "production" {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "email auth is disabled in production mode"})
@@ -105,8 +113,15 @@ func (h *Handler) LoginTelegram(w http.ResponseWriter, r *http.Request) {
 			"telegram_id":                    user.TelegramID,
 			"telegram_write_access":          user.TelegramWriteAccess,
 			"telegram_notifications_enabled": user.TelegramNotificationsEnabled,
-			"display_name":                   user.DisplayName,
-			"avatar_url":                     user.AvatarURL,
+			"telegram_notification_kinds": map[string]bool{
+				"system":   user.TelegramNotificationKinds.System,
+				"bonus":    user.TelegramNotificationKinds.Bonus,
+				"deposit":  user.TelegramNotificationKinds.Deposit,
+				"news":     user.TelegramNotificationKinds.News,
+				"referral": user.TelegramNotificationKinds.Referral,
+			},
+			"display_name": user.DisplayName,
+			"avatar_url":   user.AvatarURL,
 		},
 	})
 }
@@ -151,6 +166,39 @@ func (h *Handler) UpdateTelegramNotifications(w http.ResponseWriter, r *http.Req
 	})
 }
 
+func (h *Handler) UpdateTelegramNotificationKinds(w http.ResponseWriter, r *http.Request, userID string) {
+	if h.profectMode != "production" {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorResponse{Error: "telegram notifications are available only in production mode"})
+		return
+	}
+	var req telegramNotificationKindsRequest
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	kinds := TelegramNotificationKinds{
+		System:   req.System,
+		Bonus:    req.Bonus,
+		Deposit:  req.Deposit,
+		News:     req.News,
+		Referral: req.Referral,
+	}
+	if err := h.svc.SetTelegramNotificationKinds(r.Context(), userID, kinds); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ok",
+		"kinds": map[string]bool{
+			"system":   kinds.System,
+			"bonus":    kinds.Bonus,
+			"deposit":  kinds.Deposit,
+			"news":     kinds.News,
+			"referral": kinds.Referral,
+		},
+	})
+}
+
 func (h *Handler) Mode(w http.ResponseWriter, _ *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"mode": h.profectMode})
 }
@@ -167,8 +215,15 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request, userID string) {
 		"telegram_id":                    user.TelegramID,
 		"telegram_write_access":          user.TelegramWriteAccess,
 		"telegram_notifications_enabled": user.TelegramNotificationsEnabled,
-		"display_name":                   user.DisplayName,
-		"avatar_url":                     user.AvatarURL,
+		"telegram_notification_kinds": map[string]bool{
+			"system":   user.TelegramNotificationKinds.System,
+			"bonus":    user.TelegramNotificationKinds.Bonus,
+			"deposit":  user.TelegramNotificationKinds.Deposit,
+			"news":     user.TelegramNotificationKinds.News,
+			"referral": user.TelegramNotificationKinds.Referral,
+		},
+		"display_name": user.DisplayName,
+		"avatar_url":   user.AvatarURL,
 	})
 }
 

@@ -769,6 +769,7 @@ func (h *Handler) applyTelegramDepositReviewDecision(ctx context.Context, reques
 		}
 		h.notifyUserTelegramAsync(
 			req.UserID,
+			"deposit",
 			"Deposit request rejected",
 			fmt.Sprintf("Request %s was rejected by review team.", ticket),
 			"#notifications",
@@ -915,6 +916,7 @@ func (h *Handler) applyTelegramDepositReviewDecision(ctx context.Context, reques
 	if referralCommission.GreaterThan(decimal.Zero) && strings.TrimSpace(referralInviterID) != "" {
 		h.notifyUserTelegramAsync(
 			referralInviterID,
+			"referral",
 			"Referral commission credited",
 			fmt.Sprintf(
 				"You received %s USD (10%%) from referred user's deposit.",
@@ -925,6 +927,7 @@ func (h *Handler) applyTelegramDepositReviewDecision(ctx context.Context, reques
 	}
 	h.notifyUserTelegramAsync(
 		req.UserID,
+		"deposit",
 		"Deposit request approved",
 		fmt.Sprintf(
 			"Request %s approved: +%s USD (bonus %s, total %s USD).",

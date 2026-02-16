@@ -443,7 +443,7 @@ async def internal_post(path: str, payload: dict):
 
 
 async def send_deposit_user_notification(request_id: str, outcome: dict):
-    chat_id = await db.get_deposit_request_notification_target(request_id)
+    chat_id = await db.get_deposit_request_notification_target(request_id, kind="deposit")
     if not chat_id:
         return
     status = str(outcome.get("status") or "").strip().lower()
@@ -487,10 +487,11 @@ async def send_deposit_user_notification(request_id: str, outcome: dict):
 
 
 async def send_kyc_user_notification(request_id: str, outcome: dict):
-    chat_id = await db.get_kyc_request_notification_target(request_id)
+    status = str(outcome.get("status") or "").strip().lower()
+    kind = "bonus" if status == "approved" else "system"
+    chat_id = await db.get_kyc_request_notification_target(request_id, kind=kind)
     if not chat_id:
         return
-    status = str(outcome.get("status") or "").strip().lower()
     ticket = str(outcome.get("ticket") or request_id)
     if status == "approved":
         bonus = safe_decimal_2(outcome.get("bonus_amount_usd"))

@@ -446,6 +446,7 @@
   "settings.notifications.kind.bonus": "Bonus va mukofotlar",
   "settings.notifications.kind.deposit": "Depozit va yechishlar",
   "settings.notifications.kind.news": "Yangilik va svop yangilanishlari",
+  "settings.notifications.kind.referral": "Referal bildirishnomalari",
   "settings.notifications.telegramBot": "Telegram bot bildirishnomalari",
   "settings.notifications.telegramBotHint": "Muhim bildirishnomalar Telegram chatga ham yuboriladi.",
   "settings.notifications.telegramBotBlocked": "Botga kirish bloklangan. Telegramda botni blokdan chiqaring va qayta yoqing.",

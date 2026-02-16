@@ -3,6 +3,22 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 
+DEFAULT_TELEGRAM_NOTIFICATION_KINDS = {
+    "system": False,
+    "bonus": False,
+    "deposit": True,
+    "news": False,
+    "referral": True,
+}
+
+
+def normalize_telegram_notification_kind(raw: str) -> str:
+    value = str(raw or "").strip().lower()
+    if value in ("system", "bonus", "deposit", "news", "referral"):
+        return value
+    return "system"
+
+
 class Database:
     def __init__(self, dsn: str):
         self.dsn = dsn
@@ -324,7 +340,8 @@ class Database:
             )
             return bool(row and row["allowed"])
 
-    async def get_deposit_request_notification_target(self, request_id: str) -> Optional[int]:
+    async def get_deposit_request_notification_target(self, request_id: str, kind: str = "deposit") -> Optional[int]:
+        normalized_kind = normalize_telegram_notification_kind(kind)
         async with self.pool.acquire() as conn:
             try:
                 row = await conn.fetchrow(
@@ -332,7 +349,12 @@ class Database:
                     SELECT
                         COALESCE(u.telegram_id, 0) AS telegram_id,
                         COALESCE(u.telegram_write_access, FALSE) AS write_access,
-                        COALESCE(u.telegram_notifications_enabled, TRUE) AS notifications_enabled
+                        COALESCE(u.telegram_notifications_enabled, TRUE) AS notifications_enabled,
+                        COALESCE((u.telegram_notification_kinds->>'system')::boolean, FALSE) AS kind_system,
+                        COALESCE((u.telegram_notification_kinds->>'bonus')::boolean, FALSE) AS kind_bonus,
+                        COALESCE((u.telegram_notification_kinds->>'deposit')::boolean, TRUE) AS kind_deposit,
+                        COALESCE((u.telegram_notification_kinds->>'news')::boolean, FALSE) AS kind_news,
+                        COALESCE((u.telegram_notification_kinds->>'referral')::boolean, TRUE) AS kind_referral
                     FROM real_deposit_requests r
                     LEFT JOIN users u ON u.id = r.user_id
                     WHERE r.id = $1
@@ -352,14 +374,22 @@ class Database:
                 if row is not None:
                     row = dict(row)
                     row["notifications_enabled"] = True
+                    row["kind_system"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["system"]
+                    row["kind_bonus"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["bonus"]
+                    row["kind_deposit"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["deposit"]
+                    row["kind_news"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["news"]
+                    row["kind_referral"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["referral"]
             if not row:
                 return None
             telegram_id = int(row["telegram_id"] or 0)
             if telegram_id <= 0 or not bool(row["write_access"]) or not bool(row["notifications_enabled"]):
+                return None
+            if not bool(row.get(f"kind_{normalized_kind}", DEFAULT_TELEGRAM_NOTIFICATION_KINDS.get(normalized_kind, False))):
                 return None
             return telegram_id
 
-    async def get_kyc_request_notification_target(self, request_id: str) -> Optional[int]:
+    async def get_kyc_request_notification_target(self, request_id: str, kind: str = "system") -> Optional[int]:
+        normalized_kind = normalize_telegram_notification_kind(kind)
         async with self.pool.acquire() as conn:
             try:
                 row = await conn.fetchrow(
@@ -367,7 +397,12 @@ class Database:
                     SELECT
                         COALESCE(u.telegram_id, 0) AS telegram_id,
                         COALESCE(u.telegram_write_access, FALSE) AS write_access,
-                        COALESCE(u.telegram_notifications_enabled, TRUE) AS notifications_enabled
+                        COALESCE(u.telegram_notifications_enabled, TRUE) AS notifications_enabled,
+                        COALESCE((u.telegram_notification_kinds->>'system')::boolean, FALSE) AS kind_system,
+                        COALESCE((u.telegram_notification_kinds->>'bonus')::boolean, FALSE) AS kind_bonus,
+                        COALESCE((u.telegram_notification_kinds->>'deposit')::boolean, TRUE) AS kind_deposit,
+                        COALESCE((u.telegram_notification_kinds->>'news')::boolean, FALSE) AS kind_news,
+                        COALESCE((u.telegram_notification_kinds->>'referral')::boolean, TRUE) AS kind_referral
                     FROM kyc_verification_requests r
                     LEFT JOIN users u ON u.id = r.user_id
                     WHERE r.id = $1
@@ -387,10 +422,17 @@ class Database:
                 if row is not None:
                     row = dict(row)
                     row["notifications_enabled"] = True
+                    row["kind_system"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["system"]
+                    row["kind_bonus"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["bonus"]
+                    row["kind_deposit"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["deposit"]
+                    row["kind_news"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["news"]
+                    row["kind_referral"] = DEFAULT_TELEGRAM_NOTIFICATION_KINDS["referral"]
             if not row:
                 return None
             telegram_id = int(row["telegram_id"] or 0)
             if telegram_id <= 0 or not bool(row["write_access"]) or not bool(row["notifications_enabled"]):
+                return None
+            if not bool(row.get(f"kind_{normalized_kind}", DEFAULT_TELEGRAM_NOTIFICATION_KINDS.get(normalized_kind, False))):
                 return None
             return telegram_id
 

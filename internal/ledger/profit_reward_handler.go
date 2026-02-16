@@ -212,6 +212,7 @@ func (h *Handler) ClaimProfitReward(w http.ResponseWriter, r *http.Request, user
 
 	h.notifyUserTelegramAsync(
 		userID,
+		"bonus",
 		"Profit stage reward credited",
 		fmt.Sprintf("Stage %d reward %s USD credited to account %s.", stageCfg.StageNo, stageCfg.Reward.StringFixed(2), targetAccountName),
 		"#history",

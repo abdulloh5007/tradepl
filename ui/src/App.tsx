@@ -13,7 +13,7 @@ import { triggerTelegramHaptic } from "./utils/telegramHaptics"
 import { useMarketWebSocket } from "./hooks/useMarketWebSocket"
 
 // API
-import { createApiClient, type DepositBonusStatus, type KYCStatus, type ProfitRewardStatus, type ReferralStatus, type SignupBonusStatus, type UserProfile } from "./api"
+import { createApiClient, type DepositBonusStatus, type KYCStatus, type ProfitRewardStatus, type ReferralStatus, type SignupBonusStatus, type TelegramNotificationKinds, type UserProfile } from "./api"
 
 // Components
 import BottomNav from "./components/BottomNav"
@@ -45,6 +45,25 @@ const defaultNotificationSettings: NotificationSettings = {
     news: true,
   },
   haptics: "normal",
+}
+
+const defaultTelegramBotNotificationKinds: TelegramNotificationKinds = {
+  system: false,
+  bonus: false,
+  deposit: true,
+  news: false,
+  referral: true,
+}
+
+function normalizeTelegramBotNotificationKinds(raw?: Partial<TelegramNotificationKinds> | null): TelegramNotificationKinds {
+  const value = raw || {}
+  return {
+    system: typeof value.system === "boolean" ? value.system : defaultTelegramBotNotificationKinds.system,
+    bonus: typeof value.bonus === "boolean" ? value.bonus : defaultTelegramBotNotificationKinds.bonus,
+    deposit: typeof value.deposit === "boolean" ? value.deposit : defaultTelegramBotNotificationKinds.deposit,
+    news: typeof value.news === "boolean" ? value.news : defaultTelegramBotNotificationKinds.news,
+    referral: typeof value.referral === "boolean" ? value.referral : defaultTelegramBotNotificationKinds.referral,
+  }
 }
 
 type PollKey = "metrics" | "orders"
@@ -273,6 +292,14 @@ function readStoredNotificationSettings(): NotificationSettings {
     }
   } catch {
     return defaultNotificationSettings
+  }
+}
+
+function normalizeProfile(raw: UserProfile | null | undefined): UserProfile | null {
+  if (!raw) return null
+  return {
+    ...raw,
+    telegram_notification_kinds: normalizeTelegramBotNotificationKinds(raw.telegram_notification_kinds),
   }
 }
 
@@ -613,6 +640,10 @@ export default function App() {
   const telegramMiniApp = isTelegramMiniApp()
   const telegramModeActive = authFlowMode === "production" && telegramMiniApp
   const telegramBotSettingsVisible = authFlowMode === "production"
+  const telegramBotNotificationKinds = useMemo(
+    () => normalizeTelegramBotNotificationKinds(profile?.telegram_notification_kinds),
+    [profile?.telegram_notification_kinds]
+  )
   const lastDisplay = quote?.last ? parseFloat(quote.last) : NaN
   const rawBidDisplay = quote?.bid ? parseFloat(quote.bid) : NaN
   const rawAskDisplay = quote?.ask ? parseFloat(quote.ask) : NaN
@@ -1140,7 +1171,7 @@ export default function App() {
         const res = await publicApi.telegramAuth(initData)
         if (cancelled) return
         setToken(res.access_token)
-        setProfile(res.user || null)
+        setProfile(normalizeProfile(res.user || null))
         setCookie("lv_token", res.access_token)
         setCookie("lv_account_id", "")
         setActiveAccountId("")
@@ -1169,7 +1200,7 @@ export default function App() {
     }
     try {
       const user = await authApi.me()
-      setProfile(user || null)
+      setProfile(normalizeProfile(user || null))
     } catch {
       // ignore profile refresh errors
     }
@@ -1224,7 +1255,7 @@ export default function App() {
       if (cancelled) return
       await authApi.setTelegramWriteAccess(allowed).catch(() => { })
       if (cancelled) return
-      setProfile(prev => prev ? { ...prev, telegram_write_access: allowed } : prev)
+      setProfile(prev => prev ? normalizeProfile({ ...prev, telegram_write_access: allowed }) : prev)
       if (!allowed) {
         setTelegramAuthError(t("auth.telegramWriteDeniedClosing", lang))
         window.setTimeout(() => {
@@ -1972,15 +2003,15 @@ export default function App() {
         const allowed = await requestTelegramWriteAccess()
         await authApi.setTelegramWriteAccess(Boolean(allowed)).catch(() => { })
         if (!allowed) {
-          setProfile(prev => prev ? { ...prev, telegram_write_access: false } : prev)
+          setProfile(prev => prev ? normalizeProfile({ ...prev, telegram_write_access: false }) : prev)
           toast.error(t("settings.notifications.telegramBotBlocked", lang))
           return
         }
-        setProfile(prev => prev ? { ...prev, telegram_write_access: true } : prev)
+        setProfile(prev => prev ? normalizeProfile({ ...prev, telegram_write_access: true }) : prev)
       }
 
       await authApi.setTelegramNotificationsEnabled(enabled)
-      setProfile(prev => prev ? { ...prev, telegram_notifications_enabled: enabled } : prev)
+      setProfile(prev => prev ? normalizeProfile({ ...prev, telegram_notifications_enabled: enabled }) : prev)
       toast.success(enabled ? t("settings.notifications.state.on", lang) : t("settings.notifications.state.off", lang))
       refreshProfile().catch(() => { })
     } catch (err: any) {
@@ -1994,6 +2025,34 @@ export default function App() {
     telegramBotNotificationsBusy,
     profile?.telegram_write_access,
     requestTelegramWriteAccess,
+    authApi,
+    lang,
+    refreshProfile,
+  ])
+
+  const handleUpdateTelegramBotNotificationKinds = useCallback(async (kinds: TelegramNotificationKinds) => {
+    if (!token) return
+    if (!telegramModeActive) {
+      toast.error(t("auth.openFromTelegram", lang))
+      return
+    }
+    if (telegramBotNotificationsBusy) return
+
+    const normalizedKinds = normalizeTelegramBotNotificationKinds(kinds)
+    setTelegramBotNotificationsBusy(true)
+    try {
+      await authApi.setTelegramNotificationKinds(normalizedKinds)
+      setProfile(prev => prev ? normalizeProfile({ ...prev, telegram_notification_kinds: normalizedKinds }) : prev)
+      refreshProfile().catch(() => { })
+    } catch (err: any) {
+      toast.error(err?.message || t("common.error", lang))
+    } finally {
+      setTelegramBotNotificationsBusy(false)
+    }
+  }, [
+    token,
+    telegramModeActive,
+    telegramBotNotificationsBusy,
     authApi,
     lang,
     refreshProfile,
@@ -2103,9 +2162,11 @@ export default function App() {
           setNotificationSettings={setNotificationSettings}
           telegramBotSwitchVisible={telegramBotSettingsVisible}
           telegramBotNotificationsEnabled={Boolean(profile?.telegram_notifications_enabled)}
+          telegramBotNotificationKinds={telegramBotNotificationKinds}
           telegramBotNotificationsBusy={telegramBotNotificationsBusy}
           telegramWriteAccess={Boolean(profile?.telegram_write_access)}
           onToggleTelegramBotNotifications={handleToggleTelegramBotNotifications}
+          onUpdateTelegramBotNotificationKinds={handleUpdateTelegramBotNotificationKinds}
           openProfitStagesSignal={openProfitStagesSignal}
           onLogout={logout}
           api={api}

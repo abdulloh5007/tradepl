@@ -81,6 +81,7 @@ func main() {
 		ledgerHandler.NotifyUserImportantTelegram(
 			ctx,
 			inviterID,
+			"referral",
 			"Referral bonus credited",
 			fmt.Sprintf("You received %s USD for a new referral signup.", rewardUSD),
 			"#notifications",
@@ -88,7 +89,9 @@ func main() {
 	})
 	orderHandler := orders.NewHandler(orderSvc, accountSvc)
 	if cfg.ProjectMode == "production" && cfg.TelegramMode == "internal" {
-		orderSvc.SetImportantNotifier(ledgerHandler.NotifyUserImportantTelegram)
+		orderSvc.SetImportantNotifier(func(ctx context.Context, userID, title, message, target string) {
+			ledgerHandler.NotifyUserImportantTelegram(ctx, userID, "system", title, message, target)
+		})
 	}
 	marketWS := marketdata.NewMarketWS(cfg.WebSocketOrigin)
 	store := marketdata.NewCandleStore(cfg.MarketDataDir)

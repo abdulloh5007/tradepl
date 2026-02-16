@@ -253,6 +253,7 @@ func (h *Handler) ClaimSignupBonus(w http.ResponseWriter, r *http.Request, userI
 	}
 	h.notifyUserTelegramAsync(
 		userID,
+		"bonus",
 		"Welcome bonus credited",
 		fmt.Sprintf("You received %s USD welcome bonus on account %s.", cfg.SignupBonusAmount.StringFixed(2), target.Name),
 		"#notifications",

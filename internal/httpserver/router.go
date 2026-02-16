@@ -149,6 +149,14 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.AuthHandler.UpdateTelegramNotifications(w, r, userID)
 			})
+			r.Post("/auth/telegram/notification-kinds", func(w http.ResponseWriter, r *http.Request) {
+				userID, ok := UserID(r)
+				if !ok {
+					httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+					return
+				}
+				d.AuthHandler.UpdateTelegramNotificationKinds(w, r, userID)
+			})
 			r.Get("/balances", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {

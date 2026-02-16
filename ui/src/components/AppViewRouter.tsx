@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react"
 import type { ReactNode } from "react"
-import type { DepositBonusStatus, KYCStatus, ProfitRewardStatus, ReferralStatus, SignupBonusStatus, UserProfile } from "../api"
+import type { DepositBonusStatus, KYCStatus, ProfitRewardStatus, ReferralStatus, SignupBonusStatus, TelegramNotificationKinds, UserProfile } from "../api"
 import type { AppNotification, Lang, MarketConfig, MarketNewsEvent, Metrics, NotificationSettings, Order, Quote, Theme, TradingAccount, View } from "../types"
 import { t } from "../utils/i18n"
 import TradingPage from "../pages/Trading/TradingPage"
@@ -110,9 +110,11 @@ interface AppViewRouterProps {
   setNotificationSettings: (settings: NotificationSettings) => void
   telegramBotSwitchVisible: boolean
   telegramBotNotificationsEnabled: boolean
+  telegramBotNotificationKinds: TelegramNotificationKinds
   telegramBotNotificationsBusy: boolean
   telegramWriteAccess: boolean
   onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
+  onUpdateTelegramBotNotificationKinds: (kinds: TelegramNotificationKinds) => Promise<void> | void
   openProfitStagesSignal: number
   onLogout: () => void
   api: FaucetApi
@@ -208,9 +210,11 @@ export default function AppViewRouter({
   setNotificationSettings,
   telegramBotSwitchVisible,
   telegramBotNotificationsEnabled,
+  telegramBotNotificationKinds,
   telegramBotNotificationsBusy,
   telegramWriteAccess,
   onToggleTelegramBotNotifications,
+  onUpdateTelegramBotNotificationKinds,
   openProfitStagesSignal,
   onLogout,
   api,
@@ -343,9 +347,11 @@ export default function AppViewRouter({
           setNotificationSettings={setNotificationSettings}
           telegramBotSwitchVisible={telegramBotSwitchVisible}
           telegramBotNotificationsEnabled={telegramBotNotificationsEnabled}
+          telegramBotNotificationKinds={telegramBotNotificationKinds}
           telegramBotNotificationsBusy={telegramBotNotificationsBusy}
           telegramWriteAccess={telegramWriteAccess}
           onToggleTelegramBotNotifications={onToggleTelegramBotNotifications}
+          onUpdateTelegramBotNotificationKinds={onUpdateTelegramBotNotificationKinds}
           activeAccount={activeAccount}
           kycStatus={kycStatus}
           onRequestKYC={onRequestKYC}

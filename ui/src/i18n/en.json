@@ -474,6 +474,7 @@
   "settings.notifications.kind.bonus": "Bonuses and rewards",
   "settings.notifications.kind.deposit": "Deposits and withdrawals",
   "settings.notifications.kind.news": "News and swap updates",
+  "settings.notifications.kind.referral": "Referral alerts",
   "settings.notifications.telegramBot": "Telegram bot notifications",
   "settings.notifications.telegramBotHint": "Important notifications will also be sent to your Telegram chat.",
   "settings.notifications.telegramBotBlocked": "Bot access is blocked. Unblock the bot in Telegram and enable this again.",

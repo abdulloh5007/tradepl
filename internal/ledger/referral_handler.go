@@ -302,6 +302,7 @@ func (h *Handler) ReferralWithdraw(w http.ResponseWriter, r *http.Request, userI
 
 	h.notifyUserTelegramAsync(
 		userID,
+		"referral",
 		"Referral withdrawal completed",
 		fmt.Sprintf("%s USD was transferred from referral balance to your real account.", amount.StringFixed(2)),
 		"#history",

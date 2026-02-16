@@ -1,4 +1,5 @@
 import { ArrowLeft } from "lucide-react"
+import type { TelegramNotificationKinds } from "../../api"
 import type { Lang, NotificationSettings, Theme } from "../../types"
 import { t } from "../../utils/i18n"
 import TelegramBackButton from "../../components/telegram/TelegramBackButton"
@@ -14,9 +15,11 @@ interface SettingsPageProps {
     setNotificationSettings: (settings: NotificationSettings) => void
     telegramBotSwitchVisible: boolean
     telegramBotNotificationsEnabled: boolean
+    telegramBotNotificationKinds: TelegramNotificationKinds
     telegramBotNotificationsBusy: boolean
     telegramWriteAccess: boolean
     onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
+    onUpdateTelegramBotNotificationKinds: (kinds: TelegramNotificationKinds) => Promise<void> | void
     onBack: () => void
     onLogout: () => void
 }
@@ -30,9 +33,11 @@ export default function SettingsPage({
     setNotificationSettings,
     telegramBotSwitchVisible,
     telegramBotNotificationsEnabled,
+    telegramBotNotificationKinds,
     telegramBotNotificationsBusy,
     telegramWriteAccess,
     onToggleTelegramBotNotifications,
+    onUpdateTelegramBotNotificationKinds,
     onBack,
     onLogout,
 }: SettingsPageProps) {
@@ -70,6 +75,16 @@ export default function SettingsPage({
         if (telegramBotNotificationsBusy) return
         triggerTelegramHaptic("toggle", hapticMode)
         await onToggleTelegramBotNotifications(!telegramBotNotificationsEnabled)
+    }
+
+    const toggleTelegramBotKind = async (key: keyof TelegramNotificationKinds) => {
+        if (telegramBotNotificationsBusy || !telegramBotNotificationsEnabled) return
+        triggerTelegramHaptic("toggle", hapticMode)
+        const nextKinds: TelegramNotificationKinds = {
+            ...telegramBotNotificationKinds,
+            [key]: !telegramBotNotificationKinds[key],
+        }
+        await onUpdateTelegramBotNotificationKinds(nextKinds)
     }
 
     return (
@@ -256,26 +271,93 @@ export default function SettingsPage({
                         </button>
                     </div>
                     {telegramBotSwitchVisible ? (
-                        <div className="settings-toggle-row settings-toggle-row-stack">
-                            <div className="settings-toggle-text">
-                                <span>{t("settings.notifications.telegramBot", lang)}</span>
-                                <small>
-                                    {telegramWriteAccess
-                                        ? t("settings.notifications.telegramBotHint", lang)
-                                        : t("settings.notifications.telegramBotBlocked", lang)}
-                                </small>
+                        <>
+                            <div className="settings-toggle-row settings-toggle-row-stack">
+                                <div className="settings-toggle-text">
+                                    <span>{t("settings.notifications.telegramBot", lang)}</span>
+                                    <small>
+                                        {telegramWriteAccess
+                                            ? t("settings.notifications.telegramBotHint", lang)
+                                            : t("settings.notifications.telegramBotBlocked", lang)}
+                                    </small>
+                                </div>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={telegramBotNotificationsEnabled}
+                                    disabled={telegramBotNotificationsBusy}
+                                    className={`settings-ios-switch ${telegramBotNotificationsEnabled ? "checked" : ""}`}
+                                    onClick={handleToggleTelegram}
+                                >
+                                    <span className="settings-ios-thumb" />
+                                </button>
                             </div>
-                            <button
-                                type="button"
-                                role="switch"
-                                aria-checked={telegramBotNotificationsEnabled}
-                                disabled={telegramBotNotificationsBusy}
-                                className={`settings-ios-switch ${telegramBotNotificationsEnabled ? "checked" : ""}`}
-                                onClick={handleToggleTelegram}
-                            >
-                                <span className="settings-ios-thumb" />
-                            </button>
-                        </div>
+                            <div className={`settings-toggle-row ${telegramBotNotificationsEnabled ? "" : "disabled"}`}>
+                                <span>{t("settings.notifications.kind.system", lang)}</span>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={telegramBotNotificationKinds.system}
+                                    disabled={!telegramBotNotificationsEnabled || telegramBotNotificationsBusy}
+                                    className={`settings-ios-switch ${telegramBotNotificationKinds.system ? "checked" : ""}`}
+                                    onClick={() => { void toggleTelegramBotKind("system") }}
+                                >
+                                    <span className="settings-ios-thumb" />
+                                </button>
+                            </div>
+                            <div className={`settings-toggle-row ${telegramBotNotificationsEnabled ? "" : "disabled"}`}>
+                                <span>{t("settings.notifications.kind.bonus", lang)}</span>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={telegramBotNotificationKinds.bonus}
+                                    disabled={!telegramBotNotificationsEnabled || telegramBotNotificationsBusy}
+                                    className={`settings-ios-switch ${telegramBotNotificationKinds.bonus ? "checked" : ""}`}
+                                    onClick={() => { void toggleTelegramBotKind("bonus") }}
+                                >
+                                    <span className="settings-ios-thumb" />
+                                </button>
+                            </div>
+                            <div className={`settings-toggle-row ${telegramBotNotificationsEnabled ? "" : "disabled"}`}>
+                                <span>{t("settings.notifications.kind.deposit", lang)}</span>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={telegramBotNotificationKinds.deposit}
+                                    disabled={!telegramBotNotificationsEnabled || telegramBotNotificationsBusy}
+                                    className={`settings-ios-switch ${telegramBotNotificationKinds.deposit ? "checked" : ""}`}
+                                    onClick={() => { void toggleTelegramBotKind("deposit") }}
+                                >
+                                    <span className="settings-ios-thumb" />
+                                </button>
+                            </div>
+                            <div className={`settings-toggle-row ${telegramBotNotificationsEnabled ? "" : "disabled"}`}>
+                                <span>{t("settings.notifications.kind.news", lang)}</span>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={telegramBotNotificationKinds.news}
+                                    disabled={!telegramBotNotificationsEnabled || telegramBotNotificationsBusy}
+                                    className={`settings-ios-switch ${telegramBotNotificationKinds.news ? "checked" : ""}`}
+                                    onClick={() => { void toggleTelegramBotKind("news") }}
+                                >
+                                    <span className="settings-ios-thumb" />
+                                </button>
+                            </div>
+                            <div className={`settings-toggle-row ${telegramBotNotificationsEnabled ? "" : "disabled"}`}>
+                                <span>{t("settings.notifications.kind.referral", lang)}</span>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={telegramBotNotificationKinds.referral}
+                                    disabled={!telegramBotNotificationsEnabled || telegramBotNotificationsBusy}
+                                    className={`settings-ios-switch ${telegramBotNotificationKinds.referral ? "checked" : ""}`}
+                                    onClick={() => { void toggleTelegramBotKind("referral") }}
+                                >
+                                    <span className="settings-ios-thumb" />
+                                </button>
+                            </div>
+                        </>
                     ) : null}
                 </div>
             </section>

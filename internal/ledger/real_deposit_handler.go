@@ -303,6 +303,7 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 	ticket := formatRealDepositTicket(ticketNo, requestID)
 	h.notifyUserTelegramAsync(
 		userID,
+		"deposit",
 		"Deposit request received",
 		fmt.Sprintf("Request %s was sent for review. Amount: %s USD.", ticket, amountUSD.StringFixed(2)),
 		"#notifications",
@@ -449,6 +450,7 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 			ticket := formatRealDepositTicket(req.TicketNo, req.ID)
 			h.notifyUserTelegramAsync(
 				req.UserID,
+				"deposit",
 				"Deposit request rejected",
 				fmt.Sprintf("Request %s was rejected: account was not found.", ticket),
 				"#notifications",
@@ -467,6 +469,7 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 		ticket := formatRealDepositTicket(req.TicketNo, req.ID)
 		h.notifyUserTelegramAsync(
 			req.UserID,
+			"deposit",
 			"Deposit request rejected",
 			fmt.Sprintf("Request %s was rejected: account type is not real.", ticket),
 			"#notifications",
@@ -556,6 +559,7 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 	if referralCommission.GreaterThan(decimal.Zero) && strings.TrimSpace(referralInviterID) != "" {
 		h.notifyUserTelegramAsync(
 			referralInviterID,
+			"referral",
 			"Referral commission credited",
 			fmt.Sprintf(
 				"You received %s USD (10%%) from referred user's deposit.",
@@ -567,6 +571,7 @@ func (h *Handler) processOneDueRealDepositRequest(ctx context.Context) (bool, er
 	ticket := formatRealDepositTicket(req.TicketNo, req.ID)
 	h.notifyUserTelegramAsync(
 		req.UserID,
+		"deposit",
 		"Deposit request approved",
 		fmt.Sprintf(
 			"Request %s approved: +%s USD (bonus %s, total %s USD).",

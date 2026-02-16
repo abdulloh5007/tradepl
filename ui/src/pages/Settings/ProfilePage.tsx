@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import { Camera, ChevronRight, Settings2, ShieldCheck, Trophy, User, Users } from "lucide-react"
-import type { KYCStatus, ProfitRewardStatus, ReferralStatus, UserProfile } from "../../api"
+import type { KYCStatus, ProfitRewardStatus, ReferralStatus, TelegramNotificationKinds, UserProfile } from "../../api"
 import type { Lang, NotificationSettings, Theme, TradingAccount } from "../../types"
 import ProfitStagesPage from "./ProfitStagesPage"
 import SettingsPage from "./SettingsPage"
@@ -20,9 +20,11 @@ interface ProfilePageProps {
     setNotificationSettings: (settings: NotificationSettings) => void
     telegramBotSwitchVisible: boolean
     telegramBotNotificationsEnabled: boolean
+    telegramBotNotificationKinds: TelegramNotificationKinds
     telegramBotNotificationsBusy: boolean
     telegramWriteAccess: boolean
     onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
+    onUpdateTelegramBotNotificationKinds: (kinds: TelegramNotificationKinds) => Promise<void> | void
     activeAccount: TradingAccount | null
     kycStatus: KYCStatus | null
     onRequestKYC: (payload: {
@@ -54,9 +56,11 @@ export default function ProfilePage({
     setNotificationSettings,
     telegramBotSwitchVisible,
     telegramBotNotificationsEnabled,
+    telegramBotNotificationKinds,
     telegramBotNotificationsBusy,
     telegramWriteAccess,
     onToggleTelegramBotNotifications,
+    onUpdateTelegramBotNotificationKinds,
     activeAccount,
     kycStatus,
     onRequestKYC,
@@ -202,9 +206,11 @@ export default function ProfilePage({
                 setNotificationSettings={setNotificationSettings}
                 telegramBotSwitchVisible={telegramBotSwitchVisible}
                 telegramBotNotificationsEnabled={telegramBotNotificationsEnabled}
+                telegramBotNotificationKinds={telegramBotNotificationKinds}
                 telegramBotNotificationsBusy={telegramBotNotificationsBusy}
                 telegramWriteAccess={telegramWriteAccess}
                 onToggleTelegramBotNotifications={onToggleTelegramBotNotifications}
+                onUpdateTelegramBotNotificationKinds={onUpdateTelegramBotNotificationKinds}
                 onBack={() => setShowSettings(false)}
                 onLogout={onLogout}
             />

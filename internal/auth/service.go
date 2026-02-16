@@ -39,8 +39,27 @@ type User struct {
 	TelegramID                   int64
 	TelegramWriteAccess          bool
 	TelegramNotificationsEnabled bool
+	TelegramNotificationKinds    TelegramNotificationKinds
 	DisplayName                  string
 	AvatarURL                    string
+}
+
+type TelegramNotificationKinds struct {
+	System   bool `json:"system"`
+	Bonus    bool `json:"bonus"`
+	Deposit  bool `json:"deposit"`
+	News     bool `json:"news"`
+	Referral bool `json:"referral"`
+}
+
+func defaultTelegramNotificationKinds() TelegramNotificationKinds {
+	return TelegramNotificationKinds{
+		System:   false,
+		Bonus:    false,
+		Deposit:  true,
+		News:     false,
+		Referral: true,
+	}
 }
 
 type telegramAuthPayload struct {
@@ -273,6 +292,7 @@ func (s *Service) ParseToken(token string) (string, error) {
 
 func (s *Service) GetUser(ctx context.Context, userID string) (User, error) {
 	var u User
+	defaultKinds := defaultTelegramNotificationKinds()
 	err := s.pool.QueryRow(ctx, `
 		SELECT
 			id,
@@ -280,6 +300,11 @@ func (s *Service) GetUser(ctx context.Context, userID string) (User, error) {
 			COALESCE(telegram_id, 0),
 			COALESCE(telegram_write_access, FALSE),
 			COALESCE(telegram_notifications_enabled, TRUE),
+			COALESCE((telegram_notification_kinds->>'system')::boolean, FALSE),
+			COALESCE((telegram_notification_kinds->>'bonus')::boolean, FALSE),
+			COALESCE((telegram_notification_kinds->>'deposit')::boolean, TRUE),
+			COALESCE((telegram_notification_kinds->>'news')::boolean, FALSE),
+			COALESCE((telegram_notification_kinds->>'referral')::boolean, TRUE),
 			COALESCE(display_name, ''),
 			COALESCE(avatar_url, '')
 		FROM users
@@ -290,6 +315,11 @@ func (s *Service) GetUser(ctx context.Context, userID string) (User, error) {
 		&u.TelegramID,
 		&u.TelegramWriteAccess,
 		&u.TelegramNotificationsEnabled,
+		&u.TelegramNotificationKinds.System,
+		&u.TelegramNotificationKinds.Bonus,
+		&u.TelegramNotificationKinds.Deposit,
+		&u.TelegramNotificationKinds.News,
+		&u.TelegramNotificationKinds.Referral,
 		&u.DisplayName,
 		&u.AvatarURL,
 	)
@@ -302,7 +332,11 @@ func (s *Service) GetUser(ctx context.Context, userID string) (User, error) {
 		if err == nil {
 			u.TelegramWriteAccess = false
 			u.TelegramNotificationsEnabled = true
+			u.TelegramNotificationKinds = defaultKinds
 		}
+	}
+	if err == nil && (u.TelegramNotificationKinds == TelegramNotificationKinds{}) {
+		u.TelegramNotificationKinds = defaultKinds
 	}
 	return u, err
 }
@@ -341,6 +375,30 @@ func (s *Service) SetTelegramNotificationsEnabled(ctx context.Context, userID st
 	if err != nil {
 		if isUndefinedColumnError(err) {
 			return errors.New("telegram notifications setting is unavailable: run migrations")
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
+func (s *Service) SetTelegramNotificationKinds(ctx context.Context, userID string, kinds TelegramNotificationKinds) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users
+		SET telegram_notification_kinds = jsonb_build_object(
+			'system', $2,
+			'bonus', $3,
+			'deposit', $4,
+			'news', $5,
+			'referral', $6
+		)
+		WHERE id = $1
+	`, userID, kinds.System, kinds.Bonus, kinds.Deposit, kinds.News, kinds.Referral)
+	if err != nil {
+		if isUndefinedColumnError(err) {
+			return errors.New("telegram notification kinds are unavailable: run migrations")
 		}
 		return err
 	}

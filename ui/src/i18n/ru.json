@@ -446,6 +446,7 @@
   "settings.notifications.kind.bonus": "Бонусы и награды",
   "settings.notifications.kind.deposit": "Депозиты и выводы",
   "settings.notifications.kind.news": "Новости и своп-обновления",
+  "settings.notifications.kind.referral": "Реферальные уведомления",
   "settings.notifications.telegramBot": "Уведомления в Telegram-бот",
   "settings.notifications.telegramBotHint": "Важные уведомления будут дублироваться в ваш чат Telegram.",
   "settings.notifications.telegramBotBlocked": "Доступ бота заблокирован. Разблокируйте бота в Telegram и включите снова.",

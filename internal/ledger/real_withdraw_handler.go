@@ -132,6 +132,7 @@ func (h *Handler) RequestRealWithdraw(w http.ResponseWriter, r *http.Request, us
 
 	h.notifyUserTelegramAsync(
 		userID,
+		"deposit",
 		"Withdrawal completed",
 		fmt.Sprintf("Real withdrawal of %s USD was completed via %s.", amountUSD.StringFixed(2), strings.ToUpper(methodID)),
 		"#notifications",

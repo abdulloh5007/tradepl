@@ -67,8 +67,17 @@ export type UserProfile = {
   telegram_id?: number
   telegram_write_access?: boolean
   telegram_notifications_enabled?: boolean
+  telegram_notification_kinds?: TelegramNotificationKinds
   display_name?: string
   avatar_url?: string
+}
+
+export type TelegramNotificationKinds = {
+  system: boolean
+  bonus: boolean
+  deposit: boolean
+  news: boolean
+  referral: boolean
 }
 
 export type SignupBonusStatus = {
@@ -307,6 +316,8 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
       request<{ status: string; allowed: boolean }>("/v1/auth/telegram/write-access", "POST", { allowed }, true),
     setTelegramNotificationsEnabled: (enabled: boolean) =>
       request<{ status: string; enabled: boolean }>("/v1/auth/telegram/notifications", "POST", { enabled }, true),
+    setTelegramNotificationKinds: (kinds: TelegramNotificationKinds) =>
+      request<{ status: string; kinds: TelegramNotificationKinds }>("/v1/auth/telegram/notification-kinds", "POST", kinds, true),
     me: () => request<UserProfile>("/v1/me", "GET", undefined, true),
     accounts: () => request<TradingAccount[] | null>("/v1/accounts", "GET", undefined, true),
     createAccount: (payload: { plan_id: string; mode: "demo" | "real"; name?: string; is_active?: boolean }) =>

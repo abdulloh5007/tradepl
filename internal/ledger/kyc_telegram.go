@@ -401,6 +401,7 @@ func (h *Handler) applyTelegramKYCReviewDecision(ctx context.Context, requestID,
 
 		h.notifyUserTelegramAsync(
 			req.UserID,
+			"system",
 			"KYC request rejected",
 			fmt.Sprintf("%s Ticket: %s.", formatKYCBlockMessage(blockedUntil, permanentBlocked), ticket),
 			"#notifications",
@@ -534,6 +535,7 @@ func (h *Handler) applyTelegramKYCReviewDecision(ctx context.Context, requestID,
 
 	h.notifyUserTelegramAsync(
 		req.UserID,
+		"bonus",
 		"KYC approved",
 		fmt.Sprintf(
 			"KYC approved. %s USD bonus credited to account %s.",
