@@ -521,6 +521,10 @@ html[data-theme="light"] {
   padding-top: 24px;
 }
 
+.app-page-top-offset {
+  padding-top: 8px;
+}
+
 .app-main-chart>* {
   flex: 1;
   min-height: 0;

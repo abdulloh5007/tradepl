@@ -92,7 +92,7 @@ export default function ProfitStagesPage({ lang, status, accounts, onBack, onRef
   }, [claimModalRender])
 
   return (
-    <div className="profit-stage-page">
+    <div className="profit-stage-page app-page-top-offset">
       <TelegramBackButton onBack={onBack} showFallback={false} />
 
       <section className="profit-stage-summary">

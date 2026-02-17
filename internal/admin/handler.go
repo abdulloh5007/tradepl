@@ -30,6 +30,11 @@ type Handler struct {
 	updater    *UpdaterManager
 }
 
+const (
+	reviewDispatchNotifyChannel = "review_dispatch"
+	reviewAccessSyncPayload     = "access_sync:panel_admins"
+)
+
 // NewHandler creates a new admin handler
 func NewHandler(pool *pgxpool.Pool, jwtSecret string) *Handler {
 	return &Handler{
@@ -41,6 +46,17 @@ func NewHandler(pool *pgxpool.Pool, jwtSecret string) *Handler {
 
 func (h *Handler) SetUpdater(updater *UpdaterManager) {
 	h.updater = updater
+}
+
+func (h *Handler) notifyPanelAdminsAccessChanged() {
+	if h.pool == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := h.pool.Exec(ctx, `SELECT pg_notify($1, $2)`, reviewDispatchNotifyChannel, reviewAccessSyncPayload); err != nil {
+		log.Printf("[admin] failed to notify panel-admin access sync: %v", err)
+	}
 }
 
 // Login handles admin login
@@ -678,6 +694,7 @@ func (h *Handler) CreatePanelAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.notifyPanelAdminsAccessChanged()
 	httputil.WriteJSON(w, http.StatusCreated, admin)
 }
 
@@ -708,6 +725,7 @@ func (h *Handler) UpdatePanelAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.notifyPanelAdminsAccessChanged()
 	httputil.WriteJSON(w, http.StatusOK, admin)
 }
 
@@ -728,6 +746,7 @@ func (h *Handler) DeletePanelAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.notifyPanelAdminsAccessChanged()
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 

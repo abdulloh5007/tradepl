@@ -70,7 +70,7 @@ export default function KYCPage({
     }
 
     return (
-        <div className="kyc-page">
+        <div className="kyc-page app-page-top-offset">
             <TelegramBackButton onBack={onBack} showFallback={false} />
 
             <section className="kyc-page-card">

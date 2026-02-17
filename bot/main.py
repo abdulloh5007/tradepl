@@ -21,7 +21,6 @@ from config import (
     OWNER_TELEGRAM_ID,
     REVIEW_BATCH_LIMIT,
     REVIEW_CHAT_LINK_TTL_SECONDS,
-    REVIEW_ACCESS_SYNC_SECONDS,
     REVIEW_FALLBACK_SECONDS,
     REVIEW_LISTENER_RETRY_SECONDS,
     REVIEW_NOTIFY_CHANNEL,
@@ -62,6 +61,7 @@ BOT_STOP_EVENT: asyncio.Event | None = None
 SHUTDOWN_IN_PROGRESS = False
 LAST_DEPOSIT_REVIEW_ACCESS: dict[int, bool] = {}
 LAST_DEPOSIT_REVIEW_CHAT_ID = 0
+ACCESS_SYNC_NOTIFY_PREFIX = "access_sync:"
 
 
 def utc_now_iso() -> str:
@@ -166,6 +166,22 @@ async def kick_deposit_review_chat_member(chat_id: int, telegram_id: int, reason
         logger.exception("Failed to revoke review chat access user=%s", telegram_id)
 
 
+async def clear_deposit_review_chat_blacklist(chat_id: int, telegram_id: int, reason: str):
+    if chat_id <= 0 or telegram_id <= 0:
+        return
+    try:
+        await bot.unban_chat_member(chat_id=chat_id, user_id=telegram_id, only_if_banned=True)
+        logger.info("Review chat blacklist cleared user=%s reason=%s", telegram_id, reason)
+    except TelegramBadRequest as err:
+        text = str(err).lower()
+        if "participant" in text or "not enough rights" in text or "user not found" in text:
+            logger.info("Skip review chat unban user=%s: %s", telegram_id, err)
+            return
+        logger.exception("Failed to clear review chat blacklist user=%s", telegram_id)
+    except Exception:
+        logger.exception("Failed to clear review chat blacklist user=%s", telegram_id)
+
+
 async def sync_deposit_review_chat_access_once():
     global LAST_DEPOSIT_REVIEW_ACCESS, LAST_DEPOSIT_REVIEW_CHAT_ID
     chat_id = await get_deposit_review_chat_id()
@@ -184,34 +200,28 @@ async def sync_deposit_review_chat_access_once():
 
     force_full_scan = chat_id != LAST_DEPOSIT_REVIEW_CHAT_ID
     revoke_ids: set[int] = set()
+    restore_ids: set[int] = set()
     if force_full_scan:
         revoke_ids.update(uid for uid, allowed in current.items() if not allowed)
+        restore_ids.update(uid for uid, allowed in current.items() if allowed)
     else:
         for uid, allowed in current.items():
             prev_allowed = LAST_DEPOSIT_REVIEW_ACCESS.get(uid)
             if not allowed and (prev_allowed is None or prev_allowed):
                 revoke_ids.add(uid)
+            if allowed and (prev_allowed is None or not prev_allowed):
+                restore_ids.add(uid)
 
     removed_from_admins = set(LAST_DEPOSIT_REVIEW_ACCESS.keys()) - set(current.keys())
     revoke_ids.update(removed_from_admins)
 
     for telegram_id in sorted(revoke_ids):
         await kick_deposit_review_chat_member(chat_id, telegram_id, "deposit_review_revoked")
+    for telegram_id in sorted(restore_ids):
+        await clear_deposit_review_chat_blacklist(chat_id, telegram_id, "deposit_review_restored")
 
     LAST_DEPOSIT_REVIEW_ACCESS = current
     LAST_DEPOSIT_REVIEW_CHAT_ID = chat_id
-
-
-async def review_access_sync_loop(stop_event: asyncio.Event):
-    while not stop_event.is_set():
-        try:
-            await sync_deposit_review_chat_access_once()
-        except Exception:
-            logger.exception("Review chat access sync failed")
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=max(10, REVIEW_ACCESS_SYNC_SECONDS))
-        except asyncio.TimeoutError:
-            pass
 
 
 def humanize_seconds(total_seconds: int) -> str:
@@ -672,13 +682,43 @@ async def review_dispatch_loop(stop_event: asyncio.Event, dispatch_event: asynci
                 dispatch_task.cancel()
 
 
-async def review_listener_loop(stop_event: asyncio.Event, dispatch_event: asyncio.Event, loop):
+async def review_access_event_loop(stop_event: asyncio.Event, access_event: asyncio.Event):
+    while not stop_event.is_set():
+        stop_task = asyncio.create_task(stop_event.wait())
+        access_task = asyncio.create_task(access_event.wait())
+        try:
+            done, pending = await asyncio.wait(
+                {stop_task, access_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            if stop_task in done and stop_event.is_set():
+                break
+            if access_task in done and access_event.is_set():
+                access_event.clear()
+            try:
+                await sync_deposit_review_chat_access_once()
+            except Exception:
+                logger.exception("Review chat access sync failed")
+        finally:
+            if not stop_task.done():
+                stop_task.cancel()
+            if not access_task.done():
+                access_task.cancel()
+
+
+async def review_listener_loop(stop_event: asyncio.Event, dispatch_event: asyncio.Event, access_event: asyncio.Event, loop):
     def on_review_notify(connection, pid, channel, payload):
-        logger.info("Review notify received on %s: %s", channel, payload)
+        payload_text = str(payload or "").strip()
+        logger.info("Review notify received on %s: %s", channel, payload_text)
         update_review_health(
             last_notify_at=utc_now_iso(),
-            last_notify_payload=str(payload or "")[:180],
+            last_notify_payload=payload_text[:180],
         )
+        if payload_text.lower().startswith(ACCESS_SYNC_NOTIFY_PREFIX):
+            loop.call_soon_threadsafe(access_event.set)
+            return
         loop.call_soon_threadsafe(dispatch_event.set)
 
     listener_online = False
@@ -697,6 +737,7 @@ async def review_listener_loop(stop_event: asyncio.Event, dispatch_event: asynci
                     last_listener_error="",
                 )
                 dispatch_event.set()
+                access_event.set()
         except Exception:
             if listener_online:
                 logger.exception("Review listener lost, retrying...")
@@ -1468,9 +1509,15 @@ async def main():
     if not INTERNAL_API_TOKEN:
         logger.warning("INTERNAL_API_TOKEN is empty. Review callbacks will fail.")
 
+    try:
+        await sync_deposit_review_chat_access_once()
+    except Exception:
+        logger.exception("Initial review chat access sync failed")
+
     stop_event = asyncio.Event()
     BOT_STOP_EVENT = stop_event
     dispatch_event = asyncio.Event()
+    access_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
     def schedule_shutdown(sig_name: str):
@@ -1482,8 +1529,8 @@ async def main():
         loop.add_signal_handler(signal.SIGTERM, schedule_shutdown, "SIGTERM")
 
     dispatcher_task = asyncio.create_task(review_dispatch_loop(stop_event, dispatch_event))
-    listener_task = asyncio.create_task(review_listener_loop(stop_event, dispatch_event, loop))
-    access_task = asyncio.create_task(review_access_sync_loop(stop_event))
+    listener_task = asyncio.create_task(review_listener_loop(stop_event, dispatch_event, access_event, loop))
+    access_task = asyncio.create_task(review_access_event_loop(stop_event, access_event))
     terminal_task = asyncio.create_task(terminal_shutdown_loop(stop_event))
 
     try:

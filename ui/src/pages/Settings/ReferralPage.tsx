@@ -72,7 +72,7 @@ export default function ReferralPage({
     }
 
     return (
-        <div className="ref-page">
+        <div className="ref-page app-page-top-offset">
             <TelegramBackButton onBack={onBack} showFallback={false} />
 
             <section className="ref-page-card">
