@@ -63,6 +63,37 @@ export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }
   const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
 
+  const replyTemplates = useMemo(
+    () => [
+      {
+        id: "deposit_pending",
+        title: t("manage.support.template.depositPending.title", lang),
+        message: t("manage.support.template.depositPending.body", lang),
+      },
+      {
+        id: "deposit_approved",
+        title: t("manage.support.template.depositApproved.title", lang),
+        message: t("manage.support.template.depositApproved.body", lang),
+      },
+      {
+        id: "deposit_rejected",
+        title: t("manage.support.template.depositRejected.title", lang),
+        message: t("manage.support.template.depositRejected.body", lang),
+      },
+      {
+        id: "need_details",
+        title: t("manage.support.template.needDetails.title", lang),
+        message: t("manage.support.template.needDetails.body", lang),
+      },
+      {
+        id: "closed_with_help",
+        title: t("manage.support.template.closedWithHelp.title", lang),
+        message: t("manage.support.template.closedWithHelp.body", lang),
+      },
+    ],
+    [lang]
+  )
+
   const selectedConversation = useMemo(
     () => conversations.find(item => item.id === selectedConversationID) || null,
     [conversations, selectedConversationID]
@@ -162,6 +193,17 @@ export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }
     } finally {
       setSending(false)
     }
+  }
+
+  const applyTemplate = (templateMessage: string) => {
+    const cleanedTemplate = templateMessage.trim()
+    if (!cleanedTemplate) return
+    setDraft(prev => {
+      const current = String(prev || "").trimEnd()
+      if (!current) return cleanedTemplate
+      if (current.includes(cleanedTemplate)) return current
+      return `${current}\n\n${cleanedTemplate}`
+    })
   }
 
   const setConversationStatus = async (status: "open" | "closed") => {
@@ -314,6 +356,21 @@ export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }
               </div>
 
               <div className="support-thread-compose">
+                <div className="support-template-bar">
+                  <span className="support-template-label">{t("manage.support.templates", lang)}</span>
+                  <div className="support-template-list">
+                    {replyTemplates.map(template => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className="support-template-chip"
+                        onClick={() => applyTemplate(template.message)}
+                      >
+                        {template.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}

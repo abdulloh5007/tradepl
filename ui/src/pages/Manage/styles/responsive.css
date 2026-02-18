@@ -350,6 +350,11 @@
     flex: 1;
   }
 
+  .support-template-list {
+    max-height: 84px;
+    overflow-y: auto;
+  }
+
   .system-updater-grid {
     grid-template-columns: 1fr;
   }

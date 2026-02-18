@@ -1198,6 +1198,38 @@ input[type=number] {
   gap: 8px;
 }
 
+.support-template-bar {
+  display: grid;
+  gap: 6px;
+}
+
+.support-template-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.support-template-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.support-template-chip {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.support-template-chip:hover {
+  border-color: color-mix(in srgb, var(--accent-2) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--panel));
+}
+
 .support-thread-compose textarea {
   width: 100%;
   resize: none;
