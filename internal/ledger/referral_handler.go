@@ -16,17 +16,25 @@ import (
 )
 
 type referralStatusResponse struct {
-	ReferralCode             string `json:"referral_code"`
-	ShareURL                 string `json:"share_url"`
-	Balance                  string `json:"balance"`
-	TotalEarned              string `json:"total_earned"`
-	TotalWithdrawn           string `json:"total_withdrawn"`
-	ReferralsTotal           int    `json:"referrals_total"`
-	SignupRewardUSD          string `json:"signup_reward_usd"`
-	DepositCommissionPercent string `json:"deposit_commission_percent"`
-	MinWithdrawUSD           string `json:"min_withdraw_usd"`
-	CanWithdraw              bool   `json:"can_withdraw"`
-	RealAccountRequired      bool   `json:"real_account_required"`
+	ReferralCode             string                        `json:"referral_code"`
+	ShareURL                 string                        `json:"share_url"`
+	Balance                  string                        `json:"balance"`
+	TotalEarned              string                        `json:"total_earned"`
+	TotalWithdrawn           string                        `json:"total_withdrawn"`
+	ReferralsTotal           int                           `json:"referrals_total"`
+	ReferredUsers            []referralReferredUserPreview `json:"referred_users"`
+	SignupRewardUSD          string                        `json:"signup_reward_usd"`
+	DepositCommissionPercent string                        `json:"deposit_commission_percent"`
+	MinWithdrawUSD           string                        `json:"min_withdraw_usd"`
+	CanWithdraw              bool                          `json:"can_withdraw"`
+	RealAccountRequired      bool                          `json:"real_account_required"`
+}
+
+type referralReferredUserPreview struct {
+	UserID      string `json:"user_id"`
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+	TelegramID  int64  `json:"telegram_id,omitempty"`
 }
 
 type referralEventsResponse struct {
@@ -81,6 +89,40 @@ func (h *Handler) ReferralStatus(w http.ResponseWriter, r *http.Request, userID 
 
 	hasReal := realAccounts > 0
 	canWithdraw := wallet.Balance.GreaterThanOrEqual(referralWithdrawMinUSD) && hasReal
+	referredUsers := make([]referralReferredUserPreview, 0)
+	rows, rowsErr := h.svc.pool.Query(r.Context(), `
+		SELECT
+			u.id::text,
+			COALESCE(NULLIF(TRIM(u.display_name), ''), NULLIF(SPLIT_PART(COALESCE(u.email, ''), '@', 1), ''), 'User'),
+			COALESCE(NULLIF(TRIM(u.avatar_url), ''), ''),
+			COALESCE(u.telegram_id, 0)
+		FROM users u
+		WHERE u.referred_by = $1
+		ORDER BY COALESCE(u.referred_at, u.created_at) DESC, u.created_at DESC
+		LIMIT 300
+	`, userID)
+	if rowsErr == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var item referralReferredUserPreview
+			if scanErr := rows.Scan(&item.UserID, &item.DisplayName, &item.AvatarURL, &item.TelegramID); scanErr != nil {
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: scanErr.Error()})
+				return
+			}
+			item.DisplayName = strings.TrimSpace(item.DisplayName)
+			if item.DisplayName == "" {
+				item.DisplayName = "User"
+			}
+			referredUsers = append(referredUsers, item)
+		}
+		if iterErr := rows.Err(); iterErr != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: iterErr.Error()})
+			return
+		}
+	} else if !isUndefinedColumnError(rowsErr) && !isUndefinedTableError(rowsErr) {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: rowsErr.Error()})
+		return
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, referralStatusResponse{
 		ReferralCode:             code,
@@ -89,6 +131,7 @@ func (h *Handler) ReferralStatus(w http.ResponseWriter, r *http.Request, userID 
 		TotalEarned:              wallet.TotalEarned.StringFixed(2),
 		TotalWithdrawn:           wallet.TotalWithdraw.StringFixed(2),
 		ReferralsTotal:           totalRefs,
+		ReferredUsers:            referredUsers,
 		SignupRewardUSD:          referralSignupRewardUSD.StringFixed(2),
 		DepositCommissionPercent: referralDepositCommissionPercent.StringFixed(2),
 		MinWithdrawUSD:           referralWithdrawMinUSD.StringFixed(2),

@@ -403,6 +403,8 @@
   "profile.referralMinWithdraw": "Referal yechimi uchun minimal balans: {amount} USD",
   "profile.referralNote": "Taklif uchun ${reward} + real depozitlardan {percent}%.",
   "profile.referralShareText": "Mening referal havolam orqali LV Trade ga qo‘shiling.",
+  "profile.referralUsersTitle": "Sizning referalingiz orqali kirganlar",
+  "profile.referralUsersEmpty": "Hali taklif qilingan foydalanuvchilar yo‘q.",
   "profile.referralWithdrawCompleted": "Referal yechim bajarildi",
   "profile.referralWithdrawFailed": "Referal yechim xatosi",
   "profile.referralWithdrawPrompt": "Yechish summasi USD (min {amount}). Barchasini yechish uchun bo‘sh qoldiring.",

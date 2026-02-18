@@ -431,6 +431,8 @@
   "profile.referralMinWithdraw": "Minimum referral balance for withdraw is {amount} USD",
   "profile.referralNote": "${reward} per invite + {percent}% from real deposits.",
   "profile.referralShareText": "Join LV Trade with my referral link.",
+  "profile.referralUsersTitle": "Joined by your referral",
+  "profile.referralUsersEmpty": "No invited users yet.",
   "profile.referralWithdrawCompleted": "Referral withdrawal completed",
   "profile.referralWithdrawFailed": "Referral withdrawal failed",
   "profile.referralWithdrawPrompt": "Withdraw amount in USD (min {amount}). Leave empty to withdraw full balance.",

@@ -203,6 +203,12 @@ export type ReferralStatus = {
   total_earned: string
   total_withdrawn: string
   referrals_total: number
+  referred_users?: Array<{
+    user_id: string
+    display_name: string
+    avatar_url?: string
+    telegram_id?: number
+  }>
   signup_reward_usd: string
   deposit_commission_percent: string
   min_withdraw_usd: string

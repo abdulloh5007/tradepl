@@ -25,6 +25,23 @@ export default function ReferralPage({
     onRefresh,
     setBusy,
 }: ReferralPageProps) {
+    const referredUsers = Array.isArray(status?.referred_users) ? status?.referred_users : []
+
+    const openTelegramProfile = (telegramID?: number) => {
+        const id = Number(telegramID || 0)
+        if (!Number.isFinite(id) || id <= 0) return
+        const tgURL = `https://t.me/@id${id}`
+        try {
+            if (window.Telegram?.WebApp?.openTelegramLink) {
+                window.Telegram.WebApp.openTelegramLink(tgURL)
+                return
+            }
+        } catch {
+            // fallback
+        }
+        window.open(tgURL, "_blank", "noopener,noreferrer")
+    }
+
     const handleShare = () => {
         if (!status?.share_url) {
             toast.error(t("profile.referralLinkUnavailable", lang))
@@ -109,6 +126,47 @@ export default function ReferralPage({
                         <span>{busy ? "..." : t("accounts.withdraw", lang)}</span>
                     </button>
                 </div>
+            </section>
+
+            <section className="ref-page-card">
+                <div className="ref-page-head">
+                    <span className="ref-page-chip">
+                        <Users size={13} />
+                        {t("profile.referralUsersTitle", lang)}
+                    </span>
+                    <span>{referredUsers.length}</span>
+                </div>
+
+                {referredUsers.length === 0 ? (
+                    <div className="ref-page-users-empty">{t("profile.referralUsersEmpty", lang)}</div>
+                ) : (
+                    <div className="ref-page-users-list">
+                        {referredUsers.map((item) => {
+                            const name = String(item?.display_name || "").trim() || "User"
+                            const avatarURL = String(item?.avatar_url || "").trim()
+                            const telegramID = Number(item?.telegram_id || 0)
+                            const canOpen = Number.isFinite(telegramID) && telegramID > 0
+                            const initial = name.charAt(0).toUpperCase()
+                            return (
+                                <button
+                                    key={String(item?.user_id || `${name}-${telegramID}`)}
+                                    type="button"
+                                    className={`ref-page-user-item ${canOpen ? "is-clickable" : "is-static"}`}
+                                    onClick={() => openTelegramProfile(telegramID)}
+                                    disabled={!canOpen}
+                                    title={canOpen ? `ID ${telegramID}` : ""}
+                                >
+                                    {avatarURL ? (
+                                        <img src={avatarURL} alt={name} className="ref-page-user-avatar" />
+                                    ) : (
+                                        <span className="ref-page-user-avatar ref-page-user-avatar-fallback">{initial}</span>
+                                    )}
+                                    <span className="ref-page-user-name">{name}</span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                )}
             </section>
         </div>
     )
