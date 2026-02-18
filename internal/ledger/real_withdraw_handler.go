@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -24,6 +25,25 @@ type realWithdrawRequestResponse struct {
 	AmountUSD           string `json:"amount_usd"`
 	MethodID            string `json:"method_id"`
 	PayoutDetailsMasked string `json:"payout_details_masked"`
+}
+
+func (h *Handler) hasApprovedRealDepositForMethodTx(ctx context.Context, tx pgx.Tx, userID string, minAmountUSD decimal.Decimal, methodID string) (bool, error) {
+	var ok bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM real_deposit_requests
+			WHERE user_id = $1::uuid
+			  AND status = 'approved'
+			  AND amount_usd >= $2::numeric
+			  AND COALESCE(payment_method_id, '') = $3
+			LIMIT 1
+		)
+	`, userID, minAmountUSD, methodID).Scan(&ok)
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
 }
 
 func (h *Handler) RequestRealWithdraw(w http.ResponseWriter, r *http.Request, userID string) {
@@ -85,6 +105,15 @@ func (h *Handler) RequestRealWithdraw(w http.ResponseWriter, r *http.Request, us
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "selected payment method is unavailable"})
 		return
 	}
+	cfg, cfgErr := h.loadBonusProgramConfig(r.Context())
+	if cfgErr != nil {
+		if isUndefinedTableError(cfgErr) || isUndefinedColumnError(cfgErr) {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "real withdraw is unavailable: run migrations"})
+			return
+		}
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: cfgErr.Error()})
+		return
+	}
 
 	asset, err := h.store.GetAssetBySymbol(r.Context(), "USD")
 	if err != nil {
@@ -98,6 +127,22 @@ func (h *Handler) RequestRealWithdraw(w http.ResponseWriter, r *http.Request, us
 		return
 	}
 	defer tx.Rollback(r.Context())
+
+	verified, verifyErr := h.hasApprovedRealDepositForMethodTx(r.Context(), tx, userID, cfg.RealDepositMinUSD, methodID)
+	if verifyErr != nil {
+		if isUndefinedTableError(verifyErr) || isUndefinedColumnError(verifyErr) {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "real withdraw is unavailable: run migrations"})
+			return
+		}
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: verifyErr.Error()})
+		return
+	}
+	if !verified {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{
+			Error: fmt.Sprintf("withdraw requires an approved real deposit of at least %s USD via %s", cfg.RealDepositMinUSD.StringFixed(2), strings.ToUpper(methodID)),
+		})
+		return
+	}
 
 	userAccount, err := h.svc.EnsureAccountForTradingAccount(r.Context(), tx, userID, account.ID, asset.ID, types.AccountKindAvailable)
 	if err != nil {

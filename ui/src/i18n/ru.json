@@ -101,6 +101,7 @@
   "accounts.withdrawFormatInvalid": "Формат реквизитов не подходит для выбранного метода",
   "accounts.realWithdrawTitle": "Реальный вывод",
   "accounts.realWithdrawInstantHint": "Вывод выполняется сразу и записывается в историю.",
+  "accounts.realWithdrawVerificationHint": "Для вывода на этот метод сначала нужен одобренный реальный депозит минимум {amount} USD через {method}.",
   "accounts.paymentMethod.visa_sum": "VISA SUM",
   "accounts.paymentMethod.mastercard": "Mastercard",
   "accounts.paymentMethod.visa_usd": "VISA USD",

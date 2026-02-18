@@ -129,6 +129,7 @@
   "accounts.withdrawFormatInvalid": "Payout details format is invalid for selected method",
   "accounts.realWithdrawTitle": "Real Withdraw",
   "accounts.realWithdrawInstantHint": "Withdraw is executed instantly and recorded in history.",
+  "accounts.realWithdrawVerificationHint": "To withdraw to this method, first complete an approved real deposit of at least {amount} USD via {method}.",
   "accounts.paymentMethod.visa_sum": "VISA SUM",
   "accounts.paymentMethod.mastercard": "Mastercard",
   "accounts.paymentMethod.visa_usd": "VISA USD",

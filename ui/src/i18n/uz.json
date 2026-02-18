@@ -101,6 +101,7 @@
   "accounts.withdrawFormatInvalid": "Tanlangan usul uchun rekvizit formati noto'g'ri",
   "accounts.realWithdrawTitle": "Real yechish",
   "accounts.realWithdrawInstantHint": "Yechish darhol bajariladi va tarixga yoziladi.",
+  "accounts.realWithdrawVerificationHint": "Bu usulga yechish uchun avval {method} orqali kamida {amount} USD miqdorida tasdiqlangan real depozit bo'lishi kerak.",
   "accounts.paymentMethod.visa_sum": "VISA SUM",
   "accounts.paymentMethod.mastercard": "Mastercard",
   "accounts.paymentMethod.visa_usd": "VISA USD",

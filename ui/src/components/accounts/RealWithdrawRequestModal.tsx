@@ -86,6 +86,11 @@ export default function RealWithdrawRequestModal({
   }, [paymentMethods])
 
   const selectedMethod = paymentMethods.find((item) => item.id === methodID) || null
+  const selectedMethodLabel = useMemo(() => {
+    if (!selectedMethod) return ""
+    const titleKey = `accounts.paymentMethod.${selectedMethod.id}`
+    return t(titleKey, lang) === titleKey ? selectedMethod.title : t(titleKey, lang)
+  }, [selectedMethod, lang])
 
   useEffect(() => {
     if (!open) return
@@ -196,6 +201,11 @@ export default function RealWithdrawRequestModal({
 
             <div className="acm-note rwm-note">
               {t("accounts.realWithdrawInstantHint", lang)}
+            </div>
+            <div className="acm-note rwm-note">
+              {t("accounts.realWithdrawVerificationHint", lang)
+                .replace("{amount}", String(status?.min_amount_usd || "10.00"))
+                .replace("{method}", selectedMethodLabel || t("accounts.paymentMethod", lang))}
             </div>
           </div>
         </div>
