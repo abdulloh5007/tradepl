@@ -72,9 +72,13 @@ func (h *Handler) loadVerifiedWithdrawMethods(ctx context.Context, userID string
 			return nil, scanErr
 		}
 		methodID = strings.ToLower(strings.TrimSpace(methodID))
-		if methodID != "" {
-			out[methodID] = true
+		if methodID == "" {
+			// Backward compatibility: old approved deposits without method_id
+			// unlock withdrawal verification for all methods.
+			out["*"] = true
+			continue
 		}
+		out[methodID] = true
 	}
 	return out, rows.Err()
 }
@@ -152,7 +156,7 @@ func (h *Handler) DepositBonusStatus(w http.ResponseWriter, r *http.Request, use
 	}
 	for i := range paymentMethods {
 		methodID := strings.ToLower(strings.TrimSpace(paymentMethods[i].ID))
-		paymentMethods[i].VerifiedForWithdraw = verifiedMethods[methodID]
+		paymentMethods[i].VerifiedForWithdraw = verifiedMethods[methodID] || verifiedMethods["*"]
 	}
 	resp := depositBonusStatusResponse{
 		MinAmountUSD:      cfg.RealDepositMinUSD.StringFixed(2),

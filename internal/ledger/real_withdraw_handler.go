@@ -36,7 +36,10 @@ func (h *Handler) hasApprovedRealDepositForMethodTx(ctx context.Context, tx pgx.
 			WHERE user_id = $1::uuid
 			  AND status = 'approved'
 			  AND amount_usd >= $2::numeric
-			  AND COALESCE(payment_method_id, '') = $3
+			  AND (
+					COALESCE(payment_method_id, '') = $3
+					OR COALESCE(payment_method_id, '') = ''
+				)
 			LIMIT 1
 		)
 	`, userID, minAmountUSD, methodID).Scan(&ok)
