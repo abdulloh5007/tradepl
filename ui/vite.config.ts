@@ -1,7 +1,15 @@
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
+import { readFileSync } from "node:fs"
+
+const pkgRaw = readFileSync(new URL("./package.json", import.meta.url), "utf-8")
+const pkg = JSON.parse(pkgRaw) as { version?: string }
+const appVersion = String(pkg.version || "dev")
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   plugins: [react()],
   build: {
     rollupOptions: {

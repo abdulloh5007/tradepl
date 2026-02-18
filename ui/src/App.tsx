@@ -2145,6 +2145,7 @@ export default function App() {
 
   const isChartView = view === "chart"
   const isAccountsView = view === "accounts"
+  const appVersion = String(__APP_VERSION__ || "dev")
   const mainClassName = [
     "app-main",
     isChartView ? "app-main-chart" : "app-main-default",
@@ -2239,6 +2240,7 @@ export default function App() {
           telegramWriteAccess={Boolean(profile?.telegram_write_access)}
           onToggleTelegramBotNotifications={handleToggleTelegramBotNotifications}
           onUpdateTelegramBotNotificationKinds={handleUpdateTelegramBotNotificationKinds}
+          appVersion={appVersion}
           openProfitStagesSignal={openProfitStagesSignal}
           fetchSupportConversation={fetchSupportConversation}
           fetchSupportMessages={fetchSupportMessages}

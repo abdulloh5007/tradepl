@@ -146,11 +146,35 @@ func (h *Handler) readReferralWallet(ctx context.Context, userID string) (referr
 }
 
 func (h *Handler) applyReferralDepositCommissionTx(ctx context.Context, tx pgx.Tx, referredUserID, referredTradingAccountID string, depositAmount decimal.Decimal, sourceRef string) (decimal.Decimal, string, error) {
-	if strings.TrimSpace(referredUserID) == "" || !depositAmount.GreaterThan(decimal.Zero) {
+	referredUserID = strings.TrimSpace(referredUserID)
+	referredTradingAccountID = strings.TrimSpace(referredTradingAccountID)
+	if referredUserID == "" || !depositAmount.GreaterThan(decimal.Zero) {
 		return decimal.Zero, "", nil
 	}
-	var inviterID string
+
+	// Referral 10% commission is credited only for approved deposits of real accounts.
+	if referredTradingAccountID == "" {
+		return decimal.Zero, "", nil
+	}
+	var accountUserID string
+	var accountMode string
 	err := tx.QueryRow(ctx, `
+		SELECT COALESCE(user_id::text, ''), COALESCE(mode, '')
+		FROM trading_accounts
+		WHERE id = $1::uuid
+	`, referredTradingAccountID).Scan(&accountUserID, &accountMode)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || isUndefinedTableError(err) || isUndefinedColumnError(err) {
+			return decimal.Zero, "", nil
+		}
+		return decimal.Zero, "", err
+	}
+	if strings.TrimSpace(accountUserID) != referredUserID || !strings.EqualFold(strings.TrimSpace(accountMode), "real") {
+		return decimal.Zero, "", nil
+	}
+
+	var inviterID string
+	err = tx.QueryRow(ctx, `
 		SELECT COALESCE(referred_by::text, '')
 		FROM users
 		WHERE id = $1

@@ -128,6 +128,7 @@ interface AppViewRouterProps {
   telegramWriteAccess: boolean
   onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
   onUpdateTelegramBotNotificationKinds: (kinds: TelegramNotificationKinds) => Promise<void> | void
+  appVersion: string
   openProfitStagesSignal: number
   fetchSupportConversation: () => Promise<{ conversation: SupportConversation | null }>
   fetchSupportMessages: (params?: { limit?: number; before_id?: number }) => Promise<{ items: SupportMessage[] }>
@@ -235,6 +236,7 @@ export default function AppViewRouter({
   telegramWriteAccess,
   onToggleTelegramBotNotifications,
   onUpdateTelegramBotNotificationKinds,
+  appVersion,
   openProfitStagesSignal,
   fetchSupportConversation,
   fetchSupportMessages,
@@ -378,6 +380,7 @@ export default function AppViewRouter({
           telegramWriteAccess={telegramWriteAccess}
           onToggleTelegramBotNotifications={onToggleTelegramBotNotifications}
           onUpdateTelegramBotNotificationKinds={onUpdateTelegramBotNotificationKinds}
+          appVersion={appVersion}
           activeAccount={activeAccount}
           kycStatus={kycStatus}
           onRequestKYC={onRequestKYC}

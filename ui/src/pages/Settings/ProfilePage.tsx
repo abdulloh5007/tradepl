@@ -26,6 +26,7 @@ interface ProfilePageProps {
     telegramWriteAccess: boolean
     onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
     onUpdateTelegramBotNotificationKinds: (kinds: TelegramNotificationKinds) => Promise<void> | void
+    appVersion: string
     activeAccount: TradingAccount | null
     kycStatus: KYCStatus | null
     onRequestKYC: (payload: {
@@ -64,6 +65,7 @@ export default function ProfilePage({
     telegramWriteAccess,
     onToggleTelegramBotNotifications,
     onUpdateTelegramBotNotificationKinds,
+    appVersion,
     activeAccount,
     kycStatus,
     onRequestKYC,
@@ -215,6 +217,7 @@ export default function ProfilePage({
                 telegramWriteAccess={telegramWriteAccess}
                 onToggleTelegramBotNotifications={onToggleTelegramBotNotifications}
                 onUpdateTelegramBotNotificationKinds={onUpdateTelegramBotNotificationKinds}
+                appVersion={appVersion}
                 onBack={() => setShowSettings(false)}
                 onLogout={onLogout}
             />

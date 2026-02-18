@@ -21,6 +21,7 @@ interface SettingsPageProps {
     telegramWriteAccess: boolean
     onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
     onUpdateTelegramBotNotificationKinds: (kinds: TelegramNotificationKinds) => Promise<void> | void
+    appVersion: string
     onBack: () => void
     onLogout: () => void
 }
@@ -53,6 +54,7 @@ export default function SettingsPage({
     telegramWriteAccess,
     onToggleTelegramBotNotifications,
     onUpdateTelegramBotNotificationKinds,
+    appVersion,
     onBack,
     onLogout,
 }: SettingsPageProps) {
@@ -458,6 +460,13 @@ export default function SettingsPage({
                     <button type="button" className="settings-logout-btn" onClick={onLogout}>
                         {t("logout", lang)}
                     </button>
+                </div>
+            </section>
+
+            <section className="settings-card">
+                <div className="settings-row">
+                    <div className="settings-title">{t("settings.version", lang)}</div>
+                    <div className="settings-subtitle">v{String(appVersion || "dev")}</div>
                 </div>
             </section>
         </div>

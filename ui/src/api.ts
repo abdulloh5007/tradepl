@@ -208,6 +208,9 @@ export type ReferralStatus = {
     display_name: string
     avatar_url?: string
     telegram_id?: number
+    deposit_volume_usd?: string
+    deposit_commission_usd?: string
+    deposit_commission_runs?: number
   }>
   signup_reward_usd: string
   deposit_commission_percent: string

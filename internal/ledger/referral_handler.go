@@ -31,10 +31,13 @@ type referralStatusResponse struct {
 }
 
 type referralReferredUserPreview struct {
-	UserID      string `json:"user_id"`
-	DisplayName string `json:"display_name"`
-	AvatarURL   string `json:"avatar_url,omitempty"`
-	TelegramID  int64  `json:"telegram_id,omitempty"`
+	UserID                string `json:"user_id"`
+	DisplayName           string `json:"display_name"`
+	AvatarURL             string `json:"avatar_url,omitempty"`
+	TelegramID            int64  `json:"telegram_id,omitempty"`
+	DepositVolumeUSD      string `json:"deposit_volume_usd"`
+	DepositCommissionUSD  string `json:"deposit_commission_usd"`
+	DepositCommissionRuns int    `json:"deposit_commission_runs"`
 }
 
 type referralEventsResponse struct {
@@ -113,11 +116,69 @@ func (h *Handler) ReferralStatus(w http.ResponseWriter, r *http.Request, userID 
 			if item.DisplayName == "" {
 				item.DisplayName = "User"
 			}
+			item.DepositVolumeUSD = "0.00"
+			item.DepositCommissionUSD = "0.00"
+			item.DepositCommissionRuns = 0
 			referredUsers = append(referredUsers, item)
 		}
 		if iterErr := rows.Err(); iterErr != nil {
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: iterErr.Error()})
 			return
+		}
+
+		if len(referredUsers) > 0 {
+			userIndex := make(map[string]int, len(referredUsers))
+			for i := range referredUsers {
+				id := strings.TrimSpace(referredUsers[i].UserID)
+				if id != "" {
+					userIndex[id] = i
+				}
+			}
+
+			aggRows, aggErr := h.svc.pool.Query(r.Context(), `
+				SELECT
+					COALESCE(related_user_id::text, '') AS related_user_id,
+					COALESCE(SUM(amount), 0) AS commission_usd,
+					COALESCE(SUM(
+						CASE
+							WHEN COALESCE(commission_percent, 0) > 0
+								THEN amount * 100 / commission_percent
+							ELSE 0
+						END
+					), 0) AS deposit_volume_usd,
+					COUNT(*) AS runs
+				FROM referral_events
+				WHERE user_id = $1
+				  AND kind = 'deposit_commission'
+				GROUP BY related_user_id
+			`, userID)
+			if aggErr == nil {
+				defer aggRows.Close()
+				for aggRows.Next() {
+					var relatedUserID string
+					var commissionUSD decimal.Decimal
+					var depositVolumeUSD decimal.Decimal
+					var runs int
+					if scanErr := aggRows.Scan(&relatedUserID, &commissionUSD, &depositVolumeUSD, &runs); scanErr != nil {
+						httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: scanErr.Error()})
+						return
+					}
+					idx, ok := userIndex[strings.TrimSpace(relatedUserID)]
+					if !ok {
+						continue
+					}
+					referredUsers[idx].DepositCommissionUSD = commissionUSD.Round(2).StringFixed(2)
+					referredUsers[idx].DepositVolumeUSD = depositVolumeUSD.Round(2).StringFixed(2)
+					referredUsers[idx].DepositCommissionRuns = runs
+				}
+				if iterErr := aggRows.Err(); iterErr != nil {
+					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: iterErr.Error()})
+					return
+				}
+			} else if !isUndefinedColumnError(aggErr) && !isUndefinedTableError(aggErr) {
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: aggErr.Error()})
+				return
+			}
 		}
 	} else if !isUndefinedColumnError(rowsErr) && !isUndefinedTableError(rowsErr) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: rowsErr.Error()})

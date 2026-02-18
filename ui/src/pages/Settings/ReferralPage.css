@@ -156,6 +156,20 @@
   white-space: nowrap;
 }
 
+.ref-page-user-content {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ref-page-user-meta {
+  font-size: 11px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 html[data-theme="light"] .ref-page-card {
   border-color: rgba(59, 130, 246, 0.25);
   background:
@@ -199,4 +213,8 @@ html[data-theme="light"] .ref-page-user-item {
 html[data-theme="light"] .ref-page-user-item.is-clickable:hover {
   border-color: color-mix(in srgb, var(--accent-2) 45%, var(--border));
   background: color-mix(in srgb, var(--accent-2) 8%, #fff);
+}
+
+html[data-theme="light"] .ref-page-user-meta {
+  color: #475569;
 }

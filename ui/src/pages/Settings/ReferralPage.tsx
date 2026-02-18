@@ -146,6 +146,9 @@ export default function ReferralPage({
                             const avatarURL = String(item?.avatar_url || "").trim()
                             const telegramID = Number(item?.telegram_id || 0)
                             const canOpen = Number.isFinite(telegramID) && telegramID > 0
+                            const depositVolumeUSD = String(item?.deposit_volume_usd || "0.00")
+                            const commissionUSD = String(item?.deposit_commission_usd || "0.00")
+                            const runs = Number(item?.deposit_commission_runs || 0)
                             const initial = name.charAt(0).toUpperCase()
                             return (
                                 <button
@@ -161,7 +164,16 @@ export default function ReferralPage({
                                     ) : (
                                         <span className="ref-page-user-avatar ref-page-user-avatar-fallback">{initial}</span>
                                     )}
-                                    <span className="ref-page-user-name">{name}</span>
+                                    <span className="ref-page-user-content">
+                                        <span className="ref-page-user-name">{name}</span>
+                                        <span className="ref-page-user-meta">
+                                            {t("profile.referralUserBrought", lang).replace("{amount}", depositVolumeUSD)}
+                                        </span>
+                                        <span className="ref-page-user-meta">
+                                            {t("profile.referralUserReward", lang).replace("{amount}", commissionUSD)}
+                                            {runs > 0 ? ` • ${t("profile.referralUserDeposits", lang).replace("{count}", String(runs))}` : ""}
+                                        </span>
+                                    </span>
                                 </button>
                             )
                         })}
