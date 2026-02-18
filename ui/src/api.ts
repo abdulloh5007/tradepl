@@ -108,6 +108,7 @@ export type DepositPaymentMethod = {
   title: string
   details: string
   enabled: boolean
+  verified_for_withdraw?: boolean
 }
 
 export type DepositBonusStatus = {

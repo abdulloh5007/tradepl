@@ -51,6 +51,34 @@ type dueDepositRequest struct {
 	BonusAmountUSD   decimal.Decimal
 }
 
+func (h *Handler) loadVerifiedWithdrawMethods(ctx context.Context, userID string, minAmountUSD decimal.Decimal) (map[string]bool, error) {
+	rows, err := h.svc.pool.Query(ctx, `
+		SELECT DISTINCT COALESCE(payment_method_id, '')
+		FROM real_deposit_requests
+		WHERE user_id = $1
+		  AND status = 'approved'
+		  AND amount_usd >= $2::numeric
+		  AND COALESCE(payment_method_id, '') <> ''
+	`, userID, minAmountUSD)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]bool)
+	for rows.Next() {
+		var methodID string
+		if scanErr := rows.Scan(&methodID); scanErr != nil {
+			return nil, scanErr
+		}
+		methodID = strings.ToLower(strings.TrimSpace(methodID))
+		if methodID != "" {
+			out[methodID] = true
+		}
+	}
+	return out, rows.Err()
+}
+
 func (h *Handler) DepositBonusStatus(w http.ResponseWriter, r *http.Request, userID string) {
 	if h.accountSvc == nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: "account service unavailable"})
@@ -116,6 +144,15 @@ func (h *Handler) DepositBonusStatus(w http.ResponseWriter, r *http.Request, use
 	paymentMethods, methodsErr := depositmethods.Load(r.Context(), h.svc.pool)
 	if methodsErr != nil {
 		paymentMethods = depositmethods.Defaults()
+	}
+	verifiedMethods, verifiedErr := h.loadVerifiedWithdrawMethods(r.Context(), userID, cfg.RealDepositMinUSD)
+	if verifiedErr != nil && !isUndefinedTableError(verifiedErr) && !isUndefinedColumnError(verifiedErr) {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: verifiedErr.Error()})
+		return
+	}
+	for i := range paymentMethods {
+		methodID := strings.ToLower(strings.TrimSpace(paymentMethods[i].ID))
+		paymentMethods[i].VerifiedForWithdraw = verifiedMethods[methodID]
 	}
 	resp := depositBonusStatusResponse{
 		MinAmountUSD:      cfg.RealDepositMinUSD.StringFixed(2),

@@ -78,6 +78,7 @@ export default function RealWithdrawRequestModal({
       title: String(item?.title || item?.id || "").trim(),
       details: String(item?.details || "").trim(),
       enabled: Boolean(item?.enabled && String(item?.details || "").trim()),
+      verified_for_withdraw: Boolean(item?.verified_for_withdraw),
     })).filter((item) => item.id !== "")
   }, [status?.payment_methods])
 
@@ -86,6 +87,7 @@ export default function RealWithdrawRequestModal({
   }, [paymentMethods])
 
   const selectedMethod = paymentMethods.find((item) => item.id === methodID) || null
+  const selectedMethodVerified = Boolean(selectedMethod?.verified_for_withdraw)
   const selectedMethodLabel = useMemo(() => {
     if (!selectedMethod) return ""
     const titleKey = `accounts.paymentMethod.${selectedMethod.id}`
@@ -110,7 +112,7 @@ export default function RealWithdrawRequestModal({
   const amountNum = Number(amountRaw)
   const amountValid = Number.isFinite(amountNum) && amountNum > 0
   const payoutCheck = validateAndNormalizeMethodInput(methodID, payoutDetails)
-  const canSubmit = amountValid && selectedMethod?.enabled && payoutCheck.valid && !loading
+  const canSubmit = amountValid && selectedMethod?.enabled && selectedMethodVerified && payoutCheck.valid && !loading
 
   const modalContent = (
       <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet rwm-page-sheet" : ""}`}>
@@ -153,6 +155,7 @@ export default function RealWithdrawRequestModal({
                 {paymentMethods.map((method) => {
                   const disabled = !method.enabled
                   const active = methodID === method.id
+                  const verified = Boolean(method.verified_for_withdraw)
                   const titleKey = `accounts.paymentMethod.${method.id}`
                   const title = t(titleKey, lang) === titleKey ? method.title : t(titleKey, lang)
                   return (
@@ -169,6 +172,9 @@ export default function RealWithdrawRequestModal({
                         <PaymentMethodIcon methodID={method.id} size={15} className="rdm-method-icon-media" />
                       </span>
                       <span className="rdm-method-name">{title}</span>
+                      <span className={`rwm-method-badge ${verified ? "ok" : "pending"}`}>
+                        {verified ? t("accounts.withdrawVerified", lang) : t("accounts.withdrawNeedsVerification", lang)}
+                      </span>
                     </button>
                   )
                 })}
@@ -207,6 +213,13 @@ export default function RealWithdrawRequestModal({
                 .replace("{amount}", String(status?.min_amount_usd || "10.00"))
                 .replace("{method}", selectedMethodLabel || t("accounts.paymentMethod", lang))}
             </div>
+            {selectedMethod && !selectedMethodVerified ? (
+              <div className="rwm-format-error">
+                {t("accounts.withdrawNeedsVerificationError", lang)
+                  .replace("{amount}", String(status?.min_amount_usd || "10.00"))
+                  .replace("{method}", selectedMethodLabel || t("accounts.paymentMethod", lang))}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -222,6 +235,14 @@ export default function RealWithdrawRequestModal({
               }
               if (!selectedMethod?.enabled) {
                 toast.error(t("accounts.paymentMethodRequired", lang))
+                return
+              }
+              if (!selectedMethodVerified) {
+                toast.error(
+                  t("accounts.withdrawNeedsVerificationError", lang)
+                    .replace("{amount}", String(status?.min_amount_usd || "10.00"))
+                    .replace("{method}", selectedMethodLabel || t("accounts.paymentMethod", lang))
+                )
                 return
               }
               if (!payoutCheck.valid) {

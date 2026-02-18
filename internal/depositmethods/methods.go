@@ -17,10 +17,11 @@ import (
 const systemSettingKey = "real_deposit_methods"
 
 type Method struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Details string `json:"details"`
-	Enabled bool   `json:"enabled"`
+	ID                  string `json:"id"`
+	Title               string `json:"title"`
+	Details             string `json:"details"`
+	Enabled             bool   `json:"enabled"`
+	VerifiedForWithdraw bool   `json:"verified_for_withdraw,omitempty"`
 }
 
 var methodCatalog = []Method{
