@@ -82,7 +82,6 @@ export default function ActiveAccountCard({
             type="button"
             className="acc-action-btn"
             onClick={onWithdraw}
-            disabled={account.mode !== "demo"}
             aria-label={t("accounts.withdraw", lang)}
           >
             <ArrowUp size={24} strokeWidth={2.5} />

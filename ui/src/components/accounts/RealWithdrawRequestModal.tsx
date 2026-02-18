@@ -112,7 +112,6 @@ export default function RealWithdrawRequestModal({
   const amountNum = Number(amountRaw)
   const amountValid = Number.isFinite(amountNum) && amountNum > 0
   const payoutCheck = validateAndNormalizeMethodInput(methodID, payoutDetails)
-  const canSubmit = amountValid && selectedMethod?.enabled && selectedMethodVerified && payoutCheck.valid && !loading
 
   const modalContent = (
       <div className={`acm-sheet ${isPageLayout ? "acm-page-sheet rwm-page-sheet" : ""}`}>
@@ -227,8 +226,9 @@ export default function RealWithdrawRequestModal({
           <button
             type="button"
             className="acm-submit-btn"
-            disabled={!canSubmit}
+            disabled={loading}
             onClick={async () => {
+              if (loading) return
               if (!amountValid) {
                 toast.error(t("accounts.errors.enterValidAmount", lang))
                 return
