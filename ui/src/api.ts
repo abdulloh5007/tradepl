@@ -268,6 +268,33 @@ export type MarketNewsEvent = {
   updated_at: string
 }
 
+export type SupportConversation = {
+  id: string
+  user_id?: string
+  user_email?: string
+  user_display_name?: string
+  status: "open" | "closed" | string
+  created_at: string
+  updated_at: string
+  last_message_at: string
+  last_message_text: string
+  last_message_from: "user" | "admin" | "system" | string
+  unread_for_user: number
+  unread_for_admin: number
+  total_message_count: number
+}
+
+export type SupportMessage = {
+  id: number
+  conversation_id: string
+  sender_type: "user" | "admin" | "system" | string
+  sender_admin_username?: string
+  body: string
+  read_by_user: boolean
+  read_by_admin: boolean
+  created_at: string
+}
+
 const parseBody = (text: string) => {
   const trimmed = text.trim()
   if (!trimmed) return null
@@ -357,6 +384,20 @@ export const createApiClient = (state: ClientState, onUnauthorized?: () => void)
     },
     referralWithdraw: (payload?: { amount_usd?: string }) =>
       request<{ status: string; amount_usd: string; balance: string }>("/v1/referrals/withdraw", "POST", payload || {}, true),
+    supportConversation: () =>
+      request<{ conversation: SupportConversation | null }>("/v1/support/conversation", "GET", undefined, true),
+    supportMessages: (params?: { limit?: number; before_id?: number }) => {
+      let url = "/v1/support/messages"
+      const q: string[] = []
+      if (params?.limit && params.limit > 0) q.push(`limit=${params.limit}`)
+      if (params?.before_id && params.before_id > 0) q.push(`before_id=${params.before_id}`)
+      if (q.length > 0) url += `?${q.join("&")}`
+      return request<{ items: SupportMessage[] }>(url, "GET", undefined, true)
+    },
+    sendSupportMessage: (payload: { message: string }) =>
+      request<SupportMessage>("/v1/support/messages", "POST", payload, true),
+    markSupportRead: () =>
+      request<{ status: string }>("/v1/support/read", "POST", {}, true),
     balances: async () => {
       const res = await request<Array<{ asset_id: string; symbol: string; kind: string; amount: string }> | null>("/v1/balances", "GET", undefined, true)
       return res || []

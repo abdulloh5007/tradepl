@@ -79,6 +79,7 @@ function parseViewKey(raw: string): View | null {
     value === "accounts" ||
     value === "notifications" ||
     value === "profile" ||
+    value === "support" ||
     value === "api" ||
     value === "faucet"
   ) {
@@ -2104,6 +2105,22 @@ export default function App() {
     refreshProfile,
   ])
 
+  const fetchSupportConversation = useCallback(async () => {
+    return api.supportConversation()
+  }, [api])
+
+  const fetchSupportMessages = useCallback(async (params?: { limit?: number; before_id?: number }) => {
+    return api.supportMessages(params)
+  }, [api])
+
+  const sendSupportMessage = useCallback(async (message: string) => {
+    return api.sendSupportMessage({ message })
+  }, [api])
+
+  const markSupportRead = useCallback(async () => {
+    await api.markSupportRead()
+  }, [api])
+
   if (!token) {
     return (
       <AppAuthGate
@@ -2199,6 +2216,7 @@ export default function App() {
           profitRewardStatus={profitRewardStatus}
           onRefreshProfitReward={refreshProfitRewardStatus}
           onClaimProfitReward={handleClaimProfitReward}
+          onOpenSupport={() => setView("support")}
           onGoTrade={() => setView("chart")}
           hasUnreadNotifications={hasUnreadNotifications}
           onOpenNotifications={() => setView("notifications")}
@@ -2222,6 +2240,11 @@ export default function App() {
           onToggleTelegramBotNotifications={handleToggleTelegramBotNotifications}
           onUpdateTelegramBotNotificationKinds={handleUpdateTelegramBotNotificationKinds}
           openProfitStagesSignal={openProfitStagesSignal}
+          fetchSupportConversation={fetchSupportConversation}
+          fetchSupportMessages={fetchSupportMessages}
+          sendSupportMessage={sendSupportMessage}
+          markSupportRead={markSupportRead}
+          onBackFromSupport={() => setView("profile")}
           onLogout={logout}
           api={api}
           onMetricsUpdate={setMetrics}

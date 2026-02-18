@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
-import { Camera, ChevronRight, Settings2, ShieldCheck, Trophy, User, Users } from "lucide-react"
+import { Camera, ChevronRight, MessageCircle, Settings2, ShieldCheck, Trophy, User, Users } from "lucide-react"
 import type { KYCStatus, ProfitRewardStatus, ReferralStatus, TelegramNotificationKinds, UserProfile } from "../../api"
 import type { Lang, NotificationSettings, Theme, TradingAccount } from "../../types"
 import ProfitStagesPage from "./ProfitStagesPage"
@@ -44,6 +44,7 @@ interface ProfilePageProps {
     onClaimProfitReward: (stageNo: number, tradingAccountID: string) => Promise<void>
     accounts: TradingAccount[]
     openProfitStagesSignal?: number
+    onOpenSupport: () => void
 }
 
 export default function ProfilePage({
@@ -74,6 +75,7 @@ export default function ProfilePage({
     onClaimProfitReward,
     accounts,
     openProfitStagesSignal = 0,
+    onOpenSupport,
 }: ProfilePageProps) {
     const avatarInputRef = useRef<HTMLInputElement | null>(null)
     const [showSettings, setShowSettings] = useState(false)
@@ -307,6 +309,19 @@ export default function ProfilePage({
                     {t("profile.identityBonus", lang)}
                 </span>
                 <span className="profile-nav-right">{kycLabel}</span>
+                <ChevronRight size={16} />
+            </button>
+
+            <button
+                type="button"
+                className="profile-nav-item"
+                onClick={onOpenSupport}
+            >
+                <span className="profile-nav-left">
+                    <MessageCircle size={15} />
+                    {t("profile.support", lang)}
+                </span>
+                <span className="profile-nav-right">{t("profile.open", lang)}</span>
                 <ChevronRight size={16} />
             </button>
 

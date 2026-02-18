@@ -1030,6 +1030,11 @@ const adminRightsKey contextKey = "admin_rights"
 
 var allAdminRights = []string{"sessions", "trend", "events", "volatility", "kyc_review", "deposit_review"}
 
+func UsernameFromContext(ctx context.Context) string {
+	username, _ := ctx.Value(adminUsernameKey).(string)
+	return strings.TrimSpace(username)
+}
+
 func requireOwner(w http.ResponseWriter, r *http.Request) bool {
 	role, _ := r.Context().Value(adminRoleKey).(string)
 	if role != "owner" {

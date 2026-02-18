@@ -1,6 +1,16 @@
 import { Suspense, lazy } from "react"
 import type { ReactNode } from "react"
-import type { DepositBonusStatus, KYCStatus, ProfitRewardStatus, ReferralStatus, SignupBonusStatus, TelegramNotificationKinds, UserProfile } from "../api"
+import type {
+  DepositBonusStatus,
+  KYCStatus,
+  ProfitRewardStatus,
+  ReferralStatus,
+  SignupBonusStatus,
+  SupportConversation,
+  SupportMessage,
+  TelegramNotificationKinds,
+  UserProfile
+} from "../api"
 import type { AppNotification, Lang, MarketConfig, MarketNewsEvent, Metrics, NotificationSettings, Order, Quote, Theme, TradingAccount, View } from "../types"
 import { t } from "../utils/i18n"
 import TradingPage from "../pages/Trading/TradingPage"
@@ -17,6 +27,7 @@ const HistoryPage = lazy(() => import("../pages/History/HistoryPage"))
 const AccountsPage = lazy(() => import("../pages/Accounts/AccountsPage"))
 const NotificationsPage = lazy(() => import("../pages/Notifications/NotificationsPage"))
 const ProfilePage = lazy(() => import("../pages/Settings/ProfilePage"))
+const SupportPage = lazy(() => import("../pages/Support/SupportPage"))
 const ApiPage = lazy(() => import("../pages/Api/ApiPage"))
 const FaucetPage = lazy(() => import("../pages/Faucet/FaucetPage"))
 
@@ -94,6 +105,7 @@ interface AppViewRouterProps {
   profitRewardStatus: ProfitRewardStatus | null
   onRefreshProfitReward: () => Promise<void> | void
   onClaimProfitReward: (stageNo: number, tradingAccountID: string) => Promise<void>
+  onOpenSupport: () => void
   onGoTrade: () => void
   hasUnreadNotifications: boolean
   onOpenNotifications: () => void
@@ -117,6 +129,11 @@ interface AppViewRouterProps {
   onToggleTelegramBotNotifications: (enabled: boolean) => Promise<void> | void
   onUpdateTelegramBotNotificationKinds: (kinds: TelegramNotificationKinds) => Promise<void> | void
   openProfitStagesSignal: number
+  fetchSupportConversation: () => Promise<{ conversation: SupportConversation | null }>
+  fetchSupportMessages: (params?: { limit?: number; before_id?: number }) => Promise<{ items: SupportMessage[] }>
+  sendSupportMessage: (message: string) => Promise<SupportMessage>
+  markSupportRead: () => Promise<void>
+  onBackFromSupport: () => void
   onLogout: () => void
   api: FaucetApi
   onMetricsUpdate: (metrics: Metrics) => void
@@ -195,6 +212,7 @@ export default function AppViewRouter({
   profitRewardStatus,
   onRefreshProfitReward,
   onClaimProfitReward,
+  onOpenSupport,
   onGoTrade,
   hasUnreadNotifications,
   onOpenNotifications,
@@ -218,6 +236,11 @@ export default function AppViewRouter({
   onToggleTelegramBotNotifications,
   onUpdateTelegramBotNotificationKinds,
   openProfitStagesSignal,
+  fetchSupportConversation,
+  fetchSupportMessages,
+  sendSupportMessage,
+  markSupportRead,
+  onBackFromSupport,
   onLogout,
   api,
   onMetricsUpdate,
@@ -366,6 +389,22 @@ export default function AppViewRouter({
           onClaimProfitReward={onClaimProfitReward}
           accounts={accounts}
           openProfitStagesSignal={openProfitStagesSignal}
+          onOpenSupport={onOpenSupport}
+        />
+      </LazyView>
+    )
+  }
+
+  if (view === "support") {
+    return (
+      <LazyView lang={lang}>
+        <SupportPage
+          lang={lang}
+          onBack={onBackFromSupport}
+          fetchConversation={fetchSupportConversation}
+          fetchMessages={fetchSupportMessages}
+          sendMessage={sendSupportMessage}
+          markRead={markSupportRead}
         />
       </LazyView>
     )

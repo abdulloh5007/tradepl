@@ -22,6 +22,7 @@ import (
 	"lv-tradepl/internal/matching"
 	"lv-tradepl/internal/orders"
 	"lv-tradepl/internal/sessions"
+	"lv-tradepl/internal/support"
 	"lv-tradepl/internal/volatility"
 
 	"github.com/shopspring/decimal"
@@ -55,6 +56,8 @@ func main() {
 	orderStore := orders.NewStore()
 	matchEngine := matching.NewEngine(orderStore, ledgerSvc, bus)
 	orderSvc := orders.NewService(pool, orderStore, ledgerSvc, market, matchEngine, accountSvc)
+	supportSvc := support.NewService(pool)
+	supportHandler := support.NewHandler(supportSvc)
 	authSvc := auth.NewService(pool, cfg.JWTIssuer, []byte(cfg.JWTSecret), cfg.JWTTTL)
 	authSvc.SetTelegramBotToken(cfg.TelegramBotToken)
 	authSvc.SetAccountService(accountSvc)
@@ -125,6 +128,7 @@ func main() {
 		VolatilityHandler: volHandler,
 		AdminHandler:      adminHandler,
 		HealthHandler:     healthHandler,
+		SupportHandler:    supportHandler,
 		AuthService:       authSvc,
 		InternalToken:     cfg.InternalToken,
 		JWTSecret:         cfg.JWTSecret,

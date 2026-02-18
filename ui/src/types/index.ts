@@ -108,7 +108,7 @@ export interface TradingAccount {
 
 export type Theme = "dark" | "light"
 export type Lang = "en" | "uz" | "ru"
-export type View = "chart" | "positions" | "history" | "accounts" | "notifications" | "profile" | "api" | "faucet" | "admin"
+export type View = "chart" | "positions" | "history" | "accounts" | "notifications" | "profile" | "support" | "api" | "faucet" | "admin"
 
 export interface SystemNoticeDetails {
     kind?: "margin_call" | "stop_out" | string

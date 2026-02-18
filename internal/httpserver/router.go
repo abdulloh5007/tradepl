@@ -14,6 +14,7 @@ import (
 	"lv-tradepl/internal/marketdata"
 	"lv-tradepl/internal/orders"
 	"lv-tradepl/internal/sessions"
+	"lv-tradepl/internal/support"
 	"lv-tradepl/internal/volatility"
 
 	"github.com/go-chi/chi/v5"
@@ -29,6 +30,7 @@ type RouterDeps struct {
 	VolatilityHandler *volatility.Handler
 	AdminHandler      *admin.Handler
 	HealthHandler     *health.Handler
+	SupportHandler    *support.Handler
 	AuthService       *auth.Service
 	InternalToken     string
 	JWTSecret         string
@@ -301,6 +303,40 @@ func NewRouter(d RouterDeps) http.Handler {
 				}
 				d.LedgerHandler.ReferralWithdraw(w, r, userID)
 			})
+			if d.SupportHandler != nil {
+				r.Get("/support/conversation", func(w http.ResponseWriter, r *http.Request) {
+					userID, ok := UserID(r)
+					if !ok {
+						httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+						return
+					}
+					d.SupportHandler.GetConversation(w, r, userID)
+				})
+				r.Get("/support/messages", func(w http.ResponseWriter, r *http.Request) {
+					userID, ok := UserID(r)
+					if !ok {
+						httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+						return
+					}
+					d.SupportHandler.ListMessages(w, r, userID)
+				})
+				r.Post("/support/messages", func(w http.ResponseWriter, r *http.Request) {
+					userID, ok := UserID(r)
+					if !ok {
+						httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+						return
+					}
+					d.SupportHandler.SendMessage(w, r, userID)
+				})
+				r.Post("/support/read", func(w http.ResponseWriter, r *http.Request) {
+					userID, ok := UserID(r)
+					if !ok {
+						httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorResponse{Error: "unauthorized"})
+						return
+					}
+					d.SupportHandler.MarkRead(w, r, userID)
+				})
+			}
 			r.Post("/orders", func(w http.ResponseWriter, r *http.Request) {
 				userID, ok := UserID(r)
 				if !ok {
@@ -449,6 +485,15 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.Put("/panel-admins/{id}", d.AdminHandler.UpdatePanelAdmin)
 				r.Delete("/panel-admins/{id}", d.AdminHandler.DeletePanelAdmin)
 				r.Post("/kyc/unban/{userID}", d.AdminHandler.ClearKYCBlock)
+				if d.SupportHandler != nil {
+					r.With(admin.RequireOwner).Get("/support/conversations", d.SupportHandler.AdminListConversations)
+					r.With(admin.RequireOwner).Get("/support/messages", d.SupportHandler.AdminListMessages)
+					r.With(admin.RequireOwner).Post("/support/messages", func(w http.ResponseWriter, r *http.Request) {
+						d.SupportHandler.AdminSendMessage(w, r, admin.UsernameFromContext(r.Context()))
+					})
+					r.With(admin.RequireOwner).Post("/support/conversations/{id}/status", d.SupportHandler.AdminSetConversationStatus)
+					r.With(admin.RequireOwner).Post("/support/conversations/{id}/read", d.SupportHandler.AdminMarkRead)
+				}
 			})
 		})
 	})
