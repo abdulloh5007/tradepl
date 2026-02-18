@@ -1100,6 +1100,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             baseUrl={baseUrl}
                             headers={headers}
                             canAccess={canSupportReview}
+                            canManageTemplates={userRole === "owner"}
                         />
                     )}
 

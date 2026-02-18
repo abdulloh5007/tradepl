@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { LifeBuoy, Lock, Send, User } from "lucide-react"
+import { LifeBuoy, Lock, Plus, Send, Trash2, User } from "lucide-react"
 import type { Lang } from "../../types"
 import { t } from "../../utils/i18n"
 
@@ -30,11 +30,22 @@ type SupportMessage = {
   created_at: string
 }
 
+type SupportReplyTemplate = {
+  id: number
+  key: string
+  title: string
+  message: string
+  enabled: boolean
+  sort_order: number
+  updated_at: string
+}
+
 interface SupportReviewsCardProps {
   lang: Lang
   baseUrl: string
   headers: Record<string, string>
   canAccess: boolean
+  canManageTemplates: boolean
 }
 
 const pageLimit = 50
@@ -52,7 +63,26 @@ const formatDateTime = (value: string, lang: Lang): string => {
   }).format(date)
 }
 
-export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }: SupportReviewsCardProps) {
+const normalizeTemplateForCompare = (items: SupportReplyTemplate[]) =>
+  items
+    .map(item => ({
+      key: String(item.key || "").trim(),
+      title: String(item.title || "").trim(),
+      message: String(item.message || "").trim(),
+      enabled: Boolean(item.enabled),
+      sort_order: Number.isFinite(Number(item.sort_order)) ? Number(item.sort_order) : 0,
+    }))
+    .sort((a, b) => (a.sort_order - b.sort_order) || a.key.localeCompare(b.key))
+
+const buildTemplateKey = () => `template_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+
+export default function SupportReviewsCard({
+  lang,
+  baseUrl,
+  headers,
+  canAccess,
+  canManageTemplates,
+}: SupportReviewsCardProps) {
   const [loadingConversations, setLoadingConversations] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sending, setSending] = useState(false)
@@ -62,42 +92,50 @@ export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }
   const [messages, setMessages] = useState<SupportMessage[]>([])
   const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
-
-  const replyTemplates = useMemo(
-    () => [
-      {
-        id: "deposit_pending",
-        title: t("manage.support.template.depositPending.title", lang),
-        message: t("manage.support.template.depositPending.body", lang),
-      },
-      {
-        id: "deposit_approved",
-        title: t("manage.support.template.depositApproved.title", lang),
-        message: t("manage.support.template.depositApproved.body", lang),
-      },
-      {
-        id: "deposit_rejected",
-        title: t("manage.support.template.depositRejected.title", lang),
-        message: t("manage.support.template.depositRejected.body", lang),
-      },
-      {
-        id: "need_details",
-        title: t("manage.support.template.needDetails.title", lang),
-        message: t("manage.support.template.needDetails.body", lang),
-      },
-      {
-        id: "closed_with_help",
-        title: t("manage.support.template.closedWithHelp.title", lang),
-        message: t("manage.support.template.closedWithHelp.body", lang),
-      },
-    ],
-    [lang]
-  )
+  const [replyTemplates, setReplyTemplates] = useState<SupportReplyTemplate[]>([])
+  const [templateEditorItems, setTemplateEditorItems] = useState<SupportReplyTemplate[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [templatesSaving, setTemplatesSaving] = useState(false)
 
   const selectedConversation = useMemo(
     () => conversations.find(item => item.id === selectedConversationID) || null,
     [conversations, selectedConversationID]
   )
+
+  const activeReplyTemplates = useMemo(
+    () => replyTemplates.filter(item => item.enabled).sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id)),
+    [replyTemplates]
+  )
+
+  const hasTemplateChanges = useMemo(() => {
+    const current = JSON.stringify(normalizeTemplateForCompare(replyTemplates))
+    const draftState = JSON.stringify(normalizeTemplateForCompare(templateEditorItems))
+    return current !== draftState
+  }, [replyTemplates, templateEditorItems])
+
+  const fetchTemplates = useCallback(async () => {
+    if (!canAccess) return
+    setTemplatesLoading(true)
+    try {
+      const endpoint = canManageTemplates ? "/v1/admin/support/templates/all" : "/v1/admin/support/templates"
+      const res = await fetch(`${baseUrl}${endpoint}`, { headers })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || t("manage.support.error.loadTemplates", lang))
+      }
+      const data = await res.json().catch(() => null)
+      const items: SupportReplyTemplate[] = Array.isArray(data?.items) ? data.items : []
+      const sorted = [...items].sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id))
+      setReplyTemplates(sorted)
+      setTemplateEditorItems(sorted)
+    } catch (err: any) {
+      setError(err?.message || t("manage.support.error.loadTemplates", lang))
+      setReplyTemplates([])
+      setTemplateEditorItems([])
+    } finally {
+      setTemplatesLoading(false)
+    }
+  }, [canAccess, canManageTemplates, baseUrl, headers, lang])
 
   const fetchConversations = useCallback(async () => {
     if (!canAccess) return
@@ -158,6 +196,10 @@ export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }
   useEffect(() => {
     void fetchConversations()
   }, [fetchConversations])
+
+  useEffect(() => {
+    void fetchTemplates()
+  }, [fetchTemplates])
 
   useEffect(() => {
     if (!selectedConversationID) {
@@ -225,6 +267,69 @@ export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }
     }
   }
 
+  const updateTemplateEditorItem = (index: number, patch: Partial<SupportReplyTemplate>) => {
+    setTemplateEditorItems(prev => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+  }
+
+  const addTemplateEditorItem = () => {
+    const nextSort = templateEditorItems.reduce((max, item) => Math.max(max, Number(item.sort_order) || 0), 0) + 10
+    setTemplateEditorItems(prev => ([
+      ...prev,
+      {
+        id: -Date.now(),
+        key: buildTemplateKey(),
+        title: "",
+        message: "",
+        enabled: true,
+        sort_order: nextSort,
+        updated_at: new Date().toISOString(),
+      },
+    ]))
+  }
+
+  const removeTemplateEditorItem = (index: number) => {
+    setTemplateEditorItems(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const saveTemplates = async () => {
+    if (!canManageTemplates || templatesSaving) return
+    const payloadItems = templateEditorItems.map((item, idx) => ({
+      key: String(item.key || "").trim() || `template_${idx + 1}`,
+      title: String(item.title || "").trim(),
+      message: String(item.message || "").trim(),
+      enabled: Boolean(item.enabled),
+      sort_order: Number.isFinite(Number(item.sort_order)) ? Number(item.sort_order) : idx * 10,
+    }))
+
+    if (payloadItems.length === 0 || payloadItems.some(item => !item.title || !item.message)) {
+      setError(t("manage.support.error.invalidTemplate", lang))
+      return
+    }
+
+    setTemplatesSaving(true)
+    setError("")
+    try {
+      const res = await fetch(`${baseUrl}/v1/admin/support/templates`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ items: payloadItems }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || t("manage.support.error.saveTemplates", lang))
+      }
+      const data = await res.json().catch(() => null)
+      const items: SupportReplyTemplate[] = Array.isArray(data?.items) ? data.items : []
+      const sorted = [...items].sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id))
+      setReplyTemplates(sorted)
+      setTemplateEditorItems(sorted)
+    } catch (err: any) {
+      setError(err?.message || t("manage.support.error.saveTemplates", lang))
+    } finally {
+      setTemplatesSaving(false)
+    }
+  }
+
   if (!canAccess) {
     return (
       <div className="admin-card full-width">
@@ -262,6 +367,80 @@ export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }
           {t("manage.system.refresh", lang)}
         </button>
       </div>
+
+      {canManageTemplates ? (
+        <div className="support-template-manager">
+          <div className="support-template-manager-header">
+            <h3>{t("manage.support.manageTemplates", lang)}</h3>
+            <div className="support-template-manager-actions">
+              <button type="button" className="mode-btn" onClick={addTemplateEditorItem}>
+                <Plus size={14} />
+                <span>{t("manage.support.addTemplate", lang)}</span>
+              </button>
+              <button
+                type="button"
+                className="add-event-btn"
+                onClick={() => void saveTemplates()}
+                disabled={templatesSaving || templatesLoading || !hasTemplateChanges}
+              >
+                <span>{templatesSaving ? t("common.loading", lang) : t("manage.support.saveTemplates", lang)}</span>
+              </button>
+            </div>
+          </div>
+          {templatesLoading ? (
+            <div className="no-events"><span>{t("common.loading", lang)}</span></div>
+          ) : templateEditorItems.length === 0 ? (
+            <div className="no-events"><span>{t("manage.support.noTemplates", lang)}</span></div>
+          ) : (
+            <div className="support-template-editor-list">
+              {templateEditorItems.map((item, index) => (
+                <article key={`${item.key}-${index}`} className="support-template-editor-item">
+                  <div className="support-template-editor-top">
+                    <label className="support-template-editor-sort">
+                      <span>{t("manage.support.templateSort", lang)}</span>
+                      <input
+                        type="number"
+                        value={Number.isFinite(Number(item.sort_order)) ? Number(item.sort_order) : 0}
+                        onChange={(event) => updateTemplateEditorItem(index, { sort_order: Number(event.target.value) || 0 })}
+                      />
+                    </label>
+                    <label className="support-template-editor-enabled">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(item.enabled)}
+                        onChange={(event) => updateTemplateEditorItem(index, { enabled: event.target.checked })}
+                      />
+                      <span>{t("manage.support.templateEnabled", lang)}</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="support-template-remove-btn"
+                      onClick={() => removeTemplateEditorItem(index)}
+                      aria-label={t("manage.support.removeTemplate", lang)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={item.title}
+                    onChange={(event) => updateTemplateEditorItem(index, { title: event.target.value })}
+                    placeholder={t("manage.support.templateTitle", lang)}
+                    maxLength={120}
+                  />
+                  <textarea
+                    value={item.message}
+                    onChange={(event) => updateTemplateEditorItem(index, { message: event.target.value })}
+                    placeholder={t("manage.support.templateMessage", lang)}
+                    rows={3}
+                    maxLength={2000}
+                  />
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {error ? <div className="system-health-error">{error}</div> : null}
 
@@ -359,16 +538,20 @@ export default function SupportReviewsCard({ lang, baseUrl, headers, canAccess }
                 <div className="support-template-bar">
                   <span className="support-template-label">{t("manage.support.templates", lang)}</span>
                   <div className="support-template-list">
-                    {replyTemplates.map(template => (
-                      <button
-                        key={template.id}
-                        type="button"
-                        className="support-template-chip"
-                        onClick={() => applyTemplate(template.message)}
-                      >
-                        {template.title}
-                      </button>
-                    ))}
+                    {activeReplyTemplates.length === 0 ? (
+                      <span className="support-template-empty">{t("manage.support.noTemplates", lang)}</span>
+                    ) : (
+                      activeReplyTemplates.map(template => (
+                        <button
+                          key={template.key}
+                          type="button"
+                          className="support-template-chip"
+                          onClick={() => applyTemplate(template.message)}
+                        >
+                          {template.title}
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
                 <textarea

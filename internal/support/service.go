@@ -22,6 +22,11 @@ var (
 	ErrMessageRequired      = errors.New("message is required")
 	ErrMessageTooLong       = errors.New("message is too long")
 	ErrInvalidStatus        = errors.New("invalid status")
+	ErrTemplateRequired     = errors.New("at least one template is required")
+	ErrTemplateTitle        = errors.New("template title is required")
+	ErrTemplateMessage      = errors.New("template message is required")
+	ErrTemplateKey          = errors.New("template key is required")
+	ErrTemplateDuplicateKey = errors.New("duplicate template key")
 )
 
 type Service struct {
@@ -59,6 +64,24 @@ type Message struct {
 	CreatedAt           time.Time `json:"created_at"`
 }
 
+type ReplyTemplate struct {
+	ID        int64     `json:"id"`
+	Key       string    `json:"key"`
+	Title     string    `json:"title"`
+	Message   string    `json:"message"`
+	Enabled   bool      `json:"enabled"`
+	SortOrder int       `json:"sort_order"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ReplyTemplateInput struct {
+	Key       string `json:"key"`
+	Title     string `json:"title"`
+	Message   string `json:"message"`
+	Enabled   bool   `json:"enabled"`
+	SortOrder int    `json:"sort_order"`
+}
+
 func normalizeLimit(limit int) int {
 	if limit <= 0 {
 		return defaultPageLimit
@@ -91,6 +114,73 @@ func normalizeMessage(raw string) (string, error) {
 		return "", ErrMessageTooLong
 	}
 	return msg, nil
+}
+
+func normalizeTemplateKey(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return ""
+	}
+	var out strings.Builder
+	prevSeparator := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			out.WriteRune(r)
+			prevSeparator = false
+		case r >= '0' && r <= '9':
+			out.WriteRune(r)
+			prevSeparator = false
+		default:
+			if prevSeparator {
+				continue
+			}
+			out.WriteByte('_')
+			prevSeparator = true
+		}
+	}
+	return strings.Trim(out.String(), "_")
+}
+
+func normalizeReplyTemplateInputs(raw []ReplyTemplateInput) ([]ReplyTemplateInput, error) {
+	if len(raw) == 0 {
+		return nil, ErrTemplateRequired
+	}
+	items := make([]ReplyTemplateInput, 0, len(raw))
+	seenKeys := make(map[string]struct{}, len(raw))
+	for idx, row := range raw {
+		key := normalizeTemplateKey(row.Key)
+		if key == "" {
+			key = fmt.Sprintf("template_%d", idx+1)
+		}
+		if key == "" {
+			return nil, ErrTemplateKey
+		}
+		if _, exists := seenKeys[key]; exists {
+			return nil, ErrTemplateDuplicateKey
+		}
+		seenKeys[key] = struct{}{}
+
+		title := strings.TrimSpace(row.Title)
+		if title == "" {
+			return nil, ErrTemplateTitle
+		}
+		message := strings.TrimSpace(row.Message)
+		if message == "" {
+			return nil, ErrTemplateMessage
+		}
+		if len([]rune(message)) > maxMessageRunes {
+			return nil, ErrMessageTooLong
+		}
+		items = append(items, ReplyTemplateInput{
+			Key:       key,
+			Title:     title,
+			Message:   message,
+			Enabled:   row.Enabled,
+			SortOrder: row.SortOrder,
+		})
+	}
+	return items, nil
 }
 
 func reverseMessages(messages []Message) {
@@ -534,4 +624,104 @@ func (s *Service) MarkReadByAdmin(ctx context.Context, conversationID string) er
 		}
 	}
 	return nil
+}
+
+func (s *Service) ListReplyTemplates(ctx context.Context, includeDisabled bool) ([]ReplyTemplate, error) {
+	query := `
+		SELECT
+			id,
+			template_key,
+			title,
+			message,
+			enabled,
+			sort_order,
+			updated_at
+		FROM support_reply_templates
+	`
+	args := []any{}
+	if !includeDisabled {
+		query += " WHERE enabled = TRUE"
+	}
+	query += " ORDER BY sort_order ASC, id ASC"
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	templates := make([]ReplyTemplate, 0, 8)
+	for rows.Next() {
+		var item ReplyTemplate
+		if err := rows.Scan(
+			&item.ID,
+			&item.Key,
+			&item.Title,
+			&item.Message,
+			&item.Enabled,
+			&item.SortOrder,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		templates = append(templates, item)
+	}
+	return templates, rows.Err()
+}
+
+func (s *Service) ReplaceReplyTemplates(ctx context.Context, raw []ReplyTemplateInput) ([]ReplyTemplate, error) {
+	items, err := normalizeReplyTemplateInputs(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM support_reply_templates`); err != nil {
+		return nil, err
+	}
+
+	result := make([]ReplyTemplate, 0, len(items))
+	for _, item := range items {
+		var created ReplyTemplate
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO support_reply_templates (
+				template_key,
+				title,
+				message,
+				enabled,
+				sort_order
+			) VALUES (
+				$1, $2, $3, $4, $5
+			)
+			RETURNING
+				id,
+				template_key,
+				title,
+				message,
+				enabled,
+				sort_order,
+				updated_at
+		`, item.Key, item.Title, item.Message, item.Enabled, item.SortOrder).Scan(
+			&created.ID,
+			&created.Key,
+			&created.Title,
+			&created.Message,
+			&created.Enabled,
+			&created.SortOrder,
+			&created.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, created)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

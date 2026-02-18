@@ -488,6 +488,13 @@ func NewRouter(d RouterDeps) http.Handler {
 				if d.SupportHandler != nil {
 					r.With(admin.RequireRight("support_review")).Get("/support/conversations", d.SupportHandler.AdminListConversations)
 					r.With(admin.RequireRight("support_review")).Get("/support/messages", d.SupportHandler.AdminListMessages)
+					r.With(admin.RequireRight("support_review")).Get("/support/templates", func(w http.ResponseWriter, r *http.Request) {
+						d.SupportHandler.AdminListReplyTemplates(w, r, false)
+					})
+					r.With(admin.RequireOwner).Get("/support/templates/all", func(w http.ResponseWriter, r *http.Request) {
+						d.SupportHandler.AdminListReplyTemplates(w, r, true)
+					})
+					r.With(admin.RequireOwner).Post("/support/templates", d.SupportHandler.AdminReplaceReplyTemplates)
 					r.With(admin.RequireRight("support_review")).Post("/support/messages", func(w http.ResponseWriter, r *http.Request) {
 						d.SupportHandler.AdminSendMessage(w, r, admin.UsernameFromContext(r.Context()))
 					})

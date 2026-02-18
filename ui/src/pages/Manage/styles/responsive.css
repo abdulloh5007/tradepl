@@ -355,6 +355,28 @@
     overflow-y: auto;
   }
 
+  .support-template-manager-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .support-template-manager-actions {
+    width: 100%;
+  }
+
+  .support-template-manager-actions .mode-btn,
+  .support-template-manager-actions .add-event-btn {
+    flex: 1;
+  }
+
+  .support-template-editor-top {
+    flex-wrap: wrap;
+  }
+
+  .support-template-remove-btn {
+    margin-left: 0;
+  }
+
   .system-updater-grid {
     grid-template-columns: 1fr;
   }

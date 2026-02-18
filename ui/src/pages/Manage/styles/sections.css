@@ -1214,6 +1214,11 @@ input[type=number] {
   gap: 6px;
 }
 
+.support-template-empty {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .support-template-chip {
   border: 1px solid var(--border);
   background: var(--panel);
@@ -1228,6 +1233,128 @@ input[type=number] {
 .support-template-chip:hover {
   border-color: color-mix(in srgb, var(--accent-2) 35%, var(--border));
   background: color-mix(in srgb, var(--accent-2) 10%, var(--panel));
+}
+
+.support-template-manager {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-alt);
+  padding: 10px;
+  margin-bottom: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.support-template-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.support-template-manager-header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.support-template-manager-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.support-template-manager-actions .mode-btn,
+.support-template-manager-actions .add-event-btn {
+  min-height: 34px;
+}
+
+.support-template-editor-list {
+  display: grid;
+  gap: 8px;
+}
+
+.support-template-editor-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.support-template-editor-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.support-template-editor-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.support-template-editor-sort input {
+  width: 74px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-alt);
+  color: var(--text);
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.support-template-editor-enabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.support-template-editor-enabled input {
+  width: 16px;
+  height: 16px;
+}
+
+.support-template-remove-btn {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.support-template-remove-btn:hover {
+  color: var(--status-danger);
+  border-color: color-mix(in srgb, var(--status-danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--status-danger) 10%, var(--panel));
+}
+
+.support-template-editor-item input[type="text"],
+.support-template-editor-item textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.support-template-editor-item textarea {
+  resize: vertical;
+  min-height: 68px;
 }
 
 .support-thread-compose textarea {

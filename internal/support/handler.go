@@ -68,6 +68,8 @@ func writeValidationError(w http.ResponseWriter, err error) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 	case errors.Is(err, ErrMessageRequired), errors.Is(err, ErrMessageTooLong):
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+	case errors.Is(err, ErrTemplateRequired), errors.Is(err, ErrTemplateTitle), errors.Is(err, ErrTemplateMessage), errors.Is(err, ErrTemplateKey), errors.Is(err, ErrTemplateDuplicateKey):
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 	default:
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
 	}
@@ -231,4 +233,35 @@ func (h *Handler) AdminMarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) AdminListReplyTemplates(w http.ResponseWriter, r *http.Request, includeDisabled bool) {
+	items, err := h.svc.ListReplyTemplates(r.Context(), includeDisabled)
+	if err != nil {
+		writeValidationError(w, err)
+		return
+	}
+	if items == nil {
+		items = []ReplyTemplate{}
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handler) AdminReplaceReplyTemplates(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Items []ReplyTemplateInput `json:"items"`
+	}
+	if err := httputil.ReadJSON(r, &req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	items, err := h.svc.ReplaceReplyTemplates(r.Context(), req.Items)
+	if err != nil {
+		writeValidationError(w, err)
+		return
+	}
+	if items == nil {
+		items = []ReplyTemplate{}
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
 }
