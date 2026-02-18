@@ -175,6 +175,23 @@
     grid-template-columns: 1fr;
   }
 
+  .support-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .support-review-conversations {
+    max-height: 280px;
+  }
+
+  .support-thread-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .support-thread-messages {
+    min-height: 260px;
+  }
+
   .system-health-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -313,6 +330,24 @@
 
   .system-health-grid {
     grid-template-columns: 1fr;
+  }
+
+  .support-conversation-top strong {
+    max-width: 170px;
+  }
+
+  .support-thread-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .support-thread-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .support-thread-actions .mode-btn {
+    flex: 1;
   }
 
   .system-updater-grid {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSearchParams, useNavigate } from "react-router-dom"
-import { LogOut, Sun, Moon, Settings, AlertCircle, X, Target, ShieldAlert, Shield, Activity, CreditCard, Database } from "lucide-react"
+import { LogOut, Sun, Moon, Settings, AlertCircle, X, Target, ShieldAlert, Shield, Activity, CreditCard, Database, LifeBuoy } from "lucide-react"
 import Skeleton from "../../components/Skeleton"
 
 // Components
@@ -14,6 +14,7 @@ import TradingRiskCard from "../../components/admin/TradingRiskCard"
 import TradingPairsCard from "../../components/admin/TradingPairsCard"
 import SystemHealthCard from "../../components/admin/SystemHealthCard"
 import DepositMethodsCard from "../../components/admin/DepositMethodsCard"
+import SupportReviewsCard from "../../components/admin/SupportReviewsCard"
 
 // Types
 import {
@@ -36,10 +37,10 @@ interface ManagePanelProps {
     onThemeToggle: () => void
 }
 
-type ManageTabId = "market" | "events" | "trading" | "payments" | "admins" | "updates" | "database"
+type ManageTabId = "market" | "events" | "trading" | "support" | "payments" | "admins" | "updates" | "database"
 
 const MANAGE_TAB_STORAGE_KEY = "manage.panel.active-tab"
-const MANAGE_TAB_IDS: ManageTabId[] = ["market", "events", "trading", "payments", "admins", "updates", "database"]
+const MANAGE_TAB_IDS: ManageTabId[] = ["market", "events", "trading", "support", "payments", "admins", "updates", "database"]
 
 const isManageTabId = (value: string | null): value is ManageTabId => {
     if (!value) return false
@@ -256,6 +257,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
     const canTrend = canAccess("trend")
     const canEvents = canAccess("events")
     const canVolatility = canAccess("volatility")
+    const canSupportReview = canAccess("support_review")
     const canTradingConfig = userRole === "owner"
 
     const tabs = useMemo(() => {
@@ -288,6 +290,13 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     visible: canTradingConfig,
                 },
                 {
+                    id: "support",
+                    label: t("manage.tab.support", lang),
+                    description: t("manage.tab.supportDesc", lang),
+                    icon: LifeBuoy,
+                    visible: canSupportReview,
+                },
+                {
                     id: "payments",
                     label: t("manage.tab.payments", lang),
                     description: t("manage.tab.paymentsDesc", lang),
@@ -318,7 +327,7 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
             ]
 
         return list.filter(tab => tab.visible)
-    }, [canSessions, canTrend, canVolatility, canEvents, canTradingConfig, userRole, lang])
+    }, [canSessions, canTrend, canVolatility, canEvents, canSupportReview, canTradingConfig, userRole, lang])
 
     const activeTabMeta = useMemo(() => {
         return tabs.find(tab => tab.id === activeTab) || null
@@ -1082,6 +1091,15 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                             baseUrl={baseUrl}
                             headers={headers}
                             canAccess={userRole === "owner"}
+                        />
+                    )}
+
+                    {activeTab === "support" && (
+                        <SupportReviewsCard
+                            lang={lang}
+                            baseUrl={baseUrl}
+                            headers={headers}
+                            canAccess={canSupportReview}
                         />
                     )}
 

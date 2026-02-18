@@ -12,7 +12,7 @@ interface PanelAdminsProps {
     userRole: string | null
 }
 
-const allRights = ["sessions", "volatility", "trend", "events", "kyc_review", "deposit_review"]
+const allRights = ["sessions", "volatility", "trend", "events", "kyc_review", "deposit_review", "support_review"]
 
 const rightLabel = (value: string, lang: Lang) => {
     const normalized = String(value || "").trim().toLowerCase()
@@ -22,6 +22,7 @@ const rightLabel = (value: string, lang: Lang) => {
     if (normalized === "events") return t("manage.admins.rights.events", lang)
     if (normalized === "kyc_review") return t("manage.admins.rights.kycReview", lang)
     if (normalized === "deposit_review") return t("manage.admins.rights.depositReview", lang)
+    if (normalized === "support_review") return t("manage.admins.rights.supportReview", lang)
     const fallback = normalized.replace(/_/g, " ")
     if (!fallback) return value
     return fallback.charAt(0).toUpperCase() + fallback.slice(1)

@@ -1028,7 +1028,7 @@ const adminUsernameKey contextKey = "admin_username"
 const adminRoleKey contextKey = "admin_role"
 const adminRightsKey contextKey = "admin_rights"
 
-var allAdminRights = []string{"sessions", "trend", "events", "volatility", "kyc_review", "deposit_review"}
+var allAdminRights = []string{"sessions", "trend", "events", "volatility", "kyc_review", "deposit_review", "support_review"}
 
 func UsernameFromContext(ctx context.Context) string {
 	username, _ := ctx.Value(adminUsernameKey).(string)

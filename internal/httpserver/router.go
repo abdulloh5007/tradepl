@@ -486,13 +486,13 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.Delete("/panel-admins/{id}", d.AdminHandler.DeletePanelAdmin)
 				r.Post("/kyc/unban/{userID}", d.AdminHandler.ClearKYCBlock)
 				if d.SupportHandler != nil {
-					r.With(admin.RequireOwner).Get("/support/conversations", d.SupportHandler.AdminListConversations)
-					r.With(admin.RequireOwner).Get("/support/messages", d.SupportHandler.AdminListMessages)
-					r.With(admin.RequireOwner).Post("/support/messages", func(w http.ResponseWriter, r *http.Request) {
+					r.With(admin.RequireRight("support_review")).Get("/support/conversations", d.SupportHandler.AdminListConversations)
+					r.With(admin.RequireRight("support_review")).Get("/support/messages", d.SupportHandler.AdminListMessages)
+					r.With(admin.RequireRight("support_review")).Post("/support/messages", func(w http.ResponseWriter, r *http.Request) {
 						d.SupportHandler.AdminSendMessage(w, r, admin.UsernameFromContext(r.Context()))
 					})
-					r.With(admin.RequireOwner).Post("/support/conversations/{id}/status", d.SupportHandler.AdminSetConversationStatus)
-					r.With(admin.RequireOwner).Post("/support/conversations/{id}/read", d.SupportHandler.AdminMarkRead)
+					r.With(admin.RequireRight("support_review")).Post("/support/conversations/{id}/status", d.SupportHandler.AdminSetConversationStatus)
+					r.With(admin.RequireRight("support_review")).Post("/support/conversations/{id}/read", d.SupportHandler.AdminMarkRead)
 				}
 			})
 		})
