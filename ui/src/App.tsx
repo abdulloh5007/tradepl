@@ -5,7 +5,7 @@ import { toast, Toaster } from "sonner"
 import type { AppNotification, MarketNewsEvent, Quote, View, Theme, Lang, MarketConfig, TradingAccount, Order, Metrics, NotificationSettings, SystemNoticeDetails } from "./types"
 
 // Utils
-import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId, storedTimeframe } from "./utils/cookies"
+import { setCookie, storedLang, storedTheme, storedBaseUrl, storedToken, storedAccountId, storedTimeframe, hasStoredLang } from "./utils/cookies"
 import { formatNumber, normalizeBaseUrl, toDisplayCandle } from "./utils/format"
 import { t } from "./utils/i18n"
 import { calcDisplayedOrderProfit } from "./utils/trading"
@@ -19,6 +19,7 @@ import { createApiClient, type DepositBonusStatus, type KYCStatus, type ProfitRe
 import BottomNav from "./components/BottomNav"
 import ConnectionBanner from "./components/ConnectionBanner"
 import AppAuthGate from "./components/auth/AppAuthGate"
+import LanguageSelectGate from "./components/auth/LanguageSelectGate"
 import AppViewRouter from "./components/AppViewRouter"
 import type { AccountSnapshot } from "./components/accounts/types"
 
@@ -444,6 +445,7 @@ function normalizeProfile(raw: UserProfile | null | undefined): UserProfile | nu
 export default function App() {
   // Core state
   const [lang, setLang] = useState<Lang>(storedLang)
+  const [needsLanguageSelect, setNeedsLanguageSelect] = useState<boolean>(() => !hasStoredLang())
   const [theme, setTheme] = useState<Theme>(storedTheme)
   const [view, setView] = useState<View>(resolveView)
   const [baseUrl] = useState(storedBaseUrl())
@@ -1489,11 +1491,20 @@ export default function App() {
     }
   }, [telegramModeActive, token, profile, requestTelegramWriteAccess, authApi, lang])
 
+  const handleSelectLanguage = useCallback((nextLang: Lang) => {
+    setCookie("lv_lang", nextLang)
+    document.documentElement.lang = nextLang
+    setLang(nextLang)
+    setNeedsLanguageSelect(false)
+  }, [])
+
   // Persist preferences
   useEffect(() => {
     document.documentElement.lang = lang
-    setCookie("lv_lang", lang)
-  }, [lang])
+    if (!needsLanguageSelect) {
+      setCookie("lv_lang", lang)
+    }
+  }, [lang, needsLanguageSelect])
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme)
@@ -2333,6 +2344,15 @@ export default function App() {
   const markSupportRead = useCallback(async () => {
     await api.markSupportRead()
   }, [api])
+
+  if (needsLanguageSelect) {
+    return (
+      <LanguageSelectGate
+        lang={lang}
+        onSelect={handleSelectLanguage}
+      />
+    )
+  }
 
   if (!token) {
     return (

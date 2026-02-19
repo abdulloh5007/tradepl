@@ -309,6 +309,7 @@
   "kyc.unavailable": "KYC submission is unavailable",
   "kyc.uploadBothSides": "Upload both front and back images",
   "language": "Language",
+  "languageGate.title": "Choose language",
   "languageHint": "Change app language",
   "lastPrice": "Last price",
   "light": "Light",

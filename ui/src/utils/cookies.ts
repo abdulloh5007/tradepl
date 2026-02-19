@@ -15,6 +15,11 @@ export function storedLang(): "en" | "uz" | "ru" {
     return "en"
 }
 
+export function hasStoredLang(): boolean {
+    const v = getCookie("lv_lang")
+    return v === "en" || v === "uz" || v === "ru"
+}
+
 export function storedTheme(): "dark" | "light" {
     const v = getCookie("lv_theme")
     if (v === "dark" || v === "light") return v

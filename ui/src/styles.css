@@ -96,6 +96,56 @@ body {
   min-height: 100dvh
 }
 
+.language-gate {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(20px + var(--app-safe-top)) 20px calc(24px + var(--app-safe-bottom));
+}
+
+.language-gate-card {
+  width: min(380px, 100%);
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.language-gate-title {
+  margin: 0 0 14px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-base);
+}
+
+.language-gate-options {
+  display: grid;
+  gap: 10px;
+}
+
+.language-gate-option {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  background: var(--input-bg);
+  color: var(--text-base);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .18s ease, background-color .18s ease;
+}
+
+.language-gate-option:hover,
+.language-gate-option:focus-visible {
+  border-color: var(--accent-2);
+  background: color-mix(in srgb, var(--input-bg) 85%, var(--accent-2) 15%);
+  outline: none;
+}
+
 .app {
   position: relative;
   max-width: 1200px;

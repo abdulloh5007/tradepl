@@ -281,6 +281,7 @@
   "kyc.unavailable": "Отправка KYC недоступна",
   "kyc.uploadBothSides": "Загрузите и лицевую, и обратную стороны",
   "language": "Язык",
+  "languageGate.title": "Выберите язык",
   "languageHint": "Смена языка интерфейса",
   "lastPrice": "Последняя цена",
   "light": "Светлая",
