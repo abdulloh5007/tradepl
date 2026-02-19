@@ -571,6 +571,10 @@ html[data-theme="light"] {
   padding-top: 24px;
 }
 
+.app-main-default.app-main-support {
+  padding: 0;
+}
+
 .app-page-top-offset {
   padding-top: 8px;
 }

@@ -2378,12 +2378,14 @@ export default function App() {
 
   const isChartView = view === "chart"
   const isAccountsView = view === "accounts"
+  const isSupportView = view === "support"
   const appVersion = String(__APP_VERSION__ || "dev")
   const mainClassName = [
     "app-main",
     isChartView ? "app-main-chart" : "app-main-default",
     isChartView ? "app-main-chart-offset" : "",
     isAccountsView ? "app-main-accounts-offset" : "",
+    isSupportView ? "app-main-support" : "",
   ].filter(Boolean).join(" ")
 
   return (

@@ -133,7 +133,6 @@ export default function SettingsPage({
                     fallbackAriaLabel={t("profitStages.backToProfile", lang)}
                     fallbackChildren={<ArrowLeft size={17} />}
                 />
-                <h2>{t("settings", lang)}</h2>
             </div>
 
             <section className="settings-card">
