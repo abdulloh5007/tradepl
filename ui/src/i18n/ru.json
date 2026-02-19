@@ -782,5 +782,16 @@
   "manage.depositMethods.stateDisabled": "выключен",
   "manage.depositMethods.save": "Сохранить методы ({count})",
   "manage.depositMethods.errorLoad": "Не удалось загрузить методы пополнения",
-  "manage.depositMethods.errorSave": "Не удалось сохранить методы пополнения"
+  "manage.depositMethods.errorSave": "Не удалось сохранить методы пополнения",
+  "manage.signal.title": "Канал сигналов",
+  "manage.signal.desc": "Telegram-канал для ежедневного дайджеста новостей и сигналов перед событием.",
+  "manage.signal.chatId": "Chat ID канала сигналов",
+  "manage.signal.digestTime": "Время ежедневного дайджеста",
+  "manage.signal.preAlertMinutes": "Минут до сигнала",
+  "manage.signal.scope": "Область",
+  "manage.signal.enabled": "Включить публикацию сигналов",
+  "manage.signal.enabledHint": "Если выключено, ивенты продолжают работать, но сигналы в Telegram-канал не отправляются.",
+  "manage.signal.save": "Сохранить настройки канала сигналов",
+  "manage.signal.errorLoad": "Не удалось загрузить настройки канала сигналов",
+  "manage.signal.errorSave": "Не удалось сохранить настройки канала сигналов"
 }

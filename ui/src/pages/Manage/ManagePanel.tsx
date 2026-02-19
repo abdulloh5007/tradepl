@@ -15,6 +15,7 @@ import TradingPairsCard from "../../components/admin/TradingPairsCard"
 import SystemHealthCard from "../../components/admin/SystemHealthCard"
 import DepositMethodsCard from "../../components/admin/DepositMethodsCard"
 import SupportReviewsCard from "../../components/admin/SupportReviewsCard"
+import SignalChannelCard from "../../components/admin/SignalChannelCard"
 
 // Types
 import {
@@ -1086,12 +1087,20 @@ export default function ManagePanel({ baseUrl, theme, onThemeToggle }: ManagePan
                     )}
 
                     {activeTab === "payments" && (
-                        <DepositMethodsCard
-                            lang={lang}
-                            baseUrl={baseUrl}
-                            headers={headers}
-                            canAccess={userRole === "owner"}
-                        />
+                        <>
+                            <SignalChannelCard
+                                lang={lang}
+                                baseUrl={baseUrl}
+                                headers={headers}
+                                canAccess={userRole === "owner"}
+                            />
+                            <DepositMethodsCard
+                                lang={lang}
+                                baseUrl={baseUrl}
+                                headers={headers}
+                                canAccess={userRole === "owner"}
+                            />
+                        </>
                     )}
 
                     {activeTab === "support" && (

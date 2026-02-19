@@ -152,6 +152,7 @@ func main() {
 	defer workerCancel()
 	go orderSvc.StartSwapRolloverWorker(workerCtx)
 	go ledgerHandler.StartRealDepositApprovalWorker(workerCtx)
+	go ledgerHandler.StartNewsSignalWorker(workerCtx)
 	go updaterManager.Start(workerCtx)
 
 	log.Printf("server listening on %s", cfg.HTTPAddr)

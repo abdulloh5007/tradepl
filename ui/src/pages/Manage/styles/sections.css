@@ -233,6 +233,39 @@ input[type=number] {
   color: var(--status-danger);
 }
 
+.signal-channel-enable-row {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-alt);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.signal-channel-enable-text {
+  display: grid;
+  gap: 3px;
+}
+
+.signal-channel-enable-text strong {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.signal-channel-enable-text small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.signal-channel-meta {
+  margin: 0 !important;
+  padding: 11px 12px !important;
+  text-align: left !important;
+}
+
 .pairs-list {
   display: flex;
   flex-direction: column;

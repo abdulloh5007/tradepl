@@ -464,6 +464,8 @@ func NewRouter(d RouterDeps) http.Handler {
 				r.With(admin.RequireOwner).Get("/news/events", d.SessionsHandler.AdminNewsEvents)
 				r.With(admin.RequireOwner).Post("/news/events", d.SessionsHandler.AdminCreateNewsEvent)
 				r.With(admin.RequireOwner).Delete("/news/events/{id}", d.SessionsHandler.AdminCancelNewsEvent)
+				r.With(admin.RequireOwner).Get("/news/signal-config", d.AdminHandler.GetNewsSignalConfig)
+				r.With(admin.RequireOwner).Post("/news/signal-config", d.AdminHandler.UpdateNewsSignalConfig)
 				// Volatility
 				r.With(admin.RequireRight("volatility")).Get("/volatility", d.VolatilityHandler.GetSettings)
 				r.With(admin.RequireRight("volatility")).Post("/volatility/activate", d.VolatilityHandler.SetActive)

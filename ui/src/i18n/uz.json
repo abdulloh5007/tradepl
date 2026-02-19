@@ -782,5 +782,16 @@
   "manage.depositMethods.stateDisabled": "o'chirilgan",
   "manage.depositMethods.save": "Usullarni saqlash ({count})",
   "manage.depositMethods.errorLoad": "To'lov usullarini yuklab bo'lmadi",
-  "manage.depositMethods.errorSave": "To'lov usullarini saqlab bo'lmadi"
+  "manage.depositMethods.errorSave": "To'lov usullarini saqlab bo'lmadi",
+  "manage.signal.title": "Signal kanali",
+  "manage.signal.desc": "Yangiliklar uchun kunlik dayjest va event oldi signalini Telegram kanalga avtomatik yuboradi.",
+  "manage.signal.chatId": "Signal kanal chat ID",
+  "manage.signal.digestTime": "Kunlik dayjest vaqti",
+  "manage.signal.preAlertMinutes": "Signalgacha daqiqa",
+  "manage.signal.scope": "Qamrov",
+  "manage.signal.enabled": "Signal yuborishni yoqish",
+  "manage.signal.enabledHint": "O'chirilsa, eventlar ishlashda davom etadi, lekin Telegram kanalga signal yuborilmaydi.",
+  "manage.signal.save": "Signal kanal sozlamalarini saqlash",
+  "manage.signal.errorLoad": "Signal kanal sozlamalarini yuklab bo'lmadi",
+  "manage.signal.errorSave": "Signal kanal sozlamalarini saqlab bo'lmadi"
 }

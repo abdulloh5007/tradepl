@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 	"lv-tradepl/internal/depositmethods"
+	"lv-tradepl/internal/newssignal"
 
 	"lv-tradepl/internal/httputil"
 
@@ -619,6 +620,35 @@ func (h *Handler) UpdateDepositMethods(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"methods": methods,
 	})
+}
+
+func (h *Handler) GetNewsSignalConfig(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	cfg, err := newssignal.Load(r.Context(), h.pool)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, cfg)
+}
+
+func (h *Handler) UpdateNewsSignalConfig(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
+	var req newssignal.Config
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
+		return
+	}
+	cfg, err := newssignal.Save(r.Context(), h.pool, req)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, cfg)
 }
 
 // ValidateToken validates an access token from Telegram bot

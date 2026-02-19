@@ -810,5 +810,16 @@
   "manage.depositMethods.stateDisabled": "disabled",
   "manage.depositMethods.save": "Save methods ({count})",
   "manage.depositMethods.errorLoad": "Failed to load deposit methods",
-  "manage.depositMethods.errorSave": "Failed to save deposit methods"
+  "manage.depositMethods.errorSave": "Failed to save deposit methods",
+  "manage.signal.title": "Signal Channel",
+  "manage.signal.desc": "Telegram channel for automatic daily news digest and pre-event signals.",
+  "manage.signal.chatId": "Signal channel chat ID",
+  "manage.signal.digestTime": "Daily digest time",
+  "manage.signal.preAlertMinutes": "Pre-alert minutes",
+  "manage.signal.scope": "Scope",
+  "manage.signal.enabled": "Enable signal publishing",
+  "manage.signal.enabledHint": "When disabled, events still work but no Telegram channel signals are sent.",
+  "manage.signal.save": "Save signal channel settings",
+  "manage.signal.errorLoad": "Failed to load signal channel settings",
+  "manage.signal.errorSave": "Failed to save signal channel settings"
 }
