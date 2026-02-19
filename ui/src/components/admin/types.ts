@@ -99,4 +99,6 @@ export type DepositPaymentMethod = {
     title: string
     details: string
     enabled: boolean
+    min_amount_usd: string
+    max_amount_usd: string
 }

@@ -78,9 +78,11 @@ export default function RealWithdrawRequestModal({
       title: String(item?.title || item?.id || "").trim(),
       details: String(item?.details || "").trim(),
       enabled: Boolean(item?.enabled && String(item?.details || "").trim()),
+      min_amount_usd: String(item?.min_amount_usd || status?.min_amount_usd || "0").trim(),
+      max_amount_usd: String(item?.max_amount_usd || status?.max_amount_usd || "0").trim(),
       verified_for_withdraw: Boolean(item?.verified_for_withdraw),
     })).filter((item) => item.id !== "")
-  }, [status?.payment_methods])
+  }, [status?.payment_methods, status?.min_amount_usd, status?.max_amount_usd])
 
   const availableMethodIDs = useMemo(() => {
     return paymentMethods.filter((item) => item.enabled).map((item) => item.id)

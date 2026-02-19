@@ -100,7 +100,7 @@ func (h *Handler) RequestRealWithdraw(w http.ResponseWriter, r *http.Request, us
 	methodAvailable := false
 	for _, item := range methods {
 		if strings.EqualFold(item.ID, methodID) {
-			methodAvailable = item.Enabled
+			methodAvailable = item.Enabled && strings.TrimSpace(item.Details) != ""
 			break
 		}
 	}

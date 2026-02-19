@@ -580,13 +580,37 @@ func (h *Handler) UpdateDepositMethods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Methods []depositmethods.Method `json:"methods"`
+		Methods []struct {
+			ID           string `json:"id"`
+			Title        string `json:"title"`
+			Details      string `json:"details"`
+			Enabled      *bool  `json:"enabled"`
+			MinAmountUSD string `json:"min_amount_usd"`
+			MaxAmountUSD string `json:"max_amount_usd"`
+		} `json:"methods"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "invalid request"})
 		return
 	}
-	methods, err := depositmethods.Save(r.Context(), h.pool, req.Methods)
+	inputMethods := make([]depositmethods.Method, 0, len(req.Methods))
+	for _, item := range req.Methods {
+		details := strings.TrimSpace(item.Details)
+		enabled := details != ""
+		if item.Enabled != nil {
+			enabled = *item.Enabled
+		}
+		inputMethods = append(inputMethods, depositmethods.Method{
+			ID:           item.ID,
+			Title:        item.Title,
+			Details:      details,
+			Enabled:      enabled,
+			MinAmountUSD: item.MinAmountUSD,
+			MaxAmountUSD: item.MaxAmountUSD,
+		})
+	}
+
+	methods, err := depositmethods.Save(r.Context(), h.pool, inputMethods)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: err.Error()})
 		return

@@ -117,8 +117,6 @@ export default function RealDepositRequestModal({
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const minAmount = Number(status?.min_amount_usd || "0")
-  const maxAmount = Number(status?.max_amount_usd || "0")
   const uzsRate = Number(status?.usd_to_uzs_rate || "0")
   const reviewMinutes = Number(status?.review_minutes || 120)
 
@@ -143,8 +141,10 @@ export default function RealDepositRequestModal({
       title: String(item?.title || item?.id || "").trim(),
       details: String(item?.details || "").trim(),
       enabled: Boolean(item?.enabled && String(item?.details || "").trim()),
+      min_amount_usd: String(item?.min_amount_usd || status?.min_amount_usd || "0").trim(),
+      max_amount_usd: String(item?.max_amount_usd || status?.max_amount_usd || "0").trim(),
     })).filter((item) => item.id !== "")
-  }, [status?.payment_methods])
+  }, [status?.payment_methods, status?.min_amount_usd, status?.max_amount_usd])
 
   const availableMethodIDs = useMemo(() => {
     return paymentMethods.filter((item) => item.enabled).map((item) => item.id)
@@ -155,6 +155,9 @@ export default function RealDepositRequestModal({
   }, [vouchers])
 
   const selectedMethod = paymentMethods.find((item) => item.id === methodID) || null
+  const selectedMethodMinUSD = Number(selectedMethod?.min_amount_usd || status?.min_amount_usd || "0")
+  const selectedMethodMaxUSDRaw = Number(selectedMethod?.max_amount_usd || status?.max_amount_usd || "0")
+  const selectedMethodMaxUSD = selectedMethodMaxUSDRaw >= selectedMethodMinUSD ? selectedMethodMaxUSDRaw : selectedMethodMinUSD
   const uzsMethodSelected = selectedMethod ? isUzsMethod(selectedMethod.id) : false
   const amountNum = Number(amountRaw)
   const amountValid = Number.isFinite(amountNum) && amountNum > 0
@@ -162,13 +165,13 @@ export default function RealDepositRequestModal({
   const amountUSDForValidation = uzsMethodSelected
     ? (hasRate && amountValid ? amountNum / uzsRate : Number.NaN)
     : amountNum
-  const amountTooHigh = Number.isFinite(amountUSDForValidation) && maxAmount > 0 && amountUSDForValidation > maxAmount
+  const amountTooHigh = Number.isFinite(amountUSDForValidation) && selectedMethodMaxUSD > 0 && amountUSDForValidation > selectedMethodMaxUSD
   const withinLimits = Number.isFinite(amountUSDForValidation) &&
-    amountUSDForValidation >= minAmount &&
-    amountUSDForValidation <= maxAmount &&
+    amountUSDForValidation >= selectedMethodMinUSD &&
+    amountUSDForValidation <= selectedMethodMaxUSD &&
     (!uzsMethodSelected || hasRate)
-  const minLimitDisplay = uzsMethodSelected ? minAmount * uzsRate : minAmount
-  const maxLimitDisplay = uzsMethodSelected ? maxAmount * uzsRate : maxAmount
+  const minLimitDisplay = uzsMethodSelected ? selectedMethodMinUSD * uzsRate : selectedMethodMinUSD
+  const maxLimitDisplay = uzsMethodSelected ? selectedMethodMaxUSD * uzsRate : selectedMethodMaxUSD
   const inputCurrencyCode = uzsMethodSelected ? "UZS" : "USD"
   const inputFractionAllowed = !uzsMethodSelected
 
@@ -186,7 +189,9 @@ export default function RealDepositRequestModal({
     const preferred = normalizeVoucherKind(defaultVoucher)
     const initialMethod = availableMethodIDs[0] || ""
     const initialIsUzs = isUzsMethod(initialMethod)
-    const baseDefaultAmountUSD = minAmount > 0 ? minAmount : 0
+    const initialMethodConfig = paymentMethods.find((item) => item.id === initialMethod) || null
+    const initialMethodMinUSD = Number(initialMethodConfig?.min_amount_usd || status?.min_amount_usd || "0")
+    const baseDefaultAmountUSD = initialMethodMinUSD > 0 ? initialMethodMinUSD : 0
     const forcedAmountUSD = preferred === "diamond" ? Math.max(baseDefaultAmountUSD, DIAMOND_MIN_AMOUNT) : baseDefaultAmountUSD
     const forcedAmountInput = initialIsUzs ? forcedAmountUSD * uzsRate : forcedAmountUSD
     const initialAmount = forcedAmountInput > 0 ? String(forcedAmountInput) : ""
@@ -211,7 +216,7 @@ export default function RealDepositRequestModal({
     if (!open) return
     resetState()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultVoucher, status?.eligible_account_id, status?.pending_count, status?.vouchers, status?.payment_methods])
+  }, [open, defaultVoucher, paymentMethods, availableMethodIDs, status?.eligible_account_id, status?.pending_count, status?.vouchers, status?.payment_methods, status?.min_amount_usd, uzsRate])
 
   useEffect(() => {
     if (

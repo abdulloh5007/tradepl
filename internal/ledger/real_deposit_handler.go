@@ -213,11 +213,6 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorResponse{Error: cfgErr.Error()})
 		return
 	}
-	if amountUSD.LessThan(cfg.RealDepositMinUSD) || amountUSD.GreaterThan(cfg.RealDepositMaxUSD) {
-		msg := fmt.Sprintf("amount must be between %s and %s USD", cfg.RealDepositMinUSD.StringFixed(2), cfg.RealDepositMaxUSD.StringFixed(2))
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: msg})
-		return
-	}
 
 	voucherKind := normalizeVoucherKind(req.VoucherKind)
 	percent := voucherPercent(voucherKind)
@@ -260,14 +255,27 @@ func (h *Handler) RequestRealDeposit(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 	methodAvailable := false
+	methodMinAmountUSD := cfg.RealDepositMinUSD
+	methodMaxAmountUSD := cfg.RealDepositMaxUSD
 	for _, item := range methods {
 		if strings.EqualFold(item.ID, methodID) {
-			methodAvailable = item.Enabled
+			methodAvailable = item.Enabled && strings.TrimSpace(item.Details) != ""
+			methodMinAmountUSD, methodMaxAmountUSD = depositmethods.ResolveAmountBounds(
+				item.MinAmountUSD,
+				item.MaxAmountUSD,
+				cfg.RealDepositMinUSD,
+				cfg.RealDepositMaxUSD,
+			)
 			break
 		}
 	}
 	if !methodAvailable {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: "selected payment method is unavailable"})
+		return
+	}
+	if amountUSD.LessThan(methodMinAmountUSD) || amountUSD.GreaterThan(methodMaxAmountUSD) {
+		msg := fmt.Sprintf("amount must be between %s and %s USD", methodMinAmountUSD.StringFixed(2), methodMaxAmountUSD.StringFixed(2))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorResponse{Error: msg})
 		return
 	}
 
