@@ -464,6 +464,8 @@
   "support.sendFailed": "Failed to send message",
   "support.you": "You",
   "support.agent": "Support",
+  "support.online": "Online",
+  "support.offline": "Offline",
   "profit": "Profit",
   "profitStages.allCompleted": "All stages completed",
   "profitStages.backToProfile": "Back to profile",

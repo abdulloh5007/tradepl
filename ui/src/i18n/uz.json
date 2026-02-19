@@ -436,6 +436,8 @@
   "support.sendFailed": "Xabarni yuborib bo'lmadi",
   "support.you": "Siz",
   "support.agent": "Yordam",
+  "support.online": "Onlayn",
+  "support.offline": "Oflayn",
   "profit": "Foyda",
   "profitStages.allCompleted": "Barcha bosqichlar yakunlangan",
   "profitStages.backToProfile": "Profilga qaytish",

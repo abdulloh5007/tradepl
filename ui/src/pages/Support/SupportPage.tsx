@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
-import { ArrowLeft, LifeBuoy, SendHorizontal } from "lucide-react"
+import { ArrowLeft, SendHorizontal } from "lucide-react"
 import type { SupportConversation, SupportMessage } from "../../api"
 import type { Lang } from "../../types"
 import TelegramBackButton from "../../components/telegram/TelegramBackButton"
@@ -56,10 +56,37 @@ export default function SupportPage({
   const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
 
-  const statusLabel = useMemo(() => {
-    if (!conversation || conversation.status === "open") return t("support.statusOpen", lang)
-    return t("support.statusClosed", lang)
-  }, [conversation, lang])
+  const latestAdminMessage = useMemo(() => {
+    let latest: SupportMessage | null = null
+    for (const item of messages) {
+      if (item.sender_type !== "admin") continue
+      if (!latest) {
+        latest = item
+        continue
+      }
+      const currentTS = new Date(item.created_at).getTime()
+      const latestTS = new Date(latest.created_at).getTime()
+      if (Number.isFinite(currentTS) && (!Number.isFinite(latestTS) || currentTS > latestTS)) {
+        latest = item
+      }
+    }
+    return latest
+  }, [messages])
+
+  const supportDisplayName = useMemo(() => {
+    const username = String(latestAdminMessage?.sender_admin_username || "").trim()
+    return username || t("support.agent", lang)
+  }, [latestAdminMessage, lang])
+
+  const supportOnline = useMemo(() => {
+    if (conversation?.status === "closed") return false
+    if (!latestAdminMessage) return false
+    const lastTS = new Date(latestAdminMessage.created_at).getTime()
+    if (!Number.isFinite(lastTS)) return false
+    return Date.now() - lastTS <= 5 * 60 * 1000
+  }, [latestAdminMessage, conversation?.status])
+
+  const supportStatusLabel = supportOnline ? t("support.online", lang) : t("support.offline", lang)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const element = listRef.current
@@ -206,7 +233,7 @@ export default function SupportPage({
   }
 
   return (
-    <div className="support-page">
+    <div className="support-page app-page-top-offset">
       <header className="support-header">
         <TelegramBackButton
           onBack={onBack}
@@ -214,13 +241,12 @@ export default function SupportPage({
           fallbackAriaLabel={t("support.back", lang)}
           fallbackChildren={<ArrowLeft size={18} />}
         />
-        <div className="support-header-main">
-          <h2 className="support-title">{t("support.title", lang)}</h2>
-          <p className="support-subtitle">{t("support.subtitle", lang)}</p>
-        </div>
-        <div className={`support-status-chip ${conversation?.status === "closed" ? "closed" : "open"}`}>
-          <LifeBuoy size={13} />
-          <span>{statusLabel}</span>
+        <div className="support-peer-card">
+          <span className={`support-peer-dot ${supportOnline ? "online" : "offline"}`} />
+          <div className="support-peer-meta">
+            <strong className="support-peer-name">{supportDisplayName}</strong>
+            <span className="support-peer-status">{supportStatusLabel}</span>
+          </div>
         </div>
       </header>
 

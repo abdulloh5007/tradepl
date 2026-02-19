@@ -436,6 +436,8 @@
   "support.sendFailed": "Не удалось отправить сообщение",
   "support.you": "Вы",
   "support.agent": "Поддержка",
+  "support.online": "В сети",
+  "support.offline": "Не в сети",
   "profit": "Прибыль",
   "profitStages.allCompleted": "Все этапы завершены",
   "profitStages.backToProfile": "Назад в профиль",
