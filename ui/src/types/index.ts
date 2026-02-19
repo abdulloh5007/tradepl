@@ -138,6 +138,11 @@ export interface AppNotification {
     dedupe_key?: string
     account_id?: string
     details?: SystemNoticeDetails
+    i18n?: {
+        title_key?: string
+        message_key?: string
+        params?: Record<string, string>
+    }
     action?: {
         type: "open_profit_stages"
         label?: string

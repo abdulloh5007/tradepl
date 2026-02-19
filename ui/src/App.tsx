@@ -147,12 +147,44 @@ function isCashFlowHistoryOrder(order: Order): boolean {
   return side === "deposit" || side === "withdraw" || type === "balance"
 }
 
-function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNotification["kind"]; title: string; message: string } | null {
+type NotificationI18nPayload = {
+  titleKey?: string
+  messageKey?: string
+  params?: Record<string, string>
+}
+
+function applyNotificationParams(template: string, params?: Record<string, string>): string {
+  const source = String(template || "")
+  const vars = params || {}
+  return source.replace(/\{([^}]+)\}/g, (match, key) => {
+    const k = String(key || "")
+    if (Object.prototype.hasOwnProperty.call(vars, k)) return String(vars[k] || "")
+    return match
+  })
+}
+
+function resolveNotificationText(
+  lang: Lang,
+  title: string,
+  message: string,
+  i18n?: NotificationI18nPayload,
+): { title: string; message: string } {
+  const nextTitle = i18n?.titleKey
+    ? applyNotificationParams(t(i18n.titleKey, lang), i18n.params)
+    : String(title || "")
+  const nextMessage = i18n?.messageKey
+    ? applyNotificationParams(t(i18n.messageKey, lang), i18n.params)
+    : String(message || "")
+  return { title: nextTitle, message: nextMessage }
+}
+
+function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNotification["kind"]; title: string; message: string; i18n?: NotificationI18nPayload } | null {
   const ticket = String(order.ticket || "").toLowerCase()
   const side = String(order.side || "").toLowerCase()
   const type = String(order.type || "").toLowerCase()
   const amount = Number(order.profit || 0)
   const amountAbs = formatNumber(Math.abs(Number.isFinite(amount) ? amount : 0), 2, 2)
+  const amountParams = { amount: amountAbs }
 
   if (isCashFlowHistoryOrder(order)) {
     if (ticket.includes("bxdepstm")) {
@@ -160,6 +192,11 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
         kind: "system",
         title: t("notifications.negativeBalanceProtection", lang),
         message: t("notifications.systemCoveredAfterStopOut", lang).replace("{amount}", amountAbs),
+        i18n: {
+          titleKey: "notifications.negativeBalanceProtection",
+          messageKey: "notifications.systemCoveredAfterStopOut",
+          params: amountParams,
+        },
       }
     }
     if (ticket.includes("bxkyc")) {
@@ -167,6 +204,11 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
         kind: "bonus",
         title: t("notifications.kycBonusCredited", lang),
         message: t("notifications.kycBonusMessage", lang).replace("{amount}", amountAbs),
+        i18n: {
+          titleKey: "notifications.kycBonusCredited",
+          messageKey: "notifications.kycBonusMessage",
+          params: amountParams,
+        },
       }
     }
     if (ticket.includes("bxrew")) {
@@ -174,6 +216,11 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
         kind: "bonus",
         title: t("notifications.welcomeBonusCredited", lang),
         message: t("notifications.welcomeBonusMessage", lang).replace("{amount}", amountAbs),
+        i18n: {
+          titleKey: "notifications.welcomeBonusCredited",
+          messageKey: "notifications.welcomeBonusMessage",
+          params: amountParams,
+        },
       }
     }
     if (ticket.includes("bxbon")) {
@@ -181,6 +228,11 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
         kind: "bonus",
         title: t("notifications.depositVoucherBonusCredited", lang),
         message: t("notifications.depositVoucherBonusMessage", lang).replace("{amount}", amountAbs),
+        i18n: {
+          titleKey: "notifications.depositVoucherBonusCredited",
+          messageKey: "notifications.depositVoucherBonusMessage",
+          params: amountParams,
+        },
       }
     }
     if (ticket.includes("bxprf")) {
@@ -188,6 +240,11 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
         kind: "bonus",
         title: t("notifications.profitStageRewardCredited", lang),
         message: t("notifications.profitStageRewardMessage", lang).replace("{amount}", amountAbs),
+        i18n: {
+          titleKey: "notifications.profitStageRewardCredited",
+          messageKey: "notifications.profitStageRewardMessage",
+          params: amountParams,
+        },
       }
     }
     if (ticket.includes("bxref")) {
@@ -195,6 +252,11 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
         kind: "referral",
         title: t("notifications.referralBalancePayout", lang),
         message: t("notifications.referralBalancePayoutMessage", lang).replace("{amount}", amountAbs),
+        i18n: {
+          titleKey: "notifications.referralBalancePayout",
+          messageKey: "notifications.referralBalancePayoutMessage",
+          params: amountParams,
+        },
       }
     }
     if (side === "withdraw") {
@@ -202,12 +264,22 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
         kind: "deposit",
         title: t("notifications.withdrawalPosted", lang),
         message: t("notifications.withdrawalPostedMessage", lang).replace("{amount}", amountAbs),
+        i18n: {
+          titleKey: "notifications.withdrawalPosted",
+          messageKey: "notifications.withdrawalPostedMessage",
+          params: amountParams,
+        },
       }
     }
     return {
       kind: "deposit",
       title: t("notifications.balanceUpdated", lang),
       message: t("notifications.balanceUpdatedMessage", lang).replace("{amount}", amountAbs),
+      i18n: {
+        titleKey: "notifications.balanceUpdated",
+        messageKey: "notifications.balanceUpdatedMessage",
+        params: amountParams,
+      },
     }
   }
 
@@ -218,13 +290,18 @@ function historyNotificationFromOrder(order: Order, lang: Lang): { kind: AppNoti
       message: amount >= 0
         ? t("notifications.swapCredited", lang).replace("{amount}", amountAbs)
         : t("notifications.swapCharged", lang).replace("{amount}", amountAbs),
+      i18n: {
+        titleKey: "notifications.swapUpdate",
+        messageKey: amount >= 0 ? "notifications.swapCredited" : "notifications.swapCharged",
+        params: amountParams,
+      },
     }
   }
 
   return null
 }
 
-function newsNotificationFromEvent(event: MarketNewsEvent, lang: Lang): { kind: AppNotification["kind"]; title: string; message: string; statusKey: "live" | "completed" } | null {
+function newsNotificationFromEvent(event: MarketNewsEvent, lang: Lang): { kind: AppNotification["kind"]; title: string; message: string; statusKey: "live" | "completed"; i18n?: NotificationI18nPayload } | null {
   const status = String(event.status || "").toLowerCase()
   const forecast = Number(event.forecast_value || 0)
   const actual = Number(event.actual_value ?? NaN)
@@ -236,6 +313,11 @@ function newsNotificationFromEvent(event: MarketNewsEvent, lang: Lang): { kind: 
       title: t("notifications.newsStartedTitle", lang).replace("{title}", event.title),
       message: t("notifications.newsStartedMessage", lang).replace("{forecast}", formatVal(forecast)),
       statusKey: "live",
+      i18n: {
+        titleKey: "notifications.newsStartedTitle",
+        messageKey: "notifications.newsStartedMessage",
+        params: { title: event.title, forecast: formatVal(forecast) },
+      },
     }
   }
 
@@ -251,6 +333,11 @@ function newsNotificationFromEvent(event: MarketNewsEvent, lang: Lang): { kind: 
         .replace("{tone}", tone)
         .replace("{forecast}", formatVal(forecast)),
       statusKey: "completed",
+      i18n: {
+        titleKey: "notifications.newsResultTitle",
+        messageKey: "notifications.newsResultMessage",
+        params: { title: event.title, actual: formatVal(actual), tone, forecast: formatVal(forecast) },
+      },
     }
   }
 
@@ -275,6 +362,18 @@ function readStoredNotifications(): AppNotification[] {
         read: Boolean(item.read),
         dedupe_key: item.dedupe_key ? String(item.dedupe_key) : undefined,
         account_id: item.account_id ? String(item.account_id) : undefined,
+        i18n: item.i18n && typeof item.i18n === "object"
+          ? {
+            title_key: item.i18n.title_key ? String(item.i18n.title_key) : undefined,
+            message_key: item.i18n.message_key ? String(item.i18n.message_key) : undefined,
+            params: item.i18n.params && typeof item.i18n.params === "object"
+              ? Object.entries(item.i18n.params).reduce<Record<string, string>>((acc, [key, value]) => {
+                acc[String(key)] = String(value ?? "")
+                return acc
+              }, {})
+              : undefined,
+          }
+          : undefined,
         action: item.action && typeof item.action === "object" && String(item.action.type || "") === "open_profit_stages"
           ? {
             type: "open_profit_stages",
@@ -468,13 +567,15 @@ export default function App() {
     kind: AppNotification["kind"]
     title: string
     message: string
+    i18n?: NotificationI18nPayload
     accountID?: string
     dedupeKey?: string
     action?: AppNotification["action"]
     details?: SystemNoticeDetails
   }) => {
-    const title = String(payload.title || "").trim()
-    const message = String(payload.message || "").trim()
+    const resolved = resolveNotificationText(lang, payload.title, payload.message, payload.i18n)
+    const title = String(resolved.title || "").trim()
+    const message = String(resolved.message || "").trim()
     if (!title || !message) return
     if (!notificationSettings.enabled) return
     if (!notificationSettings.kinds[payload.kind]) return
@@ -492,12 +593,19 @@ export default function App() {
         read: false,
         dedupe_key: payload.dedupeKey,
         account_id: payload.accountID,
+        i18n: payload.i18n
+          ? {
+            title_key: payload.i18n.titleKey,
+            message_key: payload.i18n.messageKey,
+            params: payload.i18n.params,
+          }
+          : undefined,
         action: payload.action,
         details: payload.details,
       }
       return [nextItem, ...prev].slice(0, notificationsLimit)
     })
-  }, [notificationSettings])
+  }, [notificationSettings, lang])
 
   const markAllNotificationsRead = useCallback(() => {
     setNotifications(prev => prev.map(item => (item.read ? item : { ...item, read: true })))
@@ -528,7 +636,7 @@ export default function App() {
 
   const hasUnreadNotifications = useMemo(() => notifications.some(item => !item.read), [notifications])
 
-  // Migrate legacy notifications where raw i18n keys were persisted as plain text.
+  // Re-render notifications on language change (new i18n metadata + legacy key fallback).
   useEffect(() => {
     setNotifications(prev => {
       let changed = false
@@ -536,7 +644,26 @@ export default function App() {
         let title = item.title
         let message = item.message
 
-        if (title.startsWith("notifications.")) {
+        if (item.i18n?.title_key || item.i18n?.message_key) {
+          const resolved = resolveNotificationText(
+            lang,
+            item.title,
+            item.message,
+            {
+              titleKey: item.i18n?.title_key,
+              messageKey: item.i18n?.message_key,
+              params: item.i18n?.params,
+            }
+          )
+          if (resolved.title !== title) {
+            title = resolved.title
+            changed = true
+          }
+          if (resolved.message !== message) {
+            message = resolved.message
+            changed = true
+          }
+        } else if (title.startsWith("notifications.")) {
           const translated = t(title, lang)
           if (translated !== title) {
             title = translated
@@ -544,7 +671,7 @@ export default function App() {
           }
         }
 
-        if (message.startsWith("notifications.")) {
+        if (!item.i18n?.message_key && message.startsWith("notifications.")) {
           let translated = t(message, lang)
           if (message === "notifications.profitStageReadyMessage") {
             const stageMatch = String(item.dedupe_key || "").match(/profit_stage_ready:[^:]+:(\d+)/)
@@ -873,14 +1000,16 @@ export default function App() {
       const prevNotice = systemNoticeByAccountRef.current[requestAccountId] || ""
       if (prevNotice !== currentKey) {
         toast.message(notice)
+        const titleKey = details?.kind === "stop_out"
+          ? "notifications.marginCallStopOut"
+          : details?.kind === "margin_call"
+            ? "notifications.marginCallWarning"
+            : "notifications.systemNotice"
         addNotification({
           kind: "system",
-          title: details?.kind === "stop_out"
-            ? t("notifications.marginCallStopOut", lang)
-            : details?.kind === "margin_call"
-              ? t("notifications.marginCallWarning", lang)
-              : t("notifications.systemNotice", lang),
+          title: t(titleKey, lang),
           message: notice,
+          i18n: { titleKey },
           accountID: requestAccountId,
           dedupeKey: detailKey ? `system:${requestAccountId}:${detailKey}` : `system:${requestAccountId}:${notice}`,
           details,
@@ -935,10 +1064,16 @@ export default function App() {
 
       if (canClaim && !prev.canClaim) {
         const amount = Number(status?.amount || 0)
+        const amountText = formatNumber(amount, 2, 2)
         addNotification({
           kind: "bonus",
           title: t("notifications.welcomeBonusAvailable", lang),
-          message: t("notifications.welcomeBonusAvailableMessage", lang).replace("{amount}", formatNumber(amount, 2, 2)),
+          message: t("notifications.welcomeBonusAvailableMessage", lang).replace("{amount}", amountText),
+          i18n: {
+            titleKey: "notifications.welcomeBonusAvailable",
+            messageKey: "notifications.welcomeBonusAvailableMessage",
+            params: { amount: amountText },
+          },
           accountID: requestAccountId,
           dedupeKey: `signup:available:${requestAccountId}:${amount}`,
         })
@@ -973,6 +1108,11 @@ export default function App() {
           kind: "deposit",
           title: t("notifications.depositRequestPending", lang),
           message: t("notifications.depositRequestPendingMessage", lang).replace("{count}", String(pending)),
+          i18n: {
+            titleKey: "notifications.depositRequestPending",
+            messageKey: "notifications.depositRequestPendingMessage",
+            params: { count: String(pending) },
+          },
           accountID: requestAccountId,
         })
       } else if (pending < prevState.pending) {
@@ -980,6 +1120,10 @@ export default function App() {
           kind: "deposit",
           title: t("notifications.depositRequestReviewed", lang),
           message: t("notifications.depositRequestReviewedMessage", lang),
+          i18n: {
+            titleKey: "notifications.depositRequestReviewed",
+            messageKey: "notifications.depositRequestReviewedMessage",
+          },
           accountID: requestAccountId,
         })
       }
@@ -1031,12 +1175,18 @@ export default function App() {
         const stageNo = Number(stage.stage_no || 0)
         if (!Number.isFinite(stageNo) || stageNo <= 0) continue
         const reward = Number(stage.reward_usd || 0)
+        const rewardText = formatNumber(reward, 2, 2)
         addNotification({
           kind: "bonus",
           title: t("notifications.profitStageReadyToClaim", lang),
           message: t("notifications.profitStageReadyMessage", lang)
             .replace("{stage}", String(stageNo))
-            .replace("{amount}", formatNumber(reward, 2, 2)),
+            .replace("{amount}", rewardText),
+          i18n: {
+            titleKey: "notifications.profitStageReadyToClaim",
+            messageKey: "notifications.profitStageReadyMessage",
+            params: { stage: String(stageNo), amount: rewardText },
+          },
           accountID: activeAccountId,
           dedupeKey: `profit_stage_ready:${trackKey}:${stageNo}`,
           action: {
@@ -1169,6 +1319,27 @@ export default function App() {
       refreshProfitRewardStatus().catch(() => { })
     ]).catch(() => { })
   }, [token, activeAccountId, refreshSignupBonus, refreshDepositBonus, refreshKYCStatus, refreshReferralStatus, refreshProfitRewardStatus])
+
+  // Keep deposit review status fresh to show web notifications on approve/reject events.
+  useEffect(() => {
+    if (!token || !activeAccountId) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const poll = async () => {
+      if (cancelled) return
+      await refreshDepositBonus().catch(() => { })
+      if (!cancelled) {
+        timer = setTimeout(poll, 10000)
+      }
+    }
+
+    timer = setTimeout(poll, 10000)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [token, activeAccountId, refreshDepositBonus])
 
   useEffect(() => {
     let cancelled = false
@@ -1468,6 +1639,13 @@ export default function App() {
           read: false,
           dedupe_key: dedupeKey,
           account_id: accountKey,
+          i18n: next.i18n
+            ? {
+              title_key: next.i18n.titleKey,
+              message_key: next.i18n.messageKey,
+              params: next.i18n.params,
+            }
+            : undefined,
         })
       }
 
@@ -1522,6 +1700,7 @@ export default function App() {
         kind: next.kind,
         title: next.title,
         message: next.message,
+        i18n: next.i18n,
         dedupeKey: `news:${item.id}:${next.statusKey}`,
       })
     }
@@ -1798,10 +1977,16 @@ export default function App() {
     const claimed = await api.claimSignupBonus({ accept_terms: true })
     setSignupBonus(claimed || null)
     if (claimed) {
+      const amountText = formatNumber(Number(claimed.amount || 0), 2, 2)
       addNotification({
         kind: "bonus",
         title: t("notifications.welcomeBonusCredited", lang),
-        message: t("notifications.welcomeBonusCreditedMessage", lang).replace("{amount}", formatNumber(Number(claimed.amount || 0), 2, 2)),
+        message: t("notifications.welcomeBonusCreditedMessage", lang).replace("{amount}", amountText),
+        i18n: {
+          titleKey: "notifications.welcomeBonusCredited",
+          messageKey: "notifications.welcomeBonusCreditedMessage",
+          params: { amount: amountText },
+        },
         accountID: activeAccountId,
         dedupeKey: `signup:claimed:${claimed.claimed_at || claimed.trading_account_id || activeAccountId}`,
       })
@@ -1907,10 +2092,16 @@ export default function App() {
       proof_mime_type: payload.proofFile.type || "application/octet-stream",
       proof_base64: proofBase64,
     })
+    const amountText = formatNumber(Number(payload.amountUSD || 0), 2, 2)
     addNotification({
       kind: "deposit",
       title: t("notifications.depositRequestSubmitted", lang),
-      message: t("notifications.depositRequestSubmittedMessage", lang).replace("{amount}", formatNumber(Number(payload.amountUSD || 0), 2, 2)),
+      message: t("notifications.depositRequestSubmittedMessage", lang).replace("{amount}", amountText),
+      i18n: {
+        titleKey: "notifications.depositRequestSubmitted",
+        messageKey: "notifications.depositRequestSubmittedMessage",
+        params: { amount: amountText },
+      },
       accountID: activeAccountId,
     })
     await Promise.all([
@@ -1929,10 +2120,16 @@ export default function App() {
       method_id: payload.methodID,
       payout_details: payload.payoutDetails,
     })
+    const amountText = formatNumber(Number(res?.amount_usd || payload.amountUSD || 0), 2, 2)
     addNotification({
       kind: "deposit",
       title: t("notifications.withdrawalPosted", lang),
-      message: t("notifications.withdrawalPostedMessage", lang).replace("{amount}", formatNumber(Number(res?.amount_usd || payload.amountUSD || 0), 2, 2)),
+      message: t("notifications.withdrawalPostedMessage", lang).replace("{amount}", amountText),
+      i18n: {
+        titleKey: "notifications.withdrawalPosted",
+        messageKey: "notifications.withdrawalPostedMessage",
+        params: { amount: amountText },
+      },
       accountID: activeAccountId,
     })
     await Promise.all([
@@ -1967,6 +2164,10 @@ export default function App() {
       kind: "news",
       title: t("notifications.kycSubmitted", lang),
       message: t("notifications.kycSubmittedMessage", lang),
+      i18n: {
+        titleKey: "notifications.kycSubmitted",
+        messageKey: "notifications.kycSubmittedMessage",
+      },
       accountID: activeAccountId,
     })
     await Promise.all([
@@ -1998,10 +2199,16 @@ export default function App() {
       ? { amount_usd: amountUSD.trim() }
       : undefined
     const res = await api.referralWithdraw(payload)
+    const amountText = formatNumber(Number(res?.amount_usd || 0), 2, 2)
     addNotification({
       kind: "referral",
       title: t("notifications.referralWithdrawalCompleted", lang),
-      message: t("notifications.referralWithdrawalCompletedMessage", lang).replace("{amount}", formatNumber(Number(res?.amount_usd || 0), 2, 2)),
+      message: t("notifications.referralWithdrawalCompletedMessage", lang).replace("{amount}", amountText),
+      i18n: {
+        titleKey: "notifications.referralWithdrawalCompleted",
+        messageKey: "notifications.referralWithdrawalCompletedMessage",
+        params: { amount: amountText },
+      },
       accountID: activeAccountId,
       dedupeKey: `ref:withdraw:${Date.now()}`,
     })
@@ -2018,10 +2225,16 @@ export default function App() {
   const handleClaimProfitReward = async (stageNo: number, tradingAccountID: string) => {
     const res = await api.claimProfitReward({ stage_no: stageNo, trading_account_id: tradingAccountID })
     const reward = Number(res?.reward_usd || 0)
+    const rewardText = formatNumber(reward, 2, 2)
     addNotification({
       kind: "bonus",
       title: t("notifications.profitStageRewardCredited", lang),
-      message: t("notifications.profitStageRewardCreditedMessage", lang).replace("{amount}", formatNumber(reward, 2, 2)),
+      message: t("notifications.profitStageRewardCreditedMessage", lang).replace("{amount}", rewardText),
+      i18n: {
+        titleKey: "notifications.profitStageRewardCredited",
+        messageKey: "notifications.profitStageRewardCreditedMessage",
+        params: { amount: rewardText },
+      },
       accountID: tradingAccountID || activeAccountId,
       dedupeKey: `profit_reward:${res?.stage_no || stageNo}:${res?.claimed_at || Date.now()}`,
     })
